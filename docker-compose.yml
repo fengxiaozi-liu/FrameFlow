@@ -1,0 +1,14 @@
+services:
+  backend:
+    build: ./backend
+    environment:
+      FRAMEFLOW_DATABASE_PATH: /app/data/frameflow.db
+      FRAMEFLOW_API_TOKEN: ${FRAMEFLOW_API_TOKEN:-}
+    volumes: [frameflow-data:/app/data]
+    ports: ["8080:8080"]
+    healthcheck: {test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/health"], interval: 10s, timeout: 3s, retries: 5}
+  frontend:
+    build: ./frontend
+    depends_on: {backend: {condition: service_healthy}}
+    ports: ["8088:80"]
+volumes: {frameflow-data: {}}

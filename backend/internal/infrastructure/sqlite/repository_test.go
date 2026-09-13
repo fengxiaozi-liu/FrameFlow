@@ -1,0 +1,77 @@
+package sqlite
+
+import (
+	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/material"
+	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/project"
+	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/provider"
+	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/task"
+	"path/filepath"
+	"testing"
+	"time"
+)
+
+func TestRepositoriesPersistAggregates(t *testing.T) {
+	r, err := Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Close()
+	now := time.Now().UTC()
+	taskValue := task.New("t1", "video", now)
+	if err = r.Save(taskValue); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := r.Get("t1"); !ok {
+		t.Fatal("task missing")
+	}
+	p, _ := project.New("p1", "Demo", now)
+	if err = r.SaveProject(p); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := r.GetProject("p1"); !ok {
+		t.Fatal("project missing")
+	}
+	c, _ := provider.New("v1", "Video", provider.Video)
+	if err = r.SaveProvider(c); err != nil {
+		t.Fatal(err)
+	}
+	if len(r.ListProviders(provider.Video)) != 1 {
+		t.Fatal("provider missing")
+	}
+	a, _ := material.New("m1", "Cover", material.Visual, now)
+	if err = r.SaveMaterial(a); err != nil {
+		t.Fatal(err)
+	}
+	if len(r.ListMaterials(material.Visual)) != 1 {
+		t.Fatal("material missing")
+	}
+}
+
+func TestBackupCanBeRestoredAndPassesIntegrityCheck(t *testing.T) {
+	dir := t.TempDir()
+	original, err := Open(filepath.Join(dir, "original.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	value := task.New("backup-task", "video", time.Now().UTC())
+	if err = original.Save(value); err != nil {
+		t.Fatal(err)
+	}
+	backupPath := filepath.Join(dir, "backup", "frameflow.db")
+	if err = original.Backup(backupPath); err != nil {
+		t.Fatal(err)
+	}
+	_ = original.Close()
+
+	restored, err := Open(backupPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer restored.Close()
+	if err = restored.VerifyIntegrity(); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := restored.Get(value.ID); !ok {
+		t.Fatal("restored database is missing the saved task")
+	}
+}

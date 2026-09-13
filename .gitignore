@@ -1,0 +1,16 @@
+.idea/
+.vscode/
+node_modules/
+dist/
+*.db
+*.exe
+data/
+!backend/internal/web/
+!backend/internal/web/dist/
+!backend/internal/web/dist/index.html
+backend/internal/web/dist/assets/
+coverage/
+playwright-report/
+test-results/
+release/
+.env

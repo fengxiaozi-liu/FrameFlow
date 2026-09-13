@@ -1,0 +1,109 @@
+name: Cross-platform Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.label }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: windows-amd64
+            goos: windows
+            goarch: amd64
+            binary: FrameFlow.exe
+            archive: FrameFlow-windows-amd64.zip
+          - label: linux-amd64
+            goos: linux
+            goarch: amd64
+            binary: FrameFlow
+            archive: FrameFlow-linux-amd64.tar.gz
+          - label: macos-arm64
+            goos: darwin
+            goarch: arm64
+            binary: FrameFlow
+            archive: FrameFlow-macos-arm64.tar.gz
+          - label: macos-amd64
+            goos: darwin
+            goarch: amd64
+            binary: FrameFlow
+            archive: FrameFlow-macos-amd64.tar.gz
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+          cache-dependency-path: backend/go.sum
+      - name: Build frontend bundle
+        working-directory: frontend
+        run: npm ci && npm run build
+      - name: Embed frontend bundle
+        run: cp -R frontend/dist/* backend/internal/web/dist/
+      - name: Cross-compile package
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: "0"
+        run: |
+          set -eu
+          package_dir="release/${{ matrix.label }}"
+          mkdir -p "$package_dir"
+          go build -trimpath -ldflags "-s -w -X main.openOnStart=1" -o "$package_dir/${{ matrix.binary }}" ./backend/cmd/server
+          if [ "${{ matrix.goos }}" = "windows" ]; then
+            cp "$package_dir/${{ matrix.binary }}" release/FrameFlow.exe
+            (cd release && zip -q -r "${{ matrix.archive }}" "${{ matrix.label }}")
+          else
+            tar -czf "release/${{ matrix.archive }}" -C release "${{ matrix.label }}"
+          fi
+      - name: Upload package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.label }}
+          path: release/${{ matrix.archive }}
+          if-no-files-found: error
+      - name: Upload Windows executable
+        if: matrix.goos == 'windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-executable
+          path: release/FrameFlow.exe
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download packages
+        uses: actions/download-artifact@v4
+        with:
+          path: release
+          pattern: "*"
+          merge-multiple: true
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            release/FrameFlow.exe
+            release/FrameFlow-windows-amd64.zip
+            release/FrameFlow-linux-amd64.tar.gz
+            release/FrameFlow-macos-arm64.tar.gz
+            release/FrameFlow-macos-amd64.tar.gz
+          generate_release_notes: true
+          fail_on_unmatched_files: true
