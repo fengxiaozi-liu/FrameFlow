@@ -65,7 +65,7 @@ jobs:
           set -eu
           package_dir="release/${{ matrix.label }}"
           mkdir -p "$package_dir"
-          go build -trimpath -ldflags "-s -w -X main.openOnStart=1" -o "$package_dir/${{ matrix.binary }}" ./backend/cmd/server
+          (cd backend && go build -trimpath -ldflags "-s -w -X main.openOnStart=1" -o "../$package_dir/${{ matrix.binary }}" ./cmd/server)
           if [ "${{ matrix.goos }}" = "windows" ]; then
             cp "$package_dir/${{ matrix.binary }}" release/FrameFlow.exe
             (cd release && zip -q -r "${{ matrix.archive }}" "${{ matrix.label }}")
