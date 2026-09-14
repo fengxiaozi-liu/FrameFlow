@@ -28,6 +28,8 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 }
 export const api = {
   overview: () => request<Overview>("/api/overview"),
+  shutdown: () =>
+    request<{ status: string }>("/api/system/shutdown", { method: "POST" }),
   projects: () => request<{ projects: Project[] }>("/api/projects"),
   createProject: (name: string) =>
     request<Project>("/api/projects", {

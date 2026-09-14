@@ -35,6 +35,7 @@ type Server struct {
 	Vault       provider.CredentialVault
 	RateLimit   int
 	StaticFS    fs.FS
+	Shutdown    func()
 }
 
 func (s Server) Routes() http.Handler {
@@ -51,7 +52,7 @@ func (s Server) Routes() http.Handler {
 		frontend = http.NotFoundHandler()
 	}
 	routes.Register(engine, routes.Dependencies{
-		Health: http.HandlerFunc(health), Metrics: http.HandlerFunc(s.metrics), Tasks: http.HandlerFunc(s.Tasks), Task: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		Health: http.HandlerFunc(health), Metrics: http.HandlerFunc(s.metrics), Shutdown: http.HandlerFunc(s.shutdown), Tasks: http.HandlerFunc(s.Tasks), Task: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if strings.HasSuffix(r.URL.Path, "/event-log") {
 				if events, ok := s.Store.(task.EventRepository); ok {
 					TaskEvents(events)(w, r)
@@ -75,6 +76,15 @@ func (s Server) Routes() http.Handler {
 		}), Projects: http.HandlerFunc(s.projects), Project: http.HandlerFunc(s.project), Overview: http.HandlerFunc(s.overview), Providers: http.HandlerFunc(s.providers), Provider: http.HandlerFunc(s.provider), Materials: http.HandlerFunc(s.materials), Material: http.HandlerFunc(s.material), Media: media, SPA: frontend,
 	})
 	return audit(cors(newLimiter(s.RateLimit).wrap(auth(engine, s.AuthToken))))
+}
+
+func (s Server) shutdown(w http.ResponseWriter, _ *http.Request) {
+	if s.Shutdown == nil {
+		writeError(w, http.StatusNotImplemented, "shutdown_unavailable", errors.New("shutdown is unavailable"))
+		return
+	}
+	writeJSON(w, http.StatusAccepted, map[string]string{"status": "shutting_down"})
+	go s.Shutdown()
 }
 
 func spa(files fs.FS) http.Handler {

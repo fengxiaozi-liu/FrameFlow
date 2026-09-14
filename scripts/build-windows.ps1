@@ -21,7 +21,7 @@ try {
   Copy-Item (Join-Path $frontend "dist\*") $embed -Recurse -Force
   Push-Location $backend
   try {
-    go build -trimpath -ldflags "-s -w -X main.openOnStart=1" -o (Join-Path $release "FrameFlow.exe") ./cmd/server
+    go build -trimpath -ldflags "-H=windowsgui -s -w -X main.openOnStart=1" -o (Join-Path $release "FrameFlow.exe") ./cmd/server
     if ($LASTEXITCODE -ne 0) { throw "go build failed with exit code $LASTEXITCODE." }
   } finally { Pop-Location }
 } finally {

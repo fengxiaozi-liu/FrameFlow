@@ -80,6 +80,38 @@ func TestAuthentication(t *testing.T) {
 	}
 }
 
+func TestShutdownEndpoint(t *testing.T) {
+	s, done := testServer(t)
+	defer done()
+	requested := make(chan struct{}, 1)
+	s.Shutdown = func() { requested <- struct{}{} }
+	w := request(t, s.Routes(), http.MethodPost, "/api/system/shutdown", "")
+	if w.Code != http.StatusAccepted {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	var response map[string]string
+	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+	if response["status"] != "shutting_down" {
+		t.Fatalf("unexpected response: %v", response)
+	}
+	select {
+	case <-requested:
+	case <-time.After(time.Second):
+		t.Fatal("shutdown callback was not called")
+	}
+}
+
+func TestShutdownEndpointUnavailable(t *testing.T) {
+	s, done := testServer(t)
+	defer done()
+	w := request(t, s.Routes(), http.MethodPost, "/api/system/shutdown", "")
+	if w.Code != http.StatusNotImplemented {
+		t.Fatal(w.Code, w.Body.String())
+	}
+}
+
 func TestTaskEventsUpgradeThroughMiddleware(t *testing.T) {
 	s, done := testServer(t)
 	defer done()

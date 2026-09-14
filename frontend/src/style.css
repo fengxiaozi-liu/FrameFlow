@@ -98,6 +98,15 @@ a {
   color: var(--accent);
   font-weight: 700;
 }
+.header-exit {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  padding: 8px 13px;
+}
+.header-exit:hover {
+  color: var(--danger);
+}
 .page,
 .config-page {
   max-width: 1180px;

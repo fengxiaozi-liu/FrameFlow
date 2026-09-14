@@ -7,8 +7,8 @@ import (
 )
 
 type Dependencies struct {
-	Health, Metrics, Tasks, Task, Projects, Project, Overview, Providers, Provider, Materials, Material http.Handler
-	Media, SPA                                                                                          http.Handler
+	Health, Metrics, Shutdown, Tasks, Task, Projects, Project, Overview, Providers, Provider, Materials, Material http.Handler
+	Media, SPA                                                                                                    http.Handler
 }
 
 func Register(engine *gin.Engine, deps Dependencies) {

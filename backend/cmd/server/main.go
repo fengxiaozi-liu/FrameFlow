@@ -30,6 +30,13 @@ func main() {
 		if executable, pathErr := os.Executable(); pathErr == nil {
 			baseDir = filepath.Dir(executable)
 		}
+		logPath := filepath.Join(baseDir, "data", "frameflow.log")
+		if err := os.MkdirAll(filepath.Dir(logPath), 0750); err == nil {
+			if file, err := os.OpenFile(logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0640); err == nil {
+				defer file.Close()
+				log.SetOutput(file)
+			}
+		}
 	}
 	databasePath := os.Getenv("FRAMEFLOW_DATABASE_PATH")
 	if databasePath == "" {
@@ -60,7 +67,14 @@ func main() {
 	server := httpapi.Server{Store: store, Worker: worker, TaskService: tasks, Projects: application.ProjectService{Repo: sqlite.NewProjectRepository(store)}, Providers: providers, Materials: application.MaterialService{Repo: sqlite.NewMaterialRepository(store)}, AuthToken: os.Getenv("FRAMEFLOW_API_TOKEN"), UploadDir: uploadDir, Vault: vault, StaticFS: staticFiles}
 	address := os.Getenv("FRAMEFLOW_ADDRESS")
 	if address == "" {
-		address = ":8080"
+		address = "127.0.0.1:28741"
+	}
+	shutdownRequested := make(chan struct{}, 1)
+	server.Shutdown = func() {
+		select {
+		case shutdownRequested <- struct{}{}:
+		default:
+		}
 	}
 	httpServer := &http.Server{Addr: address, Handler: server.Routes(), ReadHeaderTimeout: 5 * time.Second}
 	go func() {
@@ -76,18 +90,22 @@ func main() {
 			var args []string
 			switch runtime.GOOS {
 			case "windows":
-				command, args = "rundll32", []string{"url.dll,FileProtocolHandler", "http://127.0.0.1:8080"}
+				command, args = "rundll32", []string{"url.dll,FileProtocolHandler", "http://" + address}
 			case "darwin":
-				command, args = "open", []string{"http://127.0.0.1:8080"}
+				command, args = "open", []string{"http://" + address}
 			default:
-				command, args = "xdg-open", []string{"http://127.0.0.1:8080"}
+				command, args = "xdg-open", []string{"http://" + address}
 			}
 			_ = exec.Command(command, args...).Start()
 		}()
 	}
 	stopCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	<-stopCtx.Done()
+	select {
+	case <-stopCtx.Done():
+	case <-shutdownRequested:
+		cancel()
+	}
 	shutdownCtx, cancelShutdown := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancelShutdown()
 	if err := httpServer.Shutdown(shutdownCtx); err != nil {

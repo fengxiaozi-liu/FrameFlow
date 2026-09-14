@@ -10,5 +10,5 @@ WORKDIR /app
 COPY --from=build /frameflow /usr/local/bin/frameflow
 RUN mkdir -p /app/data && chown -R frameflow:frameflow /app
 USER frameflow
-EXPOSE 8080
+EXPOSE 28741
 CMD ["frameflow"]

@@ -10,7 +10,8 @@ FrameFlow 是一个通用的 AI 视频创作工作台。你可以从一个创意
 irm https://raw.githubusercontent.com/fengxiaozi-liu/FrameFlow/main/scripts/install-windows.ps1 | iex
 ```
 
-程序安装到当前用户的 `%LOCALAPPDATA%\FrameFlow`，启动后访问 `http://127.0.0.1:8080`。运行数据保存在安装目录下的 `data` 文件夹。
+程序安装到当前用户的 `%LOCALAPPDATA%\FrameFlow`，启动后访问 `http://127.0.0.1:28741`。运行数据保存在安装目录下的 `data` 文件夹。
+Windows 桌面版本不会显示控制台窗口，运行日志保存在安装目录下的 `data\frameflow.log`。
 
 ## 使用方式
 
