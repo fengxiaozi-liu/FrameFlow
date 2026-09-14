@@ -17,7 +17,7 @@ func TestTaskEventStream(t *testing.T) {
 		t.Fatal(e)
 	}
 	defer store.Close()
-	v := task.New("t1", "video", time.Now())
+	v := task.New("t1", task.KindVideo, task.Input{Prompt: "测试视频"}, time.Now())
 	_ = store.Save(v)
 	_ = store.AppendEvent(task.Event{TaskID: v.ID, Status: v.Status, Stage: v.Stage, At: v.CreatedAt})
 	server := httptest.NewServer(TaskEvents(store))

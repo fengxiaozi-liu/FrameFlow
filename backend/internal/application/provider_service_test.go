@@ -7,8 +7,16 @@ import (
 
 type providerRepo struct{ m map[string]provider.Config }
 
-func (r *providerRepo) Save(c provider.Config) error          { r.m[c.Code] = c; return nil }
-func (r *providerRepo) Get(id string) (provider.Config, bool) { c, o := r.m[id]; return c, o }
+func (r *providerRepo) Save(c provider.Config) error {
+	r.m[c.Code] = c
+	return nil
+}
+
+func (r *providerRepo) Get(id string) (provider.Config, bool) {
+	c, o := r.m[id]
+	return c, o
+}
+
 func (r *providerRepo) List(k provider.Capability) []provider.Config {
 	o := []provider.Config{}
 	for _, c := range r.m {
@@ -18,7 +26,12 @@ func (r *providerRepo) List(k provider.Capability) []provider.Config {
 	}
 	return o
 }
-func (r *providerRepo) Delete(id string) error { delete(r.m, id); return nil }
+
+func (r *providerRepo) Delete(id string) error {
+	delete(r.m, id)
+	return nil
+}
+
 func TestProviderService(t *testing.T) {
 	r := &providerRepo{m: map[string]provider.Config{}}
 	s := ProviderService{Repo: r}

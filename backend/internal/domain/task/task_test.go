@@ -6,7 +6,7 @@ import (
 )
 
 func TestTaskLifecycle(t *testing.T) {
-	x := New("1", "video", time.Now())
+	x := New("1", KindVideo, Input{Prompt: "测试视频"}, time.Now())
 	if x.Status != StatusQueued {
 		t.Fatal(x.Status)
 	}
@@ -18,5 +18,11 @@ func TestTaskLifecycle(t *testing.T) {
 	x.Succeed(time.Now())
 	if x.Status != StatusSucceeded {
 		t.Fatal(x.Status)
+	}
+}
+
+func TestInputRequiresPrompt(t *testing.T) {
+	if err := (Input{}).Validate(); err == nil {
+		t.Fatal("empty prompt should be rejected")
 	}
 }

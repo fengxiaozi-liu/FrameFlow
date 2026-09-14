@@ -16,9 +16,19 @@ func (s ProviderService) Save(c provider.Config) error {
 	}
 	return s.Repo.Save(c)
 }
-func (s ProviderService) List(k provider.Capability) []provider.Config { return s.Repo.List(k) }
-func (s ProviderService) Get(code string) (provider.Config, bool)      { return s.Repo.Get(code) }
-func (s ProviderService) Delete(code string) error                     { return s.Repo.Delete(code) }
+
+func (s ProviderService) List(k provider.Capability) []provider.Config {
+	return s.Repo.List(k)
+}
+
+func (s ProviderService) Get(code string) (provider.Config, bool) {
+	return s.Repo.Get(code)
+}
+
+func (s ProviderService) Delete(code string) error {
+	return s.Repo.Delete(code)
+}
+
 func (s ProviderService) SetEnabled(code string, enabled bool) (provider.Config, error) {
 	c, ok := s.Repo.Get(code)
 	if !ok {
@@ -31,6 +41,7 @@ func (s ProviderService) SetEnabled(code string, enabled bool) (provider.Config,
 	}
 	return c, s.Repo.Save(c)
 }
+
 func (s ProviderService) TestConnection(ctx context.Context, code string) (provider.Config, error) {
 	c, ok := s.Repo.Get(code)
 	if !ok {

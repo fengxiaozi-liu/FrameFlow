@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/fengxiaozi-liu/FrameFlow/internal/application"
+	domainprocessor "github.com/fengxiaozi-liu/FrameFlow/internal/domain/processor"
 	domain "github.com/fengxiaozi-liu/FrameFlow/internal/domain/provider"
 	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/task"
 	"github.com/fengxiaozi-liu/FrameFlow/internal/infrastructure/queue"
@@ -26,13 +27,14 @@ func TestAllProviderKindsCompleteThroughWorker(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	worker := queue.NewWorkerWithProcessor(store, NewGenerationProcessor(configs))
+	worker := queue.NewWorker(store)
+	processor := domainprocessor.New(configs, NewRegistry(), worker)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	go worker.Run(ctx)
-	service := application.TaskService{Store: store, Worker: worker}
+	go processor.Start(ctx)
+	service := application.TaskService{Store: store, Enqueuer: processor}
 	for _, kind := range []string{"story", "image", "video"} {
-		created, createErr := service.CreateWithProvider(kind, kind+"-test")
+		created, createErr := service.CreateWithProvider(kind, kind+"-test", task.Input{Prompt: "测试生成"})
 		if createErr != nil {
 			t.Fatal(createErr)
 		}

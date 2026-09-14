@@ -30,6 +30,7 @@ func New(id, name string, k Kind, now time.Time) (Asset, error) {
 	}
 	return Asset{ID: id, Name: name, Kind: k, CreatedAt: now}, nil
 }
+
 func (a *Asset) UpdateURL(url string) error {
 	if strings.TrimSpace(url) == "" {
 		return errors.New("material url is required")

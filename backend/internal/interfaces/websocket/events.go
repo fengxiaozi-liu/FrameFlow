@@ -11,8 +11,7 @@ import (
 	"time"
 )
 
-// TaskEvents is the transport boundary for task event streaming. The concrete
-// upgrader is intentionally isolated here so the domain never imports WebSocket code.
+// TaskEvents 是任务事件流的传输边界。具体的升级器隔离在此处，领域层不会导入 WebSocket 代码。
 var upgrader = websocket.Upgrader{CheckOrigin: func(r *http.Request) bool {
 	origin := r.Header.Get("Origin")
 	if origin == "" {

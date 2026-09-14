@@ -28,6 +28,7 @@ func New(id, name string, now time.Time) (Project, error) {
 	}
 	return Project{ID: id, Name: name, CreatedAt: now}, nil
 }
+
 func (p *Project) AddDraft(d Draft) error {
 	if d.ID == "" {
 		return errors.New("draft id is required")

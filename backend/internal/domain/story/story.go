@@ -29,6 +29,7 @@ func (d *Document) UpdateBody(body string, now time.Time) error {
 	d.UpdatedAt = now
 	return nil
 }
+
 func (d *Document) AddScene(s Scene) error {
 	if strings.TrimSpace(s.Title) == "" {
 		return errors.New("scene title is required")

@@ -399,6 +399,33 @@ textarea {
   background: #edf3f2;
   color: var(--accent);
 }
+.file-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+.material-upload-empty {
+  width: 100%;
+  min-height: 96px;
+  margin: 14px 0;
+  flex-direction: column;
+  gap: 3px;
+  border-style: dashed;
+  color: var(--muted);
+}
+.material-upload-empty strong {
+  color: inherit;
+}
+.material-upload-empty span {
+  font-size: 12px;
+  font-weight: 400;
+}
 .filters {
   display: flex;
   gap: 8px;

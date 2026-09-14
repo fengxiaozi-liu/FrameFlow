@@ -27,6 +27,7 @@ func newLimiter(limit int) *limiter {
 	}
 	return &limiter{limit: limit, items: map[string]visitor{}}
 }
+
 func (l *limiter) wrap(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		host, _, _ := net.SplitHostPort(r.RemoteAddr)
@@ -53,7 +54,11 @@ type statusWriter struct {
 	status int
 }
 
-func (w *statusWriter) WriteHeader(code int) { w.status = code; w.ResponseWriter.WriteHeader(code) }
+func (w *statusWriter) WriteHeader(code int) {
+	w.status = code
+	w.ResponseWriter.WriteHeader(code)
+}
+
 func (w *statusWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 	hijacker, ok := w.ResponseWriter.(http.Hijacker)
 	if !ok {
@@ -61,6 +66,7 @@ func (w *statusWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 	}
 	return hijacker.Hijack()
 }
+
 func (w *statusWriter) Flush() {
 	if flusher, ok := w.ResponseWriter.(http.Flusher); ok {
 		flusher.Flush()
@@ -78,6 +84,7 @@ func audit(next http.Handler) http.Handler {
 		log.Printf(`{"method":%q,"path":%q,"status":%d,"duration_ms":%d}`, r.Method, r.URL.Path, sw.status, time.Since(started).Milliseconds())
 	})
 }
+
 func (s Server) metrics(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "text/plain; version=0.0.4")
 	counts := map[string]int{}

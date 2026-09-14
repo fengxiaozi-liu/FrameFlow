@@ -15,8 +15,15 @@ func (s ProjectService) Create(id, name string) (project.Project, error) {
 	}
 	return p, s.Repo.Save(p)
 }
-func (s ProjectService) List() []project.Project               { return s.Repo.List() }
-func (s ProjectService) Get(id string) (project.Project, bool) { return s.Repo.Get(id) }
+
+func (s ProjectService) List() []project.Project {
+	return s.Repo.List()
+}
+
+func (s ProjectService) Get(id string) (project.Project, bool) {
+	return s.Repo.Get(id)
+}
+
 func (s ProjectService) SaveDraft(projectID string, d project.Draft) (project.Project, error) {
 	p, ok := s.Repo.Get(projectID)
 	if !ok {

@@ -18,19 +18,24 @@ type MemoryStore struct {
 	items map[string]task.Task
 }
 
-func NewStore() *MemoryStore { return &MemoryStore{items: map[string]task.Task{}} }
+func NewStore() *MemoryStore {
+	return &MemoryStore{items: map[string]task.Task{}}
+}
+
 func (s *MemoryStore) Save(t task.Task) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.items[t.ID] = t
 	return nil
 }
+
 func (s *MemoryStore) Get(id string) (task.Task, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	t, ok := s.items[id]
 	return t, ok
 }
+
 func (s *MemoryStore) List() []task.Task {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -40,6 +45,7 @@ func (s *MemoryStore) List() []task.Task {
 	}
 	return out
 }
+
 func (s *MemoryStore) Delete(id string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -48,53 +54,34 @@ func (s *MemoryStore) Delete(id string) error {
 }
 
 type Worker struct {
-	store     Store
-	jobs      chan task.Task
-	processor Processor
+	store Store
+	jobs  chan task.Task
 }
 
-type Processor interface {
-	Process(context.Context, task.Task, func(int, string)) error
-}
-type ProcessorFunc func(context.Context, task.Task, func(int, string)) error
-
-func (f ProcessorFunc) Process(ctx context.Context, t task.Task, progress func(int, string)) error {
-	return f(ctx, t, progress)
-}
 func NewWorker(s Store) *Worker {
-	return NewWorkerWithProcessor(s, ProcessorFunc(func(ctx context.Context, t task.Task, progress func(int, string)) error {
-		stages := map[string][]string{"story": {"preparing", "generating_story", "completed"}, "image": {"preparing", "generating_image", "completed"}, "video": {"preparing", "rendering_video", "composing"}}[t.Kind]
-		for i, p := range []int{25, 60, 85} {
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			case <-time.After(50 * time.Millisecond):
-			}
-			stage := "processing"
-			if i < len(stages) {
-				stage = stages[i]
-			}
-			progress(p, stage)
-		}
-		return nil
-	}))
+	return &Worker{store: s, jobs: make(chan task.Task, 32)}
 }
-func NewWorkerWithProcessor(s Store, p Processor) *Worker {
-	return &Worker{store: s, jobs: make(chan task.Task, 32), processor: p}
+
+func (w *Worker) Enqueue(t task.Task) {
+	w.jobs <- t
 }
-func (w *Worker) Enqueue(t task.Task) { w.jobs <- t }
-func (w *Worker) Depth() int          { return len(w.jobs) }
-func (w *Worker) Run(ctx context.Context) {
+
+func (w *Worker) Depth() int {
+	return len(w.jobs)
+}
+
+func (w *Worker) Run(ctx context.Context, process func(context.Context, task.Task, func(int, string)) error) {
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case t := <-w.jobs:
-			w.process(t)
+			w.process(ctx, t, process)
 		}
 	}
 }
-func (w *Worker) process(t task.Task) {
+
+func (w *Worker) process(ctx context.Context, t task.Task, process func(context.Context, task.Task, func(int, string)) error) {
 	current, ok := w.store.Get(t.ID)
 	if !ok || current.Status != task.StatusQueued {
 		return
@@ -105,7 +92,7 @@ func (w *Worker) process(t task.Task) {
 	w.save(t)
 	var err error
 	for attempt := 0; attempt < 3; attempt++ {
-		err = w.processor.Process(context.Background(), t, func(p int, stage string) {
+		err = process(ctx, t, func(p int, stage string) {
 			current, ok := w.store.Get(t.ID)
 			if !ok || current.Status == task.StatusCancelled {
 				return
@@ -132,6 +119,7 @@ func (w *Worker) process(t task.Task) {
 	t.Succeed(time.Now().UTC())
 	w.save(t)
 }
+
 func (w *Worker) save(t task.Task) {
 	_ = w.store.Save(t)
 	if events, ok := w.store.(task.EventRepository); ok {

@@ -5,6 +5,8 @@ import (
 	"context"
 	"encoding/json"
 	"github.com/fengxiaozi-liu/FrameFlow/internal/application"
+	domainprocessor "github.com/fengxiaozi-liu/FrameFlow/internal/domain/processor"
+	providerinfra "github.com/fengxiaozi-liu/FrameFlow/internal/infrastructure/provider"
 	"github.com/fengxiaozi-liu/FrameFlow/internal/infrastructure/queue"
 	"github.com/fengxiaozi-liu/FrameFlow/internal/infrastructure/sqlite"
 	"github.com/gorilla/websocket"
@@ -22,12 +24,14 @@ func testServer(t *testing.T) (Server, func()) {
 		t.Fatal(e)
 	}
 	worker := queue.NewWorker(db)
-	ctx, cancel := context.WithCancel(context.Background())
-	go worker.Run(ctx)
-	tasks := application.TaskService{Store: db, Worker: worker}
 	providers := application.ProviderService{Repo: sqlite.NewProviderRepository(db)}
-	return Server{Store: db, Worker: worker, TaskService: tasks, Projects: application.ProjectService{Repo: sqlite.NewProjectRepository(db)}, Providers: providers, Materials: application.MaterialService{Repo: sqlite.NewMaterialRepository(db)}, Generation: application.GenerationService{Tasks: tasks, Providers: providers}}, func() { cancel(); _ = db.Close() }
+	processor := domainprocessor.New(providers.Repo, providerinfra.NewRegistry(), worker)
+	ctx, cancel := context.WithCancel(context.Background())
+	go processor.Start(ctx)
+	tasks := application.TaskService{Store: db, Enqueuer: processor, Providers: providers}
+	return Server{Store: db, Worker: worker, TaskService: tasks, Projects: application.ProjectService{Repo: sqlite.NewProjectRepository(db)}, Providers: providers, Materials: application.MaterialService{Repo: sqlite.NewMaterialRepository(db)}}, func() { cancel(); _ = db.Close() }
 }
+
 func request(t *testing.T, h http.Handler, method, path, body string) *httptest.ResponseRecorder {
 	r := httptest.NewRequest(method, path, bytes.NewBufferString(body))
 	r.Header.Set("Content-Type", "application/json")
@@ -35,6 +39,7 @@ func request(t *testing.T, h http.Handler, method, path, body string) *httptest.
 	h.ServeHTTP(w, r)
 	return w
 }
+
 func TestAPICoreFlow(t *testing.T) {
 	s, done := testServer(t)
 	defer done()
@@ -54,7 +59,7 @@ func TestAPICoreFlow(t *testing.T) {
 	if w.Code != 201 {
 		t.Fatal(w.Code, w.Body.String())
 	}
-	w = request(t, h, "POST", "/api/tasks", `{"kind":"video"}`)
+	w = request(t, h, "POST", "/api/tasks", `{"kind":"video","prompt":"测试视频"}`)
 	if w.Code != 202 {
 		t.Fatal(w.Code, w.Body.String())
 	}
@@ -64,6 +69,7 @@ func TestAPICoreFlow(t *testing.T) {
 		t.Fatal(w.Code, w.Body.String())
 	}
 }
+
 func TestAuthentication(t *testing.T) {
 	s, done := testServer(t)
 	defer done()
@@ -77,7 +83,7 @@ func TestAuthentication(t *testing.T) {
 func TestTaskEventsUpgradeThroughMiddleware(t *testing.T) {
 	s, done := testServer(t)
 	defer done()
-	created := request(t, s.Routes(), http.MethodPost, "/api/tasks", `{"kind":"video"}`)
+	created := request(t, s.Routes(), http.MethodPost, "/api/tasks", `{"kind":"video","prompt":"测试视频"}`)
 	if created.Code != http.StatusAccepted {
 		t.Fatal(created.Code, created.Body.String())
 	}
@@ -111,7 +117,7 @@ func TestTaskCreationPerformanceAndMetrics(t *testing.T) {
 	handler := s.Routes()
 	for i := 0; i < 20; i++ {
 		started := time.Now()
-		response := request(t, handler, http.MethodPost, "/api/tasks", `{"kind":"video"}`)
+		response := request(t, handler, http.MethodPost, "/api/tasks", `{"kind":"video","prompt":"测试视频"}`)
 		if response.Code != http.StatusAccepted {
 			t.Fatal(response.Code, response.Body.String())
 		}

@@ -49,6 +49,7 @@ func saveJSON(db *sql.DB, table, id string, value any, categoryColumn, category 
 	}
 	return err
 }
+
 func getJSON[T any](db *sql.DB, table, id string) (T, bool) {
 	var zero T
 	var raw string
@@ -61,6 +62,7 @@ func getJSON[T any](db *sql.DB, table, id string) (T, bool) {
 	}
 	return zero, true
 }
+
 func listJSON[T any](db *sql.DB, table, categoryColumn, category string) []T {
 	query := fmt.Sprintf("SELECT payload FROM %s ORDER BY id DESC", table)
 	args := []any{}
@@ -83,6 +85,7 @@ func listJSON[T any](db *sql.DB, table, categoryColumn, category string) []T {
 	}
 	return out
 }
+
 func deleteJSON(db *sql.DB, table, id string) error {
 	_, err := db.Exec(fmt.Sprintf("DELETE FROM %s WHERE id=?", table), id)
 	return err
@@ -91,66 +94,121 @@ func deleteJSON(db *sql.DB, table, id string) error {
 func (r *TaskRepository) SaveProject(v project.Project) error {
 	return saveJSON(r.db, "projects", v.ID, v, "", "")
 }
+
 func (r *TaskRepository) GetProject(id string) (project.Project, bool) {
 	return getJSON[project.Project](r.db, "projects", id)
 }
+
 func (r *TaskRepository) ListProjects() []project.Project {
 	return listJSON[project.Project](r.db, "projects", "", "")
 }
-func (r *TaskRepository) DeleteProject(id string) error { return deleteJSON(r.db, "projects", id) }
+
+func (r *TaskRepository) DeleteProject(id string) error {
+	return deleteJSON(r.db, "projects", id)
+}
+
 func (r *TaskRepository) SaveProvider(v provider.Config) error {
 	return saveJSON(r.db, "providers", v.Code, v, "capability", string(v.Capability))
 }
+
 func (r *TaskRepository) GetProvider(id string) (provider.Config, bool) {
 	return getJSON[provider.Config](r.db, "providers", id)
 }
+
 func (r *TaskRepository) ListProviders(kind provider.Capability) []provider.Config {
 	return listJSON[provider.Config](r.db, "providers", "capability", string(kind))
 }
-func (r *TaskRepository) DeleteProvider(id string) error { return deleteJSON(r.db, "providers", id) }
+
+func (r *TaskRepository) DeleteProvider(id string) error {
+	return deleteJSON(r.db, "providers", id)
+}
+
 func (r *TaskRepository) SaveMaterial(v material.Asset) error {
 	return saveJSON(r.db, "materials", v.ID, v, "kind", string(v.Kind))
 }
+
 func (r *TaskRepository) GetMaterial(id string) (material.Asset, bool) {
 	return getJSON[material.Asset](r.db, "materials", id)
 }
+
 func (r *TaskRepository) ListMaterials(kind material.Kind) []material.Asset {
 	return listJSON[material.Asset](r.db, "materials", "kind", string(kind))
 }
-func (r *TaskRepository) DeleteMaterial(id string) error { return deleteJSON(r.db, "materials", id) }
+
+func (r *TaskRepository) DeleteMaterial(id string) error {
+	return deleteJSON(r.db, "materials", id)
+}
 
 type ProjectRepository struct{ root *TaskRepository }
 
 func NewProjectRepository(root *TaskRepository) *ProjectRepository {
 	return &ProjectRepository{root: root}
 }
-func (r *ProjectRepository) Save(v project.Project) error          { return r.root.SaveProject(v) }
-func (r *ProjectRepository) Get(id string) (project.Project, bool) { return r.root.GetProject(id) }
-func (r *ProjectRepository) List() []project.Project               { return r.root.ListProjects() }
-func (r *ProjectRepository) Delete(id string) error                { return r.root.DeleteProject(id) }
+
+func (r *ProjectRepository) Save(v project.Project) error {
+	return r.root.SaveProject(v)
+}
+
+func (r *ProjectRepository) Get(id string) (project.Project, bool) {
+	return r.root.GetProject(id)
+}
+
+func (r *ProjectRepository) List() []project.Project {
+	return r.root.ListProjects()
+}
+
+func (r *ProjectRepository) Delete(id string) error {
+	return r.root.DeleteProject(id)
+}
 
 type ProviderRepository struct{ root *TaskRepository }
 
 func NewProviderRepository(root *TaskRepository) *ProviderRepository {
 	return &ProviderRepository{root: root}
 }
-func (r *ProviderRepository) Save(v provider.Config) error          { return r.root.SaveProvider(v) }
-func (r *ProviderRepository) Get(id string) (provider.Config, bool) { return r.root.GetProvider(id) }
+
+func (r *ProviderRepository) Save(v provider.Config) error {
+	return r.root.SaveProvider(v)
+}
+
+func (r *ProviderRepository) Get(id string) (provider.Config, bool) {
+	return r.root.GetProvider(id)
+}
+
 func (r *ProviderRepository) List(k provider.Capability) []provider.Config {
 	return r.root.ListProviders(k)
 }
-func (r *ProviderRepository) Delete(id string) error { return r.root.DeleteProvider(id) }
+
+func (r *ProviderRepository) Delete(id string) error {
+	return r.root.DeleteProvider(id)
+}
 
 type MaterialRepository struct{ root *TaskRepository }
 
 func NewMaterialRepository(root *TaskRepository) *MaterialRepository {
 	return &MaterialRepository{root: root}
 }
-func (r *MaterialRepository) Save(v material.Asset) error           { return r.root.SaveMaterial(v) }
-func (r *MaterialRepository) Get(id string) (material.Asset, bool)  { return r.root.GetMaterial(id) }
-func (r *MaterialRepository) List(k material.Kind) []material.Asset { return r.root.ListMaterials(k) }
-func (r *MaterialRepository) Delete(id string) error                { return r.root.DeleteMaterial(id) }
-func (r *TaskRepository) Close() error                              { return r.db.Close() }
+
+func (r *MaterialRepository) Save(v material.Asset) error {
+	return r.root.SaveMaterial(v)
+}
+
+func (r *MaterialRepository) Get(id string) (material.Asset, bool) {
+	return r.root.GetMaterial(id)
+}
+
+func (r *MaterialRepository) List(k material.Kind) []material.Asset {
+	return r.root.ListMaterials(k)
+}
+
+func (r *MaterialRepository) Delete(id string) error {
+	return r.root.DeleteMaterial(id)
+}
+
+func (r *TaskRepository) Close() error {
+	return r.db.Close()
+}
+
 func (r *TaskRepository) Save(t task.Task) error {
 	b, err := json.Marshal(t)
 	if err != nil {
@@ -159,6 +217,7 @@ func (r *TaskRepository) Save(t task.Task) error {
 	_, err = r.db.Exec(`INSERT INTO tasks(id,payload) VALUES(?,?) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload`, t.ID, string(b))
 	return err
 }
+
 func (r *TaskRepository) Get(id string) (task.Task, bool) {
 	var raw string
 	if r.db.QueryRow(`SELECT payload FROM tasks WHERE id=?`, id).Scan(&raw) != nil {
@@ -170,6 +229,7 @@ func (r *TaskRepository) Get(id string) (task.Task, bool) {
 	}
 	return t, true
 }
+
 func (r *TaskRepository) List() []task.Task {
 	rows, err := r.db.Query(`SELECT payload FROM tasks ORDER BY id DESC`)
 	if err != nil {
@@ -188,10 +248,12 @@ func (r *TaskRepository) List() []task.Task {
 	}
 	return out
 }
+
 func (r *TaskRepository) Delete(id string) error {
 	_, err := r.db.Exec(`DELETE FROM tasks WHERE id=?`, id)
 	return err
 }
+
 func (r *TaskRepository) AppendEvent(v task.Event) error {
 	b, e := json.Marshal(v)
 	if e != nil {
@@ -200,6 +262,7 @@ func (r *TaskRepository) AppendEvent(v task.Event) error {
 	_, e = r.db.Exec(`INSERT INTO task_events(task_id,payload) VALUES(?,?)`, v.TaskID, string(b))
 	return e
 }
+
 func (r *TaskRepository) ListEvents(id string, after int64) []task.Event {
 	rows, e := r.db.Query(`SELECT sequence,payload FROM task_events WHERE task_id=? AND sequence>? ORDER BY sequence`, id, after)
 	if e != nil {

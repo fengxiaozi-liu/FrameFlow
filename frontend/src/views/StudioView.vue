@@ -8,6 +8,7 @@ import type {
   Material,
   MaterialKind,
   Provider,
+  TaskInput,
 } from "../api/types";
 import StatusBadge from "../components/StatusBadge.vue";
 const workspace = useWorkspaceStore(),
@@ -18,7 +19,9 @@ const workspace = useWorkspaceStore(),
     image: [],
     video: [],
   }),
-  materials = ref<Material[]>([]);
+  materials = ref<Material[]>([]),
+  fileInput = ref<HTMLInputElement>(),
+  uploading = ref(false);
 const tabs: { id: MaterialKind; label: string }[] = [
   { id: "visual", label: "画面" },
   { id: "character", label: "角色" },
@@ -30,6 +33,11 @@ const usesImage = computed(
   () =>
     workspace.activeResource === "character" ||
     workspace.activeResource === "frame",
+);
+const uploadAccept = computed(() =>
+  workspace.activeResource === "voice" || workspace.activeResource === "music"
+    ? "audio/*"
+    : "image/*",
 );
 onMounted(async () => {
   workspace.idea = sessionStorage.getItem("frameflow-idea") || workspace.idea;
@@ -52,13 +60,49 @@ function setTab(id: MaterialKind) {
   workspace.activeResource = id;
   loadMaterials();
 }
+function chooseMaterial() {
+  fileInput.value?.click();
+}
+async function uploadMaterial(event: Event) {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  if (!file) return;
+  const kind = workspace.activeResource as MaterialKind;
+  uploading.value = true;
+  message.value = "";
+  try {
+    const material = await api.uploadMaterial(file, kind);
+    await loadMaterials();
+    workspace.selectedMaterials[kind] = material.id;
+    message.value = `素材“${material.name}”已上传并选中。`;
+  } catch (e) {
+    message.value = (e as Error).message;
+  } finally {
+    uploading.value = false;
+    input.value = "";
+  }
+}
 async function enqueue(kind: "story" | "image" | "video", provider: string) {
   try {
-    await tasks.create(kind, provider);
+    await tasks.create(kind, provider, generationInput(kind));
     message.value = "任务已进入后台队列，可以继续编辑。";
   } catch (e) {
     message.value = (e as Error).message;
   }
+}
+
+function generationInput(kind: "story" | "image" | "video"): TaskInput {
+  const selectedID = workspace.selectedMaterials[workspace.activeResource];
+  const selected = materials.value.find((item) => item.id === selectedID);
+  const prompt =
+    kind === "story"
+      ? workspace.idea
+      : workspace.draft.story.body || workspace.idea || workspace.draft.name;
+  return {
+    prompt,
+    aspect_ratio: workspace.aspectRatio,
+    source_image_url: kind === "video" ? selected?.url : undefined,
+  };
 }
 async function saveDraft() {
   try {
@@ -211,7 +255,10 @@ async function saveDraft() {
           </h3>
           <div v-if="usesImage" class="provider-box">
             <strong>生图 AI 接口</strong
-            ><select v-model="workspace.imageProvider" aria-label="生图 AI 接口">
+            ><select
+              v-model="workspace.imageProvider"
+              aria-label="生图 AI 接口"
+            >
               <option value="">请选择接口</option>
               <option
                 v-for="p in providers.image"
@@ -266,7 +313,34 @@ async function saveDraft() {
               ><strong>{{ item.name }}</strong>
             </button>
           </div>
-          <div v-if="!materials.length" class="empty">当前素材库为空。</div>
+          <button
+            v-if="!materials.length"
+            type="button"
+            class="empty material-upload-empty"
+            :disabled="uploading"
+            @click="chooseMaterial"
+          >
+            <strong>当前素材库为空</strong>
+            <span
+              >点击上传{{ uploadAccept === "audio/*" ? "音频" : "图片" }}</span
+            >
+          </button>
+          <input
+            ref="fileInput"
+            class="file-input"
+            type="file"
+            :accept="uploadAccept"
+            aria-label="选择要上传的素材"
+            @change="uploadMaterial"
+          />
+          <button
+            type="button"
+            class="full"
+            :disabled="uploading"
+            @click="chooseMaterial"
+          >
+            {{ uploading ? "正在上传…" : "上传素材" }}
+          </button>
           <button
             v-if="usesImage && workspace.frameSource !== 'upload'"
             class="full"
@@ -275,20 +349,16 @@ async function saveDraft() {
           >
             生成{{
               workspace.activeResource === "character" ? "角色图片" : "首尾帧"
-            }}</button
-          ><label
-            v-if="
-              workspace.activeResource === 'frame' &&
-              workspace.frameSource === 'upload'
-            "
-            class="upload"
-            >选择图片<input type="file" accept="image/*"
-          /></label>
+            }}
+          </button>
         </div>
         <footer>
           <div class="provider-box">
             <strong>视频生成 AI 接口</strong
-            ><select v-model="workspace.videoProvider" aria-label="视频生成 AI 接口">
+            ><select
+              v-model="workspace.videoProvider"
+              aria-label="视频生成 AI 接口"
+            >
               <option value="">请选择接口</option>
               <option
                 v-for="p in providers.video"

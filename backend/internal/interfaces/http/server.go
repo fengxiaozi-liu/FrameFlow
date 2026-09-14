@@ -9,7 +9,9 @@ import (
 	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/provider"
 	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/task"
 	"github.com/fengxiaozi-liu/FrameFlow/internal/infrastructure/queue"
+	"github.com/fengxiaozi-liu/FrameFlow/internal/interfaces/http/routes"
 	ws "github.com/fengxiaozi-liu/FrameFlow/internal/interfaces/websocket"
+	"github.com/gin-gonic/gin"
 	"io"
 	"io/fs"
 	"net/http"
@@ -28,7 +30,6 @@ type Server struct {
 	Projects    application.ProjectService
 	Providers   application.ProviderService
 	Materials   application.MaterialService
-	Generation  application.GenerationService
 	AuthToken   string
 	UploadDir   string
 	Vault       provider.CredentialVault
@@ -37,46 +38,43 @@ type Server struct {
 }
 
 func (s Server) Routes() http.Handler {
-	mux := http.NewServeMux()
-	mux.HandleFunc("/health", health)
-	mux.HandleFunc("/metrics", s.metrics)
-	mux.HandleFunc("/api/tasks", s.Tasks)
-	mux.HandleFunc("/api/tasks/", func(w http.ResponseWriter, r *http.Request) {
-		if strings.HasSuffix(r.URL.Path, "/event-log") {
-			if events, ok := s.Store.(task.EventRepository); ok {
-				TaskEvents(events)(w, r)
-				return
-			}
-			writeError(w, 501, "events_unavailable", errors.New("event storage unavailable"))
-			return
-		}
-		if strings.HasSuffix(r.URL.Path, "/events") {
-			if events, ok := s.Store.(interface {
-				queue.Store
-				task.EventRepository
-			}); ok {
-				ws.TaskEvents(events)(w, r)
-				return
-			}
-			writeError(w, 501, "events_unavailable", errors.New("event storage unavailable"))
-			return
-		}
-		s.Task(w, r)
-	})
-	mux.HandleFunc("/api/projects", s.projects)
-	mux.HandleFunc("/api/overview", s.overview)
-	mux.HandleFunc("/api/projects/", s.project)
-	mux.HandleFunc("/api/providers", s.providers)
-	mux.HandleFunc("/api/providers/", s.provider)
-	mux.HandleFunc("/api/materials", s.materials)
-	mux.HandleFunc("/api/materials/", s.material)
+	engine := gin.New()
+	var media, frontend http.Handler
 	if s.UploadDir != "" {
-		mux.Handle("/media/", http.StripPrefix("/media/", http.FileServer(http.Dir(s.UploadDir))))
+		media = http.StripPrefix("/media/", http.FileServer(http.Dir(s.UploadDir)))
+	} else {
+		media = http.NotFoundHandler()
 	}
 	if s.StaticFS != nil {
-		mux.Handle("/", spa(s.StaticFS))
+		frontend = spa(s.StaticFS)
+	} else {
+		frontend = http.NotFoundHandler()
 	}
-	return audit(cors(newLimiter(s.RateLimit).wrap(auth(mux, s.AuthToken))))
+	routes.Register(engine, routes.Dependencies{
+		Health: http.HandlerFunc(health), Metrics: http.HandlerFunc(s.metrics), Tasks: http.HandlerFunc(s.Tasks), Task: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if strings.HasSuffix(r.URL.Path, "/event-log") {
+				if events, ok := s.Store.(task.EventRepository); ok {
+					TaskEvents(events)(w, r)
+					return
+				}
+				writeError(w, 501, "events_unavailable", errors.New("event storage unavailable"))
+				return
+			}
+			if strings.HasSuffix(r.URL.Path, "/events") {
+				if events, ok := s.Store.(interface {
+					queue.Store
+					task.EventRepository
+				}); ok {
+					ws.TaskEvents(events)(w, r)
+					return
+				}
+				writeError(w, 501, "events_unavailable", errors.New("events storage unavailable"))
+				return
+			}
+			s.Task(w, r)
+		}), Projects: http.HandlerFunc(s.projects), Project: http.HandlerFunc(s.project), Overview: http.HandlerFunc(s.overview), Providers: http.HandlerFunc(s.providers), Provider: http.HandlerFunc(s.provider), Materials: http.HandlerFunc(s.materials), Material: http.HandlerFunc(s.material), Media: media, SPA: frontend,
+	})
+	return audit(cors(newLimiter(s.RateLimit).wrap(auth(engine, s.AuthToken))))
 }
 
 func spa(files fs.FS) http.Handler {
@@ -102,30 +100,36 @@ func spa(files fs.FS) http.Handler {
 		_, _ = w.Write(content)
 	})
 }
+
 func health(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]string{"status": "healthy", "service": "frameflow"})
 }
+
 func (s Server) Tasks(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	if r.Method == http.MethodPost {
 		var input struct {
-			Kind         string `json:"kind"`
-			ProviderCode string `json:"provider_code"`
+			Kind           string `json:"kind"`
+			ProviderCode   string `json:"provider_code"`
+			Prompt         string `json:"prompt"`
+			AspectRatio    string `json:"aspect_ratio"`
+			SourceImageURL string `json:"source_image_url"`
 		}
 		if err := decode(r, &input); err != nil {
 			writeError(w, 400, "invalid_request", err)
 			return
 		}
 		if input.Kind == "" {
-			input.Kind = "video"
+			input.Kind = string(task.KindVideo)
 		}
 		var t task.Task
 		var err error
+		taskInput := task.Input{Prompt: input.Prompt, AspectRatio: input.AspectRatio, SourceImageURL: input.SourceImageURL}
 		if input.ProviderCode != "" {
-			t, err = s.Generation.Create(input.Kind, input.ProviderCode)
+			t, err = s.TaskService.CreateGeneration(input.Kind, input.ProviderCode, taskInput)
 		} else {
-			t, err = s.TaskService.CreateWithProvider(input.Kind, input.ProviderCode)
+			t, err = s.TaskService.CreateWithProvider(input.Kind, input.ProviderCode, taskInput)
 		}
 		if err != nil {
 			writeError(w, 400, "invalid_task", err)
@@ -150,6 +154,7 @@ func (s Server) Tasks(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = json.NewEncoder(w).Encode(map[string]any{"tasks": items[offset:end], "total": len(items)})
 }
+
 func (s Server) Task(w http.ResponseWriter, r *http.Request) {
 	id := strings.TrimPrefix(r.URL.Path, "/api/tasks/")
 	if strings.HasSuffix(id, "/result") {
@@ -215,14 +220,17 @@ func decode(r *http.Request, v any) error {
 	d.DisallowUnknownFields()
 	return d.Decode(v)
 }
+
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(v)
 }
+
 func writeError(w http.ResponseWriter, status int, code string, err error) {
 	writeJSON(w, status, map[string]any{"error": map[string]string{"code": code, "message": err.Error()}})
 }
+
 func cors(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "http://127.0.0.1:5173")
@@ -235,6 +243,7 @@ func cors(next http.Handler) http.Handler {
 		next.ServeHTTP(w, r)
 	})
 }
+
 func auth(next http.Handler, token string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		provided := r.Header.Get("Authorization") == "Bearer "+token || r.URL.Query().Get("token") == token
@@ -245,6 +254,7 @@ func auth(next http.Handler, token string) http.Handler {
 		next.ServeHTTP(w, r)
 	})
 }
+
 func pageParams(r *http.Request) (int, int) {
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
 	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
@@ -281,6 +291,7 @@ func (s Server) projects(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, 201, p)
 }
+
 func (s Server) project(w http.ResponseWriter, r *http.Request) {
 	path := strings.TrimPrefix(r.URL.Path, "/api/projects/")
 	if strings.HasSuffix(path, "/drafts") {
@@ -308,6 +319,7 @@ func (s Server) project(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, 200, p)
 }
+
 func (s Server) overview(w http.ResponseWriter, r *http.Request) {
 	projects := s.Projects.List()
 	tasks := s.TaskService.List()
@@ -327,6 +339,7 @@ func (s Server) overview(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, 200, map[string]int{"projects": len(projects), "tasks": len(tasks), "running_tasks": running, "providers": providers, "materials": materials})
 }
+
 func (s Server) providers(w http.ResponseWriter, r *http.Request) {
 	kind := provider.Capability(r.URL.Query().Get("capability"))
 	if r.Method == http.MethodGet {
@@ -357,6 +370,7 @@ func (s Server) providers(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, 201, c)
 }
+
 func (s Server) provider(w http.ResponseWriter, r *http.Request) {
 	path := strings.TrimPrefix(r.URL.Path, "/api/providers/")
 	if strings.HasSuffix(path, "/test") {
@@ -401,6 +415,7 @@ func (s Server) provider(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, 200, c)
 }
+
 func (s Server) materials(w http.ResponseWriter, r *http.Request) {
 	kind := material.Kind(r.URL.Query().Get("kind"))
 	if r.Method == http.MethodGet {
@@ -421,6 +436,7 @@ func (s Server) materials(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, 201, a)
 }
+
 func (s Server) material(w http.ResponseWriter, r *http.Request) {
 	id := strings.TrimPrefix(r.URL.Path, "/api/materials/")
 	if id == "upload" {
@@ -453,6 +469,7 @@ func (s Server) material(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, 200, a)
 }
+
 func (s Server) uploadMaterial(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeError(w, 405, "method_not_allowed", errors.New("method not allowed"))

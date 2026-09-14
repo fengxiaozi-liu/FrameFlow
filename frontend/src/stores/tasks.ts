@@ -1,7 +1,7 @@
 import { defineStore } from "pinia";
 import { computed, ref } from "vue";
 import { api } from "../api/client";
-import type { Task, TaskEvent } from "../api/types";
+import type { Task, TaskEvent, TaskInput } from "../api/types";
 export const useTaskStore = defineStore("tasks", () => {
   const items = ref<Task[]>([]),
     loading = ref(false),
@@ -64,8 +64,12 @@ export const useTaskStore = defineStore("tasks", () => {
       if (timer) clearInterval(timer);
     };
   }
-  async function create(kind: Task["kind"], provider: string) {
-    const value = await api.createTask(kind, provider);
+  async function create(
+    kind: Task["kind"],
+    provider: string,
+    input: TaskInput,
+  ) {
+    const value = await api.createTask(kind, provider, input);
     items.value.unshift(value);
     watch(value.id);
     return value;

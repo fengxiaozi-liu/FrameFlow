@@ -11,11 +11,14 @@ import (
 func TestWorkerRetriesAndFails(t *testing.T) {
 	store := NewStore()
 	attempts := 0
-	worker := NewWorkerWithProcessor(store, ProcessorFunc(func(context.Context, task.Task, func(int, string)) error { attempts++; return errors.New("boom") }))
+	worker := NewWorker(store)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	go worker.Run(ctx)
-	v := task.New("1", "video", time.Now())
+	go worker.Run(ctx, func(context.Context, task.Task, func(int, string)) error {
+		attempts++
+		return errors.New("boom")
+	})
+	v := task.New("1", task.KindVideo, task.Input{Prompt: "测试视频"}, time.Now())
 	_ = store.Save(v)
 	worker.Enqueue(v)
 	time.Sleep(300 * time.Millisecond)

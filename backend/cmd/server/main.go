@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"github.com/fengxiaozi-liu/FrameFlow/internal/application"
+	domainprocessor "github.com/fengxiaozi-liu/FrameFlow/internal/domain/processor"
 	providerinfra "github.com/fengxiaozi-liu/FrameFlow/internal/infrastructure/provider"
 	"github.com/fengxiaozi-liu/FrameFlow/internal/infrastructure/queue"
 	securityinfra "github.com/fengxiaozi-liu/FrameFlow/internal/infrastructure/security"
@@ -43,20 +44,25 @@ func main() {
 	}
 	defer store.Close()
 	providerRepo := sqlite.NewProviderRepository(store)
-	worker := queue.NewWorkerWithProcessor(store, providerinfra.NewGenerationProcessor(providerRepo))
+	providers := application.ProviderService{Repo: providerRepo}
+	worker := queue.NewWorker(store)
+	processor := domainprocessor.New(providerRepo, providerinfra.NewRegistry(), worker)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	go worker.Run(ctx)
-	tasks := application.TaskService{Store: store, Worker: worker}
-	providers := application.ProviderService{Repo: providerRepo}
+	go processor.Start(ctx)
+	tasks := application.TaskService{Store: store, Enqueuer: processor, Providers: providers}
 	uploadDir := filepath.Join(baseDir, "data", "uploads")
 	vault, err := securityinfra.OpenVault(filepath.Join(baseDir, "data", "secrets"))
 	if err != nil {
 		log.Fatal(err)
 	}
 	staticFiles, _ := fs.Sub(web.Files, "dist")
-	server := httpapi.Server{Store: store, Worker: worker, TaskService: tasks, Projects: application.ProjectService{Repo: sqlite.NewProjectRepository(store)}, Providers: providers, Materials: application.MaterialService{Repo: sqlite.NewMaterialRepository(store)}, Generation: application.GenerationService{Tasks: tasks, Providers: providers}, AuthToken: os.Getenv("FRAMEFLOW_API_TOKEN"), UploadDir: uploadDir, Vault: vault, StaticFS: staticFiles}
-	httpServer := &http.Server{Addr: ":8080", Handler: server.Routes(), ReadHeaderTimeout: 5 * time.Second}
+	server := httpapi.Server{Store: store, Worker: worker, TaskService: tasks, Projects: application.ProjectService{Repo: sqlite.NewProjectRepository(store)}, Providers: providers, Materials: application.MaterialService{Repo: sqlite.NewMaterialRepository(store)}, AuthToken: os.Getenv("FRAMEFLOW_API_TOKEN"), UploadDir: uploadDir, Vault: vault, StaticFS: staticFiles}
+	address := os.Getenv("FRAMEFLOW_ADDRESS")
+	if address == "" {
+		address = ":8080"
+	}
+	httpServer := &http.Server{Addr: address, Handler: server.Routes(), ReadHeaderTimeout: 5 * time.Second}
 	go func() {
 		log.Printf("FrameFlow listening on %s", httpServer.Addr)
 		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {

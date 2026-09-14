@@ -1,8 +1,8 @@
 package application
 
 import (
-	"context"
 	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/provider"
+	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/task"
 	"github.com/fengxiaozi-liu/FrameFlow/internal/infrastructure/queue"
 	"testing"
 )
@@ -16,11 +16,8 @@ func TestGenerationRequiresMatchingHealthyProvider(t *testing.T) {
 	_ = r.Save(p)
 	store := queue.NewStore()
 	worker := queue.NewWorker(store)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	go worker.Run(ctx)
-	s := GenerationService{Tasks: TaskService{Store: store, Worker: worker}, Providers: ProviderService{Repo: r}}
-	created, err := s.CreateCharacterImage("img")
+	s := TaskService{Store: store, Enqueuer: worker, Providers: ProviderService{Repo: r}}
+	created, err := s.CreateCharacterImage("img", task.Input{Prompt: "一个角色"})
 	if err != nil || created.ProviderCode != "img" {
 		t.Fatal(err, created)
 	}

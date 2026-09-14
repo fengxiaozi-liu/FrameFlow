@@ -8,6 +8,7 @@ import type {
   Provider,
   Task,
   TaskEvent,
+  TaskInput,
 } from "./types";
 const base = import.meta.env.VITE_API_BASE_URL || "";
 const endpoint = base || location.origin;
@@ -40,10 +41,10 @@ export const api = {
     }),
   tasks: () =>
     request<{ tasks: Task[]; total: number }>("/api/tasks?limit=100"),
-  createTask: (kind: Task["kind"], provider_code: string) =>
+  createTask: (kind: Task["kind"], provider_code: string, input: TaskInput) =>
     request<Task>("/api/tasks", {
       method: "POST",
-      body: JSON.stringify({ kind, provider_code }),
+      body: JSON.stringify({ kind, provider_code, ...input }),
     }),
   cancelTask: (id: string) =>
     request<Task>(`/api/tasks/${id}/cancel`, { method: "POST" }),
@@ -69,6 +70,16 @@ export const api = {
     request<Provider>(`/api/providers/${code}/test`, { method: "POST" }),
   materials: (kind: MaterialKind) =>
     request<{ materials: Material[] }>(`/api/materials?kind=${kind}`),
+  uploadMaterial: (file: File, kind: MaterialKind) => {
+    const body = new FormData();
+    body.append("file", file);
+    body.append("kind", kind);
+    body.append("name", file.name);
+    return request<Material>("/api/materials/upload", {
+      method: "POST",
+      body,
+    });
+  },
   saveMaterial: (item: Material) =>
     request<Material>("/api/materials", {
       method: "POST",

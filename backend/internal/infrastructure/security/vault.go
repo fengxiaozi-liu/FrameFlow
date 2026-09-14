@@ -50,6 +50,7 @@ func OpenVault(dir string) (*Vault, error) {
 	}
 	return v, nil
 }
+
 func (v *Vault) Put(id, value string) error {
 	block, e := aes.NewCipher(v.key)
 	if e != nil {
@@ -69,18 +70,21 @@ func (v *Vault) Put(id, value string) error {
 	v.items[id] = base64.StdEncoding.EncodeToString(sealed)
 	return v.persist()
 }
+
 func (v *Vault) Has(id string) bool {
 	v.mu.RLock()
 	defer v.mu.RUnlock()
 	_, ok := v.items[id]
 	return ok
 }
+
 func (v *Vault) Delete(id string) error {
 	v.mu.Lock()
 	defer v.mu.Unlock()
 	delete(v.items, id)
 	return v.persist()
 }
+
 func (v *Vault) Get(id string) (string, bool) {
 	v.mu.RLock()
 	encoded, ok := v.items[id]
@@ -103,6 +107,7 @@ func (v *Vault) Get(id string) (string, bool) {
 	plain, e := gcm.Open(nil, sealed[:gcm.NonceSize()], sealed[gcm.NonceSize():], []byte(id))
 	return string(plain), e == nil
 }
+
 func (v *Vault) persist() error {
 	data, e := json.Marshal(v.items)
 	if e != nil {

@@ -1,5 +1,10 @@
 export type TaskStatus =
   "queued" | "running" | "succeeded" | "failed" | "cancelled";
+export interface TaskInput {
+  prompt: string;
+  aspect_ratio?: string;
+  source_image_url?: string;
+}
 export interface Task {
   id: string;
   kind: "story" | "image" | "video";
@@ -7,6 +12,7 @@ export interface Task {
   progress: number;
   stage: string;
   provider_code?: string;
+  input: TaskInput;
   result_url?: string;
   retry_count: number;
   error?: string;

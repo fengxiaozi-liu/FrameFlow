@@ -17,7 +17,7 @@ func TestRepositoriesPersistAggregates(t *testing.T) {
 	}
 	defer r.Close()
 	now := time.Now().UTC()
-	taskValue := task.New("t1", "video", now)
+	taskValue := task.New("t1", task.KindVideo, task.Input{Prompt: "测试视频"}, now)
 	if err = r.Save(taskValue); err != nil {
 		t.Fatal(err)
 	}
@@ -53,7 +53,7 @@ func TestBackupCanBeRestoredAndPassesIntegrityCheck(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	value := task.New("backup-task", "video", time.Now().UTC())
+	value := task.New("backup-task", task.KindVideo, task.Input{Prompt: "备份视频"}, time.Now().UTC())
 	if err = original.Save(value); err != nil {
 		t.Fatal(err)
 	}
