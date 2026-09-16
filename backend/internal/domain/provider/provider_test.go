@@ -1,6 +1,9 @@
 package provider
 
-import "testing"
+import (
+	"context"
+	"testing"
+)
 
 type testAdapter struct{}
 
@@ -23,7 +26,7 @@ func TestConfigLifecycle(t *testing.T) {
 func TestRegistryCreatesProviderLazilyAndCachesByCode(t *testing.T) {
 	registry := NewRegistry()
 	created := 0
-	registry.Register("test", func(Config) (Adapter, error) {
+	registry.Register("test", func(context.Context, Config) (Adapter, error) {
 		created++
 		return &testAdapter{}, nil
 	})
@@ -31,11 +34,11 @@ func TestRegistryCreatesProviderLazilyAndCachesByCode(t *testing.T) {
 	if created != 0 {
 		t.Fatal("provider factory should not run during registration")
 	}
-	first, err := registry.Resolve(config)
+	first, err := registry.Resolve(context.Background(), config)
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := registry.Resolve(config)
+	second, err := registry.Resolve(context.Background(), config)
 	if err != nil {
 		t.Fatal(err)
 	}

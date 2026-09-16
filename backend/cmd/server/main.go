@@ -3,16 +3,13 @@ package main
 import (
 	"context"
 	"github.com/fengxiaozi-liu/FrameFlow/internal/application"
-	domainprocessor "github.com/fengxiaozi-liu/FrameFlow/internal/domain/processor"
-	providerinfra "github.com/fengxiaozi-liu/FrameFlow/internal/infrastructure/provider"
-	"github.com/fengxiaozi-liu/FrameFlow/internal/infrastructure/queue"
 	securityinfra "github.com/fengxiaozi-liu/FrameFlow/internal/infrastructure/security"
-	"github.com/fengxiaozi-liu/FrameFlow/internal/infrastructure/sqlite"
 	httpapi "github.com/fengxiaozi-liu/FrameFlow/internal/interfaces/http"
+	ws "github.com/fengxiaozi-liu/FrameFlow/internal/interfaces/websocket"
 	"github.com/fengxiaozi-liu/FrameFlow/internal/web"
+	"github.com/gin-gonic/gin"
 	"io/fs"
 	"log"
-	"net/http"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -25,6 +22,8 @@ import (
 var openOnStart = "0"
 
 func main() {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	baseDir := "."
 	if openOnStart == "1" {
 		if executable, pathErr := os.Executable(); pathErr == nil {
@@ -42,47 +41,42 @@ func main() {
 	if databasePath == "" {
 		databasePath = filepath.Join(baseDir, "data", "frameflow.db")
 	}
-	if err := os.MkdirAll(filepath.Dir(databasePath), 0750); err != nil {
-		log.Fatal(err)
-	}
-	store, err := sqlite.Open(databasePath)
+	store, err := InitRepo(ctx, databasePath)
 	if err != nil {
-		log.Fatal(err)
+		log.Print(err)
+		return
 	}
 	defer store.Close()
-	providerRepo := sqlite.NewProviderRepository(store)
-	providers := application.ProviderService{Repo: providerRepo}
-	worker := queue.NewWorker(store)
-	processor := domainprocessor.New(providerRepo, providerinfra.NewRegistry(), worker)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	go processor.Start(ctx)
-	tasks := application.TaskService{Store: store, Enqueuer: processor, Providers: providers}
 	uploadDir := filepath.Join(baseDir, "data", "uploads")
-	vault, err := securityinfra.OpenVault(filepath.Join(baseDir, "data", "secrets"))
+	vault, err := securityinfra.OpenVault(ctx, filepath.Join(baseDir, "data", "secrets"))
 	if err != nil {
-		log.Fatal(err)
+		log.Print(err)
+		return
 	}
+	tasks, projects, providers, materials := InitService(store, vault, uploadDir, ws.Send)
+	worker, processor := InitProcessor(store, providers.Repo, ws.Send)
+	tasks.Enqueuer = processor
+	workerDone := make(chan struct{})
+	go func() { defer close(workerDone); processor.Start(ctx) }()
 	staticFiles, _ := fs.Sub(web.Files, "dist")
-	server := httpapi.Server{Store: store, Worker: worker, TaskService: tasks, Projects: application.ProjectService{Repo: sqlite.NewProjectRepository(store)}, Providers: providers, Materials: application.MaterialService{Repo: sqlite.NewMaterialRepository(store)}, AuthToken: os.Getenv("FRAMEFLOW_API_TOKEN"), UploadDir: uploadDir, Vault: vault, StaticFS: staticFiles}
 	address := os.Getenv("FRAMEFLOW_ADDRESS")
 	if address == "" {
 		address = "127.0.0.1:28741"
 	}
 	shutdownRequested := make(chan struct{}, 1)
-	server.Shutdown = func() {
+	shutdown := func() {
 		select {
 		case shutdownRequested <- struct{}{}:
 		default:
 		}
 	}
-	httpServer := &http.Server{Addr: address, Handler: server.Routes(), ReadHeaderTimeout: 5 * time.Second}
-	go func() {
-		log.Printf("FrameFlow listening on %s", httpServer.Addr)
-		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatal(err)
-		}
-	}()
+	router := gin.Default()
+	httpapi.UseMiddleware(router, os.Getenv("FRAMEFLOW_API_TOKEN"), 0)
+	httpapi.RegisterRoutes(router, tasks, projects, providers, materials, application.SystemService{Tasks: tasks, Projects: projects, Providers: providers, Materials: materials, Shutdown: shutdown, QueueDepth: worker.Depth})
+	router.GET("/ws", ws.Handler)
+	httpapi.RegisterStatic(router, uploadDir, staticFiles)
+	serveError := make(chan error, 1)
+	go func() { log.Printf("FrameFlow listening on %s", address); serveError <- router.Run(address) }()
 	if openOnStart == "1" {
 		go func() {
 			time.Sleep(500 * time.Millisecond)
@@ -104,11 +98,16 @@ func main() {
 	select {
 	case <-stopCtx.Done():
 	case <-shutdownRequested:
-		cancel()
+	case err := <-serveError:
+		log.Printf("HTTP server: %v", err)
 	}
 	shutdownCtx, cancelShutdown := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancelShutdown()
-	if err := httpServer.Shutdown(shutdownCtx); err != nil {
-		log.Printf("shutdown: %v", err)
+	cancel()
+	select {
+	case <-workerDone:
+	case <-shutdownCtx.Done():
+		log.Printf("worker shutdown: %v", shutdownCtx.Err())
 	}
+	ws.CloseAll()
 }

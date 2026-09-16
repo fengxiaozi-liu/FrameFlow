@@ -14,18 +14,38 @@ paths:
     post: {parameters: [{$ref: '#/components/parameters/ID'}], responses: {'200': {description: Draft saved}}}
   /api/tasks:
     get: {parameters: [{$ref: '#/components/parameters/Limit'}, {$ref: '#/components/parameters/Offset'}], responses: {'200': {description: Task page}}}
-    post: {responses: {'202': {description: Task accepted}}}
+    post:
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [prompt]
+              properties:
+                kind: {type: string, enum: [story, image, video]}
+                prompt: {type: string}
+                provider_code: {type: string}
+                session_id: {type: string, maxLength: 128, description: Session receiving live events; omitted tasks use HTTP queries only}
+                aspect_ratio: {type: string}
+                source_image_url: {type: string}
+      responses: {'202': {description: Task accepted}}
   /api/tasks/{id}:
     get: {parameters: [{$ref: '#/components/parameters/ID'}], responses: {'200': {description: Task}}}
     delete: {parameters: [{$ref: '#/components/parameters/ID'}], responses: {'204': {description: Deleted}}}
   /api/tasks/{id}/cancel:
     post: {parameters: [{$ref: '#/components/parameters/ID'}], responses: {'200': {description: Cancelled}}}
   /api/tasks/{id}/retry:
-    post: {parameters: [{$ref: '#/components/parameters/ID'}], responses: {'202': {description: Retried}}}
+    post: {parameters: [{$ref: '#/components/parameters/ID'}, {name: session_id, in: query, schema: {type: string, maxLength: 128}, description: Session receiving events for the retried task}], responses: {'202': {description: Retried}}}
   /api/tasks/{id}/event-log:
     get: {parameters: [{$ref: '#/components/parameters/ID'}], responses: {'200': {description: Ordered events after sequence}}}
-  /api/tasks/{id}/events:
-    get: {parameters: [{$ref: '#/components/parameters/ID'}], responses: {'101': {description: WebSocket task event stream}}}
+  /ws:
+    get:
+      parameters:
+        - {name: session_id, in: query, required: true, schema: {type: string, minLength: 1, maxLength: 128}, description: Page session ID; one connection receives events for tasks created with this session_id}
+        - {name: token, in: query, required: false, schema: {type: string}, description: API authentication token}
+      responses:
+        '101': {description: WebSocket live task events; query task details and history through the task HTTP API}
   /api/providers:
     get: {responses: {'200': {description: Provider list}}}
     post: {responses: {'201': {description: Provider saved}}}

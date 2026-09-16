@@ -15,7 +15,6 @@ const visible = computed(() =>
 );
 onMounted(async () => {
   await store.load();
-  store.running.forEach((v) => store.watch(v.id));
 });
 async function cancel(item: Task) {
   try {
@@ -27,7 +26,7 @@ async function cancel(item: Task) {
 async function retry(item: Task) {
   try {
     Object.assign(item, await api.retryTask(item.id));
-    store.watch(item.id);
+    await store.load();
   } catch (e) {
     message.value = (e as Error).message;
   }

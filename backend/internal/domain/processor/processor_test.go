@@ -13,19 +13,19 @@ type providerRepository struct {
 	config provider.Config
 }
 
-func (r providerRepository) Save(provider.Config) error {
+func (r providerRepository) Save(context.Context, provider.Config) error {
 	return nil
 }
 
-func (r providerRepository) Get(string) (provider.Config, bool) {
-	return r.config, true
+func (r providerRepository) Get(context.Context, string) (provider.Config, error) {
+	return r.config, nil
 }
 
-func (r providerRepository) List(provider.Capability) []provider.Config {
-	return []provider.Config{r.config}
+func (r providerRepository) List(context.Context, provider.Capability) ([]provider.Config, error) {
+	return []provider.Config{r.config}, nil
 }
 
-func (r providerRepository) Delete(string) error {
+func (r providerRepository) Delete(context.Context, string) error {
 	return nil
 }
 
@@ -43,10 +43,10 @@ func TestProcessorForwardsTaskInputToProvider(t *testing.T) {
 	repository := providerRepository{config: config}
 	registry := provider.NewRegistry()
 	generator := &videoGenerator{}
-	registry.Register("test", func(provider.Config) (provider.Adapter, error) {
+	registry.Register("test", func(context.Context, provider.Config) (provider.Adapter, error) {
 		return generator, nil
 	})
-	processor := New(repository, registry, nil)
+	processor := New(repository, registry, nil, nil)
 	input := task.Input{Prompt: "城市夜景", AspectRatio: "16:9", SourceImageURL: "/media/start.png"}
 	item := task.New("task-1", task.KindVideo, input, time.Now())
 	item.ProviderCode = config.Code

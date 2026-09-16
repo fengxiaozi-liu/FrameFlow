@@ -204,7 +204,20 @@ export interface paths {
         path?: never;
         cookie?: never;
       };
-      requestBody?: never;
+      requestBody: {
+        content: {
+          "application/json": {
+            /** @enum {string} */
+            kind?: "story" | "image" | "video";
+            prompt: string;
+            provider_code?: string;
+            /** @description Session receiving live events; omitted tasks use HTTP queries only */
+            session_id?: string;
+            aspect_ratio?: string;
+            source_image_url?: string;
+          };
+        };
+      };
       responses: {
         /** @description Task accepted */
         202: {
@@ -321,7 +334,10 @@ export interface paths {
     put?: never;
     post: {
       parameters: {
-        query?: never;
+        query?: {
+          /** @description Session receiving events for the retried task */
+          session_id?: string;
+        };
         header?: never;
         path: {
           id: components["parameters"]["ID"];
@@ -380,7 +396,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/api/tasks/{id}/events": {
+  "/ws": {
     parameters: {
       query?: never;
       header?: never;
@@ -389,16 +405,19 @@ export interface paths {
     };
     get: {
       parameters: {
-        query?: never;
-        header?: never;
-        path: {
-          id: components["parameters"]["ID"];
+        query: {
+          /** @description Page session ID; one connection receives events for tasks created with this session_id */
+          session_id: string;
+          /** @description API authentication token */
+          token?: string;
         };
+        header?: never;
+        path?: never;
         cookie?: never;
       };
       requestBody?: never;
       responses: {
-        /** @description WebSocket task event stream */
+        /** @description WebSocket live task events; query task details and history through the task HTTP API */
         101: {
           headers: {
             [name: string]: unknown;

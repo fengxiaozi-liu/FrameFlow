@@ -1,33 +1,42 @@
 package application
 
 import (
+	"context"
+	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/fault"
 	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/provider"
+	"github.com/fengxiaozi-liu/FrameFlow/internal/transport/response"
+	"github.com/gin-gonic/gin"
+	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
 type providerRepo struct{ m map[string]provider.Config }
 
-func (r *providerRepo) Save(c provider.Config) error {
+func (r *providerRepo) Save(ctx context.Context, c provider.Config) error {
 	r.m[c.Code] = c
 	return nil
 }
 
-func (r *providerRepo) Get(id string) (provider.Config, bool) {
+func (r *providerRepo) Get(ctx context.Context, id string) (provider.Config, error) {
 	c, o := r.m[id]
-	return c, o
+	if !o {
+		return c, fault.ErrNotFound
+	}
+	return c, nil
 }
 
-func (r *providerRepo) List(k provider.Capability) []provider.Config {
+func (r *providerRepo) List(ctx context.Context, k provider.Capability) ([]provider.Config, error) {
 	o := []provider.Config{}
 	for _, c := range r.m {
 		if c.Capability == k {
 			o = append(o, c)
 		}
 	}
-	return o
+	return o, nil
 }
 
-func (r *providerRepo) Delete(id string) error {
+func (r *providerRepo) Delete(ctx context.Context, id string) error {
 	delete(r.m, id)
 	return nil
 }
@@ -35,12 +44,26 @@ func (r *providerRepo) Delete(id string) error {
 func TestProviderService(t *testing.T) {
 	r := &providerRepo{m: map[string]provider.Config{}}
 	s := ProviderService{Repo: r}
-	c, _ := provider.New("video-a", "Video A", provider.Video)
-	if e := s.Save(c); e != nil || len(s.List(provider.Video)) != 1 {
-		t.Fatal(e)
+	router := gin.New()
+	router.Use(response.Middleware())
+	router.POST("/providers", s.Save)
+	router.GET("/providers", s.List)
+	router.POST("/providers/:id/enabled", s.SetEnabled)
+	for _, tc := range []struct {
+		method, path, body string
+		status             int
+	}{
+		{"POST", "/providers", `{"code":"video-a","name":"Video A","capability":"video"}`, 201},
+		{"GET", "/providers?capability=video", "", 200},
+		{"POST", "/providers/video-a/enabled", `{"enabled":true}`, 200},
+	} {
+		out := httptest.NewRecorder()
+		router.ServeHTTP(out, httptest.NewRequest(tc.method, tc.path, strings.NewReader(tc.body)))
+		if out.Code != tc.status {
+			t.Fatal(out.Code, out.Body.String())
+		}
 	}
-	c, e := s.SetEnabled(c.Code, true)
-	if e != nil || !c.Enabled {
-		t.Fatal(e)
+	if !r.m["video-a"].Enabled {
+		t.Fatal("provider was not enabled")
 	}
 }

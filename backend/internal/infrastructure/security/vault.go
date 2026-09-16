@@ -1,12 +1,14 @@
 package security
 
 import (
+	"context"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/fault"
 	"io"
 	"os"
 	"path/filepath"
@@ -20,7 +22,10 @@ type Vault struct {
 	items map[string]string
 }
 
-func OpenVault(dir string) (*Vault, error) {
+func OpenVault(ctx context.Context, dir string) (*Vault, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return nil, err
 	}
@@ -51,7 +56,10 @@ func OpenVault(dir string) (*Vault, error) {
 	return v, nil
 }
 
-func (v *Vault) Put(id, value string) error {
+func (v *Vault) Put(ctx context.Context, id, value string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	block, e := aes.NewCipher(v.key)
 	if e != nil {
 		return e
@@ -67,48 +75,91 @@ func (v *Vault) Put(id, value string) error {
 	sealed := gcm.Seal(nonce, nonce, []byte(value), []byte(id))
 	v.mu.Lock()
 	defer v.mu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	previous, existed := v.items[id]
 	v.items[id] = base64.StdEncoding.EncodeToString(sealed)
-	return v.persist()
+	if err := v.persist(ctx); err != nil {
+		if existed {
+			v.items[id] = previous
+		} else {
+			delete(v.items, id)
+		}
+		return err
+	}
+	return nil
 }
 
-func (v *Vault) Has(id string) bool {
+func (v *Vault) Has(ctx context.Context, id string) (bool, error) {
+	if err := ctx.Err(); err != nil {
+		return false, err
+	}
 	v.mu.RLock()
 	defer v.mu.RUnlock()
+	if err := ctx.Err(); err != nil {
+		return false, err
+	}
 	_, ok := v.items[id]
-	return ok
+	return ok, nil
 }
 
-func (v *Vault) Delete(id string) error {
+func (v *Vault) Delete(ctx context.Context, id string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	v.mu.Lock()
 	defer v.mu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	previous, existed := v.items[id]
 	delete(v.items, id)
-	return v.persist()
+	if err := v.persist(ctx); err != nil {
+		if existed {
+			v.items[id] = previous
+		}
+		return err
+	}
+	return nil
 }
 
-func (v *Vault) Get(id string) (string, bool) {
+func (v *Vault) Get(ctx context.Context, id string) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
 	v.mu.RLock()
 	encoded, ok := v.items[id]
 	v.mu.RUnlock()
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
 	if !ok {
-		return "", false
+		return "", fault.ErrNotFound
 	}
 	sealed, e := base64.StdEncoding.DecodeString(encoded)
 	if e != nil {
-		return "", false
+		return "", e
 	}
 	block, e := aes.NewCipher(v.key)
 	if e != nil {
-		return "", false
+		return "", e
 	}
 	gcm, e := cipher.NewGCM(block)
-	if e != nil || len(sealed) < gcm.NonceSize() {
-		return "", false
+	if e != nil {
+		return "", e
+	}
+	if len(sealed) < gcm.NonceSize() {
+		return "", errors.New("invalid credential ciphertext")
 	}
 	plain, e := gcm.Open(nil, sealed[:gcm.NonceSize()], sealed[gcm.NonceSize():], []byte(id))
-	return string(plain), e == nil
+	return string(plain), e
 }
 
-func (v *Vault) persist() error {
+func (v *Vault) persist(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	data, e := json.Marshal(v.items)
 	if e != nil {
 		return e

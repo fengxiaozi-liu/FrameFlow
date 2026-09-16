@@ -2,6 +2,7 @@ package http
 
 import (
 	"bytes"
+	"context"
 	"log"
 	"mime/multipart"
 	stdhttp "net/http"
@@ -16,7 +17,7 @@ func TestRateLimit(t *testing.T) {
 	server, done := testServer(t)
 	defer done()
 	server.RateLimit = 1
-	handler := server.Routes()
+	handler := testRouter(server)
 	if got := request(t, handler, stdhttp.MethodGet, "/health", "").Code; got != stdhttp.StatusOK {
 		t.Fatal(got)
 	}
@@ -28,7 +29,7 @@ func TestRateLimit(t *testing.T) {
 func TestCredentialIsEncryptedAndNeverReturnedOrLogged(t *testing.T) {
 	server, done := testServer(t)
 	defer done()
-	vault, err := securityinfra.OpenVault(t.TempDir())
+	vault, err := securityinfra.OpenVault(context.Background(), t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -38,14 +39,14 @@ func TestCredentialIsEncryptedAndNeverReturnedOrLogged(t *testing.T) {
 	log.SetOutput(&logs)
 	defer log.SetOutput(previous)
 	secret := "sk-secret-value"
-	response := request(t, server.Routes(), stdhttp.MethodPost, "/api/providers", `{"code":"secure-story","name":"Secure","capability":"story","model":"mock-story","base_url":"mock://local","enabled":true,"status":"healthy","api_key":"`+secret+`"}`)
+	response := request(t, testRouter(server), stdhttp.MethodPost, "/api/providers", `{"code":"secure-story","name":"Secure","capability":"story","model":"mock-story","base_url":"mock://local","enabled":true,"status":"healthy","api_key":"`+secret+`"}`)
 	if response.Code != stdhttp.StatusCreated {
 		t.Fatal(response.Code, response.Body.String())
 	}
 	if strings.Contains(response.Body.String(), secret) || strings.Contains(logs.String(), secret) {
 		t.Fatal("credential leaked through response or audit log")
 	}
-	if stored, ok := vault.Get("secure-story"); !ok || stored != secret {
+	if stored, ok := vault.Get(context.Background(), "secure-story"); ok != nil || stored != secret {
 		t.Fatal("credential was not stored in the encrypted vault")
 	}
 }
@@ -54,7 +55,7 @@ func TestUploadRejectsUnsupportedMediaAndOversizedBody(t *testing.T) {
 	server, done := testServer(t)
 	defer done()
 	server.UploadDir = t.TempDir()
-	handler := server.Routes()
+	handler := testRouter(server)
 
 	unsupported := multipartUpload(t, []byte("plain text"), "payload.txt")
 	unsupportedRecorder := httptest.NewRecorder()

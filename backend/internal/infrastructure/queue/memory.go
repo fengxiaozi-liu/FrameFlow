@@ -2,16 +2,16 @@ package queue
 
 import (
 	"context"
+	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/fault"
 	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/task"
 	"sync"
-	"time"
 )
 
 type Store interface {
-	Save(task.Task) error
-	Get(string) (task.Task, bool)
-	List() []task.Task
-	Delete(string) error
+	Save(context.Context, task.Task) error
+	Get(context.Context, string) (task.Task, error)
+	List(context.Context) ([]task.Task, error)
+	Delete(context.Context, string) error
 }
 type MemoryStore struct {
 	mu    sync.RWMutex
@@ -22,107 +22,78 @@ func NewStore() *MemoryStore {
 	return &MemoryStore{items: map[string]task.Task{}}
 }
 
-func (s *MemoryStore) Save(t task.Task) error {
+func (s *MemoryStore) Save(ctx context.Context, t task.Task) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.items[t.ID] = t
 	return nil
 }
 
-func (s *MemoryStore) Get(id string) (task.Task, bool) {
+func (s *MemoryStore) Get(ctx context.Context, id string) (task.Task, error) {
+	if err := ctx.Err(); err != nil {
+		return task.Task{}, err
+	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	t, ok := s.items[id]
-	return t, ok
+	if !ok {
+		return t, fault.ErrNotFound
+	}
+	return t, nil
 }
 
-func (s *MemoryStore) List() []task.Task {
+func (s *MemoryStore) List(ctx context.Context) ([]task.Task, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	out := make([]task.Task, 0, len(s.items))
 	for _, t := range s.items {
 		out = append(out, t)
 	}
-	return out
+	return out, nil
 }
 
-func (s *MemoryStore) Delete(id string) error {
+func (s *MemoryStore) Delete(ctx context.Context, id string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	delete(s.items, id)
 	return nil
 }
 
-type Worker struct {
-	store Store
-	jobs  chan task.Task
-}
+// Worker executes queued tasks serially in the goroutine running Run.
+type Worker struct{ jobs chan task.Task }
 
-func NewWorker(s Store) *Worker {
-	return &Worker{store: s, jobs: make(chan task.Task, 32)}
+func NewWorker() *Worker { return &Worker{jobs: make(chan task.Task, 32)} }
+func (w *Worker) Enqueue(ctx context.Context, t task.Task) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case w.jobs <- t:
+		return nil
+	}
 }
-
-func (w *Worker) Enqueue(t task.Task) {
-	w.jobs <- t
-}
-
-func (w *Worker) Depth() int {
-	return len(w.jobs)
-}
-
-func (w *Worker) Run(ctx context.Context, process func(context.Context, task.Task, func(int, string)) error) {
+func (w *Worker) Depth() int { return len(w.jobs) }
+func (w *Worker) Run(ctx context.Context, process func(context.Context, task.Task)) {
 	for {
+		if ctx.Err() != nil {
+			return
+		}
 		select {
 		case <-ctx.Done():
 			return
-		case t := <-w.jobs:
-			w.process(ctx, t, process)
+		case item := <-w.jobs:
+			process(ctx, item)
 		}
-	}
-}
-
-func (w *Worker) process(ctx context.Context, t task.Task, process func(context.Context, task.Task, func(int, string)) error) {
-	current, ok := w.store.Get(t.ID)
-	if !ok || current.Status != task.StatusQueued {
-		return
-	}
-	t = current
-	t.Start(time.Now().UTC())
-	t.Stage = "preparing"
-	w.save(t)
-	var err error
-	for attempt := 0; attempt < 3; attempt++ {
-		err = process(ctx, t, func(p int, stage string) {
-			current, ok := w.store.Get(t.ID)
-			if !ok || current.Status == task.StatusCancelled {
-				return
-			}
-			t.Advance(p, stage, time.Now().UTC())
-			w.save(t)
-		})
-		if err == nil {
-			break
-		}
-		t.RetryCount = attempt + 1
-		if attempt < 2 {
-			time.Sleep(time.Duration(1<<attempt) * 25 * time.Millisecond)
-		}
-	}
-	if err != nil {
-		t.Fail(err.Error(), time.Now().UTC())
-		w.save(t)
-		return
-	}
-	if current, ok := w.store.Get(t.ID); !ok || current.Status == task.StatusCancelled {
-		return
-	}
-	t.Succeed(time.Now().UTC())
-	w.save(t)
-}
-
-func (w *Worker) save(t task.Task) {
-	_ = w.store.Save(t)
-	if events, ok := w.store.(task.EventRepository); ok {
-		_ = events.AppendEvent(task.Event{TaskID: t.ID, Status: t.Status, Progress: t.Progress, Stage: t.Stage, At: t.UpdatedAt})
 	}
 }

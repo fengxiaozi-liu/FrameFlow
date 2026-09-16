@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"context"
 	"fmt"
 
 	domain "github.com/fengxiaozi-liu/FrameFlow/internal/domain/provider"
@@ -9,7 +10,7 @@ import (
 // NewRegistry 注册内置适配器。外部适配器可以在启动时添加，无需修改领域 processor。
 func NewRegistry() *domain.Registry {
 	registry := domain.NewRegistry()
-	registry.Register("mock", func(config domain.Config) (domain.Adapter, error) {
+	registry.Register("mock", func(_ context.Context, config domain.Config) (domain.Adapter, error) {
 		mock := Mock{Fail: config.Model == "mock-fail-video"}
 		switch config.Capability {
 		case domain.Story:

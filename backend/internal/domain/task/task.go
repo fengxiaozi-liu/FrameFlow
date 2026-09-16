@@ -47,6 +47,7 @@ func (i Input) Validate() error {
 }
 
 type Task struct {
+	SessionID    string    `json:"session_id,omitempty"`
 	ID           string    `json:"id"`
 	Kind         Kind      `json:"kind"`
 	Status       Status    `json:"status"`

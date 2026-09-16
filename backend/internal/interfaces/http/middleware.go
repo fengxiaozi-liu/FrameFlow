@@ -1,14 +1,16 @@
 package http
 
 import (
-	"bufio"
+	"errors"
 	"fmt"
 	"log"
 	"net"
-	"net/http"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/fengxiaozi-liu/FrameFlow/internal/transport/response"
+	"github.com/gin-gonic/gin"
 )
 
 type visitor struct {
@@ -27,10 +29,9 @@ func newLimiter(limit int) *limiter {
 	}
 	return &limiter{limit: limit, items: map[string]visitor{}}
 }
-
-func (l *limiter) wrap(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		host, _, _ := net.SplitHostPort(r.RemoteAddr)
+func (l *limiter) middleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		host, _, _ := net.SplitHostPort(c.Request.RemoteAddr)
 		now := time.Now()
 		l.mu.Lock()
 		v := l.items[host]
@@ -42,57 +43,44 @@ func (l *limiter) wrap(next http.Handler) http.Handler {
 		allowed := v.count <= l.limit
 		l.mu.Unlock()
 		if !allowed {
-			writeError(w, 429, "rate_limited", fmt.Errorf("request limit exceeded"))
+			response.Error(c, 429, "rate_limited", fmt.Errorf("request limit exceeded"))
+			c.Abort()
 			return
 		}
-		next.ServeHTTP(w, r)
-	})
-}
-
-type statusWriter struct {
-	http.ResponseWriter
-	status int
-}
-
-func (w *statusWriter) WriteHeader(code int) {
-	w.status = code
-	w.ResponseWriter.WriteHeader(code)
-}
-
-func (w *statusWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
-	hijacker, ok := w.ResponseWriter.(http.Hijacker)
-	if !ok {
-		return nil, nil, http.ErrNotSupported
-	}
-	return hijacker.Hijack()
-}
-
-func (w *statusWriter) Flush() {
-	if flusher, ok := w.ResponseWriter.(http.Flusher); ok {
-		flusher.Flush()
+		c.Next()
 	}
 }
 
 var requestCount atomic.Uint64
 
-func audit(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+func audit() gin.HandlerFunc {
+	return func(c *gin.Context) {
 		started := time.Now()
-		sw := &statusWriter{ResponseWriter: w, status: 200}
-		next.ServeHTTP(sw, r)
+		c.Next()
 		requestCount.Add(1)
-		log.Printf(`{"method":%q,"path":%q,"status":%d,"duration_ms":%d}`, r.Method, r.URL.Path, sw.status, time.Since(started).Milliseconds())
-	})
-}
-
-func (s Server) metrics(w http.ResponseWriter, _ *http.Request) {
-	w.Header().Set("Content-Type", "text/plain; version=0.0.4")
-	counts := map[string]int{}
-	for _, item := range s.TaskService.List() {
-		counts[string(item.Status)]++
+		log.Printf(`{"method":%q,"path":%q,"status":%d,"duration_ms":%d}`, c.Request.Method, c.Request.URL.Path, c.Writer.Status(), time.Since(started).Milliseconds())
 	}
-	_, _ = fmt.Fprintf(w, "frameflow_up 1\nframeflow_http_requests_total %d\nframeflow_queue_depth %d\n", requestCount.Load(), s.Worker.Depth())
-	for _, status := range []string{"queued", "running", "succeeded", "failed", "cancelled"} {
-		_, _ = fmt.Fprintf(w, "frameflow_tasks{status=%q} %d\n", status, counts[status])
+}
+func cors() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.Header("Access-Control-Allow-Origin", "http://127.0.0.1:5173")
+		c.Header("Access-Control-Allow-Headers", "Content-Type,Authorization")
+		c.Header("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS")
+		if c.Request.Method == "OPTIONS" {
+			c.AbortWithStatus(204)
+			return
+		}
+		c.Next()
+	}
+}
+func auth(token string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		provided := c.GetHeader("Authorization") == "Bearer "+token || c.Query("token") == token
+		if token != "" && c.Request.URL.Path != "/health" && !provided {
+			response.Error(c, 401, "unauthorized", errors.New("valid bearer token required"))
+			c.Abort()
+			return
+		}
+		c.Next()
 	}
 }

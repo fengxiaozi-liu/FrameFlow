@@ -1,9 +1,12 @@
 package sqlite
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/fault"
 	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/material"
 	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/project"
 	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/provider"
@@ -13,17 +16,20 @@ import (
 
 type TaskRepository struct{ db *sql.DB }
 
-func Open(path string) (*TaskRepository, error) {
+func Open(ctx context.Context, path string) (*TaskRepository, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	db, err := sql.Open("sqlite", path)
 	if err != nil {
 		return nil, err
 	}
 	db.SetMaxOpenConns(1)
-	if _, err = db.Exec(`PRAGMA busy_timeout = 5000; PRAGMA foreign_keys = ON;`); err != nil {
+	if _, err = db.ExecContext(ctx, `PRAGMA busy_timeout = 5000; PRAGMA foreign_keys = ON;`); err != nil {
 		_ = db.Close()
 		return nil, err
 	}
-	if _, err = db.Exec(`
+	if _, err = db.ExecContext(ctx, `
 		CREATE TABLE IF NOT EXISTS tasks (id TEXT PRIMARY KEY, payload TEXT NOT NULL);
 		CREATE TABLE IF NOT EXISTS projects (id TEXT PRIMARY KEY, payload TEXT NOT NULL);
 		CREATE TABLE IF NOT EXISTS providers (id TEXT PRIMARY KEY, capability TEXT NOT NULL, payload TEXT NOT NULL);
@@ -37,106 +43,110 @@ func Open(path string) (*TaskRepository, error) {
 	return &TaskRepository{db: db}, nil
 }
 
-func saveJSON(db *sql.DB, table, id string, value any, categoryColumn, category string) error {
+func saveJSON(ctx context.Context, db *sql.DB, table, id string, value any, categoryColumn, category string) error {
 	b, err := json.Marshal(value)
 	if err != nil {
 		return err
 	}
 	if categoryColumn == "" {
-		_, err = db.Exec(fmt.Sprintf("INSERT INTO %s(id,payload) VALUES(?,?) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload", table), id, string(b))
+		_, err = db.ExecContext(ctx, fmt.Sprintf("INSERT INTO %s(id,payload) VALUES(?,?) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload", table), id, string(b))
 	} else {
-		_, err = db.Exec(fmt.Sprintf("INSERT INTO %s(id,%s,payload) VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET %s=excluded.%s,payload=excluded.payload", table, categoryColumn, categoryColumn, categoryColumn), id, category, string(b))
+		_, err = db.ExecContext(ctx, fmt.Sprintf("INSERT INTO %s(id,%s,payload) VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET %s=excluded.%s,payload=excluded.payload", table, categoryColumn, categoryColumn, categoryColumn), id, category, string(b))
 	}
 	return err
 }
 
-func getJSON[T any](db *sql.DB, table, id string) (T, bool) {
-	var zero T
+func getJSON[T any](ctx context.Context, db *sql.DB, table, id string) (T, error) {
+	var value T
 	var raw string
-	if db.QueryRow(fmt.Sprintf("SELECT payload FROM %s WHERE id=?", table), id).Scan(&raw) != nil {
-		return zero, false
+	err := db.QueryRowContext(ctx, fmt.Sprintf("SELECT payload FROM %s WHERE id=?", table), id).Scan(&raw)
+	if errors.Is(err, sql.ErrNoRows) {
+		return value, fault.ErrNotFound
 	}
-	if json.Unmarshal([]byte(raw), &zero) != nil {
-		var empty T
-		return empty, false
+	if err != nil {
+		return value, err
 	}
-	return zero, true
+	err = json.Unmarshal([]byte(raw), &value)
+	return value, err
 }
-
-func listJSON[T any](db *sql.DB, table, categoryColumn, category string) []T {
+func listJSON[T any](ctx context.Context, db *sql.DB, table, categoryColumn, category string) ([]T, error) {
 	query := fmt.Sprintf("SELECT payload FROM %s ORDER BY id DESC", table)
 	args := []any{}
 	if categoryColumn != "" {
 		query = fmt.Sprintf("SELECT payload FROM %s WHERE %s=? ORDER BY id DESC", table, categoryColumn)
 		args = append(args, category)
 	}
-	rows, err := db.Query(query, args...)
+	rows, err := db.QueryContext(ctx, query, args...)
 	if err != nil {
-		return nil
+		return nil, err
 	}
 	defer rows.Close()
 	out := []T{}
 	for rows.Next() {
 		var raw string
 		var item T
-		if rows.Scan(&raw) == nil && json.Unmarshal([]byte(raw), &item) == nil {
-			out = append(out, item)
+		if err := rows.Scan(&raw); err != nil {
+			return nil, err
 		}
+		if err := json.Unmarshal([]byte(raw), &item); err != nil {
+			return nil, err
+		}
+		out = append(out, item)
 	}
-	return out
+	return out, rows.Err()
 }
 
-func deleteJSON(db *sql.DB, table, id string) error {
-	_, err := db.Exec(fmt.Sprintf("DELETE FROM %s WHERE id=?", table), id)
+func deleteJSON(ctx context.Context, db *sql.DB, table, id string) error {
+	_, err := db.ExecContext(ctx, fmt.Sprintf("DELETE FROM %s WHERE id=?", table), id)
 	return err
 }
 
-func (r *TaskRepository) SaveProject(v project.Project) error {
-	return saveJSON(r.db, "projects", v.ID, v, "", "")
+func (r *TaskRepository) SaveProject(ctx context.Context, v project.Project) error {
+	return saveJSON(ctx, r.db, "projects", v.ID, v, "", "")
 }
 
-func (r *TaskRepository) GetProject(id string) (project.Project, bool) {
-	return getJSON[project.Project](r.db, "projects", id)
+func (r *TaskRepository) GetProject(ctx context.Context, id string) (project.Project, error) {
+	return getJSON[project.Project](ctx, r.db, "projects", id)
 }
 
-func (r *TaskRepository) ListProjects() []project.Project {
-	return listJSON[project.Project](r.db, "projects", "", "")
+func (r *TaskRepository) ListProjects(ctx context.Context) ([]project.Project, error) {
+	return listJSON[project.Project](ctx, r.db, "projects", "", "")
 }
 
-func (r *TaskRepository) DeleteProject(id string) error {
-	return deleteJSON(r.db, "projects", id)
+func (r *TaskRepository) DeleteProject(ctx context.Context, id string) error {
+	return deleteJSON(ctx, r.db, "projects", id)
 }
 
-func (r *TaskRepository) SaveProvider(v provider.Config) error {
-	return saveJSON(r.db, "providers", v.Code, v, "capability", string(v.Capability))
+func (r *TaskRepository) SaveProvider(ctx context.Context, v provider.Config) error {
+	return saveJSON(ctx, r.db, "providers", v.Code, v, "capability", string(v.Capability))
 }
 
-func (r *TaskRepository) GetProvider(id string) (provider.Config, bool) {
-	return getJSON[provider.Config](r.db, "providers", id)
+func (r *TaskRepository) GetProvider(ctx context.Context, id string) (provider.Config, error) {
+	return getJSON[provider.Config](ctx, r.db, "providers", id)
 }
 
-func (r *TaskRepository) ListProviders(kind provider.Capability) []provider.Config {
-	return listJSON[provider.Config](r.db, "providers", "capability", string(kind))
+func (r *TaskRepository) ListProviders(ctx context.Context, kind provider.Capability) ([]provider.Config, error) {
+	return listJSON[provider.Config](ctx, r.db, "providers", "capability", string(kind))
 }
 
-func (r *TaskRepository) DeleteProvider(id string) error {
-	return deleteJSON(r.db, "providers", id)
+func (r *TaskRepository) DeleteProvider(ctx context.Context, id string) error {
+	return deleteJSON(ctx, r.db, "providers", id)
 }
 
-func (r *TaskRepository) SaveMaterial(v material.Asset) error {
-	return saveJSON(r.db, "materials", v.ID, v, "kind", string(v.Kind))
+func (r *TaskRepository) SaveMaterial(ctx context.Context, v material.Asset) error {
+	return saveJSON(ctx, r.db, "materials", v.ID, v, "kind", string(v.Kind))
 }
 
-func (r *TaskRepository) GetMaterial(id string) (material.Asset, bool) {
-	return getJSON[material.Asset](r.db, "materials", id)
+func (r *TaskRepository) GetMaterial(ctx context.Context, id string) (material.Asset, error) {
+	return getJSON[material.Asset](ctx, r.db, "materials", id)
 }
 
-func (r *TaskRepository) ListMaterials(kind material.Kind) []material.Asset {
-	return listJSON[material.Asset](r.db, "materials", "kind", string(kind))
+func (r *TaskRepository) ListMaterials(ctx context.Context, kind material.Kind) ([]material.Asset, error) {
+	return listJSON[material.Asset](ctx, r.db, "materials", "kind", string(kind))
 }
 
-func (r *TaskRepository) DeleteMaterial(id string) error {
-	return deleteJSON(r.db, "materials", id)
+func (r *TaskRepository) DeleteMaterial(ctx context.Context, id string) error {
+	return deleteJSON(ctx, r.db, "materials", id)
 }
 
 type ProjectRepository struct{ root *TaskRepository }
@@ -145,20 +155,20 @@ func NewProjectRepository(root *TaskRepository) *ProjectRepository {
 	return &ProjectRepository{root: root}
 }
 
-func (r *ProjectRepository) Save(v project.Project) error {
-	return r.root.SaveProject(v)
+func (r *ProjectRepository) Save(ctx context.Context, v project.Project) error {
+	return r.root.SaveProject(ctx, v)
 }
 
-func (r *ProjectRepository) Get(id string) (project.Project, bool) {
-	return r.root.GetProject(id)
+func (r *ProjectRepository) Get(ctx context.Context, id string) (project.Project, error) {
+	return r.root.GetProject(ctx, id)
 }
 
-func (r *ProjectRepository) List() []project.Project {
-	return r.root.ListProjects()
+func (r *ProjectRepository) List(ctx context.Context) ([]project.Project, error) {
+	return r.root.ListProjects(ctx)
 }
 
-func (r *ProjectRepository) Delete(id string) error {
-	return r.root.DeleteProject(id)
+func (r *ProjectRepository) Delete(ctx context.Context, id string) error {
+	return r.root.DeleteProject(ctx, id)
 }
 
 type ProviderRepository struct{ root *TaskRepository }
@@ -167,20 +177,20 @@ func NewProviderRepository(root *TaskRepository) *ProviderRepository {
 	return &ProviderRepository{root: root}
 }
 
-func (r *ProviderRepository) Save(v provider.Config) error {
-	return r.root.SaveProvider(v)
+func (r *ProviderRepository) Save(ctx context.Context, v provider.Config) error {
+	return r.root.SaveProvider(ctx, v)
 }
 
-func (r *ProviderRepository) Get(id string) (provider.Config, bool) {
-	return r.root.GetProvider(id)
+func (r *ProviderRepository) Get(ctx context.Context, id string) (provider.Config, error) {
+	return r.root.GetProvider(ctx, id)
 }
 
-func (r *ProviderRepository) List(k provider.Capability) []provider.Config {
-	return r.root.ListProviders(k)
+func (r *ProviderRepository) List(ctx context.Context, k provider.Capability) ([]provider.Config, error) {
+	return r.root.ListProviders(ctx, k)
 }
 
-func (r *ProviderRepository) Delete(id string) error {
-	return r.root.DeleteProvider(id)
+func (r *ProviderRepository) Delete(ctx context.Context, id string) error {
+	return r.root.DeleteProvider(ctx, id)
 }
 
 type MaterialRepository struct{ root *TaskRepository }
@@ -189,97 +199,79 @@ func NewMaterialRepository(root *TaskRepository) *MaterialRepository {
 	return &MaterialRepository{root: root}
 }
 
-func (r *MaterialRepository) Save(v material.Asset) error {
-	return r.root.SaveMaterial(v)
+func (r *MaterialRepository) Save(ctx context.Context, v material.Asset) error {
+	return r.root.SaveMaterial(ctx, v)
 }
 
-func (r *MaterialRepository) Get(id string) (material.Asset, bool) {
-	return r.root.GetMaterial(id)
+func (r *MaterialRepository) Get(ctx context.Context, id string) (material.Asset, error) {
+	return r.root.GetMaterial(ctx, id)
 }
 
-func (r *MaterialRepository) List(k material.Kind) []material.Asset {
-	return r.root.ListMaterials(k)
+func (r *MaterialRepository) List(ctx context.Context, k material.Kind) ([]material.Asset, error) {
+	return r.root.ListMaterials(ctx, k)
 }
 
-func (r *MaterialRepository) Delete(id string) error {
-	return r.root.DeleteMaterial(id)
+func (r *MaterialRepository) Delete(ctx context.Context, id string) error {
+	return r.root.DeleteMaterial(ctx, id)
 }
 
 func (r *TaskRepository) Close() error {
 	return r.db.Close()
 }
 
-func (r *TaskRepository) Save(t task.Task) error {
+func (r *TaskRepository) Save(ctx context.Context, t task.Task) error {
 	b, err := json.Marshal(t)
 	if err != nil {
 		return err
 	}
-	_, err = r.db.Exec(`INSERT INTO tasks(id,payload) VALUES(?,?) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload`, t.ID, string(b))
+	_, err = r.db.ExecContext(ctx, `INSERT INTO tasks(id,payload) VALUES(?,?) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload`, t.ID, string(b))
 	return err
 }
 
-func (r *TaskRepository) Get(id string) (task.Task, bool) {
-	var raw string
-	if r.db.QueryRow(`SELECT payload FROM tasks WHERE id=?`, id).Scan(&raw) != nil {
-		return task.Task{}, false
-	}
-	var t task.Task
-	if json.Unmarshal([]byte(raw), &t) != nil {
-		return task.Task{}, false
-	}
-	return t, true
+func (r *TaskRepository) Get(ctx context.Context, id string) (task.Task, error) {
+	return getJSON[task.Task](ctx, r.db, "tasks", id)
+}
+func (r *TaskRepository) List(ctx context.Context) ([]task.Task, error) {
+	return listJSON[task.Task](ctx, r.db, "tasks", "", "")
 }
 
-func (r *TaskRepository) List() []task.Task {
-	rows, err := r.db.Query(`SELECT payload FROM tasks ORDER BY id DESC`)
-	if err != nil {
-		return nil
-	}
-	defer rows.Close()
-	out := []task.Task{}
-	for rows.Next() {
-		var raw string
-		if rows.Scan(&raw) == nil {
-			var t task.Task
-			if json.Unmarshal([]byte(raw), &t) == nil {
-				out = append(out, t)
-			}
-		}
-	}
-	return out
-}
-
-func (r *TaskRepository) Delete(id string) error {
-	_, err := r.db.Exec(`DELETE FROM tasks WHERE id=?`, id)
+func (r *TaskRepository) Delete(ctx context.Context, id string) error {
+	_, err := r.db.ExecContext(ctx, `DELETE FROM tasks WHERE id=?`, id)
 	return err
 }
 
-func (r *TaskRepository) AppendEvent(v task.Event) error {
+func (r *TaskRepository) AppendEvent(ctx context.Context, v *task.Event) error {
 	b, e := json.Marshal(v)
 	if e != nil {
 		return e
 	}
-	_, e = r.db.Exec(`INSERT INTO task_events(task_id,payload) VALUES(?,?)`, v.TaskID, string(b))
+	result, e := r.db.ExecContext(ctx, `INSERT INTO task_events(task_id,payload) VALUES(?,?)`, v.TaskID, string(b))
+	if e != nil {
+		return e
+	}
+	v.Sequence, e = result.LastInsertId()
 	return e
 }
 
-func (r *TaskRepository) ListEvents(id string, after int64) []task.Event {
-	rows, e := r.db.Query(`SELECT sequence,payload FROM task_events WHERE task_id=? AND sequence>? ORDER BY sequence`, id, after)
-	if e != nil {
-		return nil
+func (r *TaskRepository) ListEvents(ctx context.Context, id string, after int64) ([]task.Event, error) {
+	rows, err := r.db.QueryContext(ctx, `SELECT sequence,payload FROM task_events WHERE task_id=? AND sequence>? ORDER BY sequence`, id, after)
+	if err != nil {
+		return nil, err
 	}
 	defer rows.Close()
-	o := []task.Event{}
+	out := []task.Event{}
 	for rows.Next() {
+		var event task.Event
 		var seq int64
 		var raw string
-		if rows.Scan(&seq, &raw) == nil {
-			var v task.Event
-			if json.Unmarshal([]byte(raw), &v) == nil {
-				v.Sequence = seq
-				o = append(o, v)
-			}
+		if err := rows.Scan(&seq, &raw); err != nil {
+			return nil, err
 		}
+		if err := json.Unmarshal([]byte(raw), &event); err != nil {
+			return nil, err
+		}
+		event.Sequence = seq
+		out = append(out, event)
 	}
-	return o
+	return out, rows.Err()
 }

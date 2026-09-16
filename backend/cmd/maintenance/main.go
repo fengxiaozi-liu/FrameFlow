@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log"
@@ -17,16 +18,16 @@ func main() {
 	if _, err := os.Stat(*database); err != nil {
 		log.Fatalf("database: %v", err)
 	}
-	repository, err := sqlite.Open(*database)
+	repository, err := sqlite.Open(context.Background(), *database)
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer repository.Close()
 	switch *action {
 	case "integrity":
-		err = repository.VerifyIntegrity()
+		err = repository.VerifyIntegrity(context.Background())
 	case "backup":
-		err = repository.Backup(*output)
+		err = repository.Backup(context.Background(), *output)
 	default:
 		err = fmt.Errorf("unsupported action %q", *action)
 	}

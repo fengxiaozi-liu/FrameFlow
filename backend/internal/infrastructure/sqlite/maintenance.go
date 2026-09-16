@@ -1,6 +1,7 @@
 package sqlite
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -8,7 +9,7 @@ import (
 	"strings"
 )
 
-func (r *TaskRepository) Backup(destination string) error {
+func (r *TaskRepository) Backup(ctx context.Context, destination string) error {
 	if destination == "" {
 		return errors.New("backup destination is required")
 	}
@@ -21,13 +22,13 @@ func (r *TaskRepository) Backup(destination string) error {
 		return err
 	}
 	escaped := strings.ReplaceAll(destination, "'", "''")
-	_, err := r.db.Exec("VACUUM INTO '" + escaped + "'")
+	_, err := r.db.ExecContext(ctx, "VACUUM INTO '"+escaped+"'")
 	return err
 }
 
-func (r *TaskRepository) VerifyIntegrity() error {
+func (r *TaskRepository) VerifyIntegrity(ctx context.Context) error {
 	var result string
-	if err := r.db.QueryRow("PRAGMA integrity_check").Scan(&result); err != nil {
+	if err := r.db.QueryRowContext(ctx, "PRAGMA integrity_check").Scan(&result); err != nil {
 		return err
 	}
 	if result != "ok" {

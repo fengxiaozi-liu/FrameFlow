@@ -65,7 +65,7 @@ type VideoGenerator interface {
 
 // Adapter 由厂商客户端实现。能力是可选的，厂商可以只实现自身支持的操作。
 type Adapter interface{}
-type Factory func(Config) (Adapter, error)
+type Factory func(context.Context, Config) (Adapter, error)
 
 // Registry 负责解析厂商客户端，并按配置懒加载每个客户端实例。
 type Registry struct {
@@ -84,7 +84,10 @@ func (r *Registry) Register(vendor string, factory Factory) {
 	r.factories[vendor] = factory
 }
 
-func (r *Registry) Resolve(config Config) (Adapter, error) {
+func (r *Registry) Resolve(ctx context.Context, config Config) (Adapter, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	r.mu.RLock()
 	instance, ok := r.instances[config.Code]
 	vendor := config.Vendor
@@ -99,8 +102,11 @@ func (r *Registry) Resolve(config Config) (Adapter, error) {
 	if factory == nil {
 		return nil, errors.New("provider vendor is not registered")
 	}
-	created, err := factory(config)
+	created, err := factory(ctx, config)
 	if err != nil {
+		return nil, err
+	}
+	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 	r.mu.Lock()
