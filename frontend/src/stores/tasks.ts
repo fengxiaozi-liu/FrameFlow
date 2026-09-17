@@ -11,15 +11,14 @@ export const useTaskStore = defineStore("tasks", () => {
   );
   let socket: WebSocket | undefined;
   let reconnect: number | undefined;
+  let heartbeat: number | undefined;
+  let fallback: number | undefined;
   let stopped = true;
   let pending: TaskEvent[] = [];
   let loadingRequest: Promise<void> | undefined;
-  const sequences = new Map<string, number>();
   function patch(event: TaskEvent) {
-    if (event.sequence <= (sequences.get(event.task_id) || 0)) return;
     const item = items.value.find((v) => v.id === event.task_id);
     if (!item) return;
-    sequences.set(event.task_id, event.sequence);
     // A snapshot may already be newer than an event buffered during its request.
     if (item.updated_at && Date.parse(event.at) < Date.parse(item.updated_at))
       return;
@@ -36,14 +35,11 @@ export const useTaskStore = defineStore("tasks", () => {
     loadingRequest = (async () => {
       try {
         items.value = (await api.tasks()).tasks;
-        const ids = new Set(items.value.map((item) => item.id));
-        for (const id of sequences.keys())
-          if (!ids.has(id)) sequences.delete(id);
         error.value = "";
       } catch (e) {
         error.value = (e as Error).message;
       } finally {
-        pending.sort((a, b) => a.sequence - b.sequence).forEach(patch);
+        pending.sort((a, b) => Date.parse(a.at) - Date.parse(b.at)).forEach(patch);
         pending = [];
         loading.value = false;
         loadingRequest = undefined;
@@ -56,6 +52,11 @@ export const useTaskStore = defineStore("tasks", () => {
     const ws = new WebSocket(api.socketUrl());
     socket = ws;
     ws.onopen = async () => {
+      clearInterval(fallback);
+      fallback = undefined;
+      heartbeat = window.setInterval(() => {
+        if (ws.readyState === WebSocket.OPEN) ws.send("ping");
+      }, 15000);
       // Wait for any older request, then query after the connection is established.
       if (loadingRequest) await loadingRequest;
       if (socket === ws) await load();
@@ -64,7 +65,7 @@ export const useTaskStore = defineStore("tasks", () => {
       if (socket !== ws) return;
       try {
         const event = JSON.parse(message.data) as TaskEvent;
-        if (!event.task_id || !Number.isFinite(event.sequence)) return;
+        if (!event.task_id || !Number.isFinite(Date.parse(event.at))) return;
         if (loading.value) pending.push(event);
         else patch(event);
       } catch {
@@ -74,8 +75,15 @@ export const useTaskStore = defineStore("tasks", () => {
     ws.onerror = () => ws.close();
     ws.onclose = () => {
       if (socket !== ws) return;
+      clearInterval(heartbeat);
+      heartbeat = undefined;
       socket = undefined;
-      if (!stopped) reconnect = window.setTimeout(open, 1500);
+      if (!stopped) {
+        void load();
+        if (fallback === undefined)
+          fallback = window.setInterval(() => void load(), 2000);
+        reconnect = window.setTimeout(open, 1500);
+      }
     };
   }
   function connect() {
@@ -86,6 +94,8 @@ export const useTaskStore = defineStore("tasks", () => {
   function disconnect() {
     stopped = true;
     clearTimeout(reconnect);
+    clearInterval(heartbeat);
+    clearInterval(fallback);
     const previous = socket;
     socket = undefined;
     previous?.close();

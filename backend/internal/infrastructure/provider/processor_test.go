@@ -3,7 +3,6 @@ package provider
 import (
 	"context"
 	"encoding/json"
-	"github.com/fengxiaozi-liu/FrameFlow/internal/transport/response"
 	"github.com/gin-gonic/gin"
 	"net/http/httptest"
 	"path/filepath"
@@ -63,7 +62,6 @@ func TestTaskOutlivesRequestAndCancellationStopsProvider(t *testing.T) {
 		t.Fatal("provider did not start")
 	}
 	router := gin.New()
-	router.Use(response.Middleware())
 	router.POST("/tasks/:id/cancel", service.Cancel)
 	out := httptest.NewRecorder()
 	router.ServeHTTP(out, httptest.NewRequest("POST", "/tasks/"+item.ID+"/cancel", nil))
@@ -122,11 +120,12 @@ func TestAllProviderKindsCompleteThroughWorker(t *testing.T) {
 func createTask(t *testing.T, service application.TaskService, ctx context.Context, kind, code string) task.Task {
 	t.Helper()
 	router := gin.New()
-	router.Use(response.Middleware())
 	router.POST("/tasks", service.Create)
 	body, _ := json.Marshal(map[string]string{"kind": kind, "provider_code": code, "prompt": "test"})
 	out := httptest.NewRecorder()
-	router.ServeHTTP(out, httptest.NewRequest("POST", "/tasks", strings.NewReader(string(body))).WithContext(ctx))
+	req := httptest.NewRequest("POST", "/tasks", strings.NewReader(string(body))).WithContext(ctx)
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(out, req)
 	if out.Code != 202 {
 		t.Fatalf("create: %d %s", out.Code, out.Body.String())
 	}

@@ -34,8 +34,6 @@ func Open(ctx context.Context, path string) (*TaskRepository, error) {
 		CREATE TABLE IF NOT EXISTS projects (id TEXT PRIMARY KEY, payload TEXT NOT NULL);
 		CREATE TABLE IF NOT EXISTS providers (id TEXT PRIMARY KEY, capability TEXT NOT NULL, payload TEXT NOT NULL);
 		CREATE TABLE IF NOT EXISTS materials (id TEXT PRIMARY KEY, kind TEXT NOT NULL, payload TEXT NOT NULL);
-		CREATE TABLE IF NOT EXISTS task_events (sequence INTEGER PRIMARY KEY AUTOINCREMENT, task_id TEXT NOT NULL, payload TEXT NOT NULL);
-		CREATE INDEX IF NOT EXISTS idx_task_events_task ON task_events(task_id,sequence);
 	`); err != nil {
 		_ = db.Close()
 		return nil, err
@@ -238,40 +236,4 @@ func (r *TaskRepository) List(ctx context.Context) ([]task.Task, error) {
 func (r *TaskRepository) Delete(ctx context.Context, id string) error {
 	_, err := r.db.ExecContext(ctx, `DELETE FROM tasks WHERE id=?`, id)
 	return err
-}
-
-func (r *TaskRepository) AppendEvent(ctx context.Context, v *task.Event) error {
-	b, e := json.Marshal(v)
-	if e != nil {
-		return e
-	}
-	result, e := r.db.ExecContext(ctx, `INSERT INTO task_events(task_id,payload) VALUES(?,?)`, v.TaskID, string(b))
-	if e != nil {
-		return e
-	}
-	v.Sequence, e = result.LastInsertId()
-	return e
-}
-
-func (r *TaskRepository) ListEvents(ctx context.Context, id string, after int64) ([]task.Event, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT sequence,payload FROM task_events WHERE task_id=? AND sequence>? ORDER BY sequence`, id, after)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	out := []task.Event{}
-	for rows.Next() {
-		var event task.Event
-		var seq int64
-		var raw string
-		if err := rows.Scan(&seq, &raw); err != nil {
-			return nil, err
-		}
-		if err := json.Unmarshal([]byte(raw), &event); err != nil {
-			return nil, err
-		}
-		event.Sequence = seq
-		out = append(out, event)
-	}
-	return out, rows.Err()
 }

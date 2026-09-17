@@ -3,111 +3,118 @@ package websocket
 import (
 	"context"
 	"fmt"
-	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/task"
-	"github.com/gin-gonic/gin"
-	"github.com/gorilla/websocket"
 	"net/http/httptest"
 	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/gin-gonic/gin"
+	"github.com/gorilla/websocket"
 )
 
-func TestSessionConnections(t *testing.T) {
+func testHub(t *testing.T, timeout time.Duration) (*Hub, func() *websocket.Conn) {
+	t.Helper()
+	h := NewHub()
+	h.timeout = timeout
 	router := gin.New()
-	router.GET("/ws", Handler)
+	router.GET("/ws", h.Handler)
 	server := httptest.NewServer(router)
-	defer server.Close()
-	defer CloseAll()
-	dial := func(id string) *websocket.Conn {
+	t.Cleanup(func() { h.CloseAll(); server.Close() })
+	return h, func() *websocket.Conn {
 		t.Helper()
-		conn, _, err := websocket.DefaultDialer.Dial("ws"+strings.TrimPrefix(server.URL, "http")+"/ws?session_id="+id, nil)
+		conn, _, err := websocket.DefaultDialer.Dial("ws"+strings.TrimPrefix(server.URL, "http")+"/ws", nil)
 		if err != nil {
 			t.Fatal(err)
 		}
-		t.Cleanup(func() { conn.Close() })
-		conn.SetReadDeadline(time.Now().Add(3 * time.Second))
+		t.Cleanup(func() { _ = conn.Close() })
+		_ = conn.SetReadDeadline(time.Now().Add(3 * time.Second))
 		return conn
 	}
-	first, second := dial("one"), dial("two")
-	send := func(id, taskID string) {
-		t.Helper()
-		if err := Send(context.Background(), id, task.Event{TaskID: taskID, Status: task.StatusSucceeded}); err != nil {
+}
+
+func sessionIDs(h *Hub) []string {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	ids := make([]string, 0, len(h.clients))
+	for id := range h.clients {
+		ids = append(ids, id)
+	}
+	return ids
+}
+
+func TestSessionSendAndBroadcast(t *testing.T) {
+	h, dial := testHub(t, 5*time.Second)
+	first, second := dial(), dial()
+	ids := sessionIDs(h)
+	if len(ids) != 2 || ids[0] == ids[1] {
+		t.Fatalf("expected distinct server-generated IDs: %v", ids)
+	}
+	if err := h.Send(context.Background(), ids[0], map[string]string{"message": "private"}); err != nil {
+		t.Fatal(err)
+	}
+	// Both connections receive the broadcast, regardless of which received the directed message.
+	h.Broadcast(context.Background(), map[string]string{"message": "all"})
+	for _, conn := range []*websocket.Conn{first, second} {
+		var message map[string]string
+		if err := conn.ReadJSON(&message); err != nil {
 			t.Fatal(err)
 		}
-	}
-	read := func(conn *websocket.Conn, taskID string) {
-		t.Helper()
-		var event task.Event
-		if err := conn.ReadJSON(&event); err != nil || event.TaskID != taskID {
-			t.Fatalf("event=%+v err=%v", event, err)
+		if message["message"] == "private" {
+			if err := conn.ReadJSON(&message); err != nil {
+				t.Fatal(err)
+			}
 		}
-	}
-	send("one", "first")
-	send("two", "second")
-	read(first, "first")
-	read(second, "second")
-	send("one", "another-task")
-	read(first, "another-task")
-	clientsMu.RLock()
-	previous := clients["one"]
-	clientsMu.RUnlock()
-	replacement := dial("one")
-	remove("one", previous) // Delayed cleanup from the old handler must preserve the replacement.
-	send("one", "reconnected")
-	read(replacement, "reconnected")
-	if _, _, err := first.ReadMessage(); err == nil {
-		t.Fatal("old connection still open")
+		if message["message"] != "all" {
+			t.Fatal(message)
+		}
 	}
 	var writers sync.WaitGroup
 	for i := 0; i < 20; i++ {
 		writers.Add(1)
 		go func(i int) {
 			defer writers.Done()
-			if err := Send(context.Background(), "one", task.Event{TaskID: fmt.Sprint(i)}); err != nil {
-				t.Error(err)
-			}
+			h.Broadcast(context.Background(), map[string]string{"message": fmt.Sprint(i)})
 		}(i)
 	}
-	seen := map[string]bool{}
-	for i := 0; i < 20; i++ {
-		var event task.Event
-		if err := replacement.ReadJSON(&event); err != nil {
-			t.Fatal(err)
+	for _, conn := range []*websocket.Conn{first, second} {
+		seen := make(map[string]bool)
+		for i := 0; i < 20; i++ {
+			var message map[string]string
+			if err := conn.ReadJSON(&message); err != nil {
+				t.Fatal(err)
+			}
+			seen[message["message"]] = true
 		}
-		seen[event.TaskID] = true
+		if len(seen) != 20 {
+			t.Fatal("lost concurrent broadcast")
+		}
 	}
 	writers.Wait()
-	if len(seen) != 20 {
-		t.Fatal("lost concurrent events")
-	}
-	replacement.Close()
-	deadline := time.Now().Add(time.Second)
-	for {
-		clientsMu.RLock()
-		_, ok := clients["one"]
-		clientsMu.RUnlock()
-		if !ok {
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatal("disconnected session retained")
-		}
-		time.Sleep(time.Millisecond)
-	}
-	send("one", "offline")
-	CloseAll()
-	if _, _, err := second.ReadMessage(); err == nil {
+	h.CloseAll()
+	if _, _, err := first.ReadMessage(); err == nil {
 		t.Fatal("shutdown did not close connection")
 	}
 }
 
-func TestHandlerRequiresSession(t *testing.T) {
-	router := gin.New()
-	router.GET("/ws", Handler)
-	response := httptest.NewRecorder()
-	router.ServeHTTP(response, httptest.NewRequest("GET", "/ws", nil))
-	if response.Code != 400 {
-		t.Fatal(response.Code)
+func TestHeartbeatExpiresAndKeepsLiveSession(t *testing.T) {
+	h, dial := testHub(t, 120*time.Millisecond)
+	stale, live := dial(), dial()
+	for i := 0; i < 5; i++ {
+		if err := live.WriteMessage(websocket.TextMessage, []byte("ping")); err != nil {
+			t.Fatal(err)
+		}
+		time.Sleep(40 * time.Millisecond)
+	}
+	if _, _, err := stale.ReadMessage(); err == nil {
+		t.Fatal("stale session remained open")
+	}
+	if ids := sessionIDs(h); len(ids) != 1 {
+		t.Fatalf("expected one live session: %v", ids)
+	}
+	h.Broadcast(context.Background(), "still live")
+	var message string
+	if err := live.ReadJSON(&message); err != nil || message != "still live" {
+		t.Fatal(message, err)
 	}
 }

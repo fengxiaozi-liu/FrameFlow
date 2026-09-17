@@ -5,8 +5,8 @@ import (
 	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/material"
 	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/provider"
 	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/task"
-	"github.com/fengxiaozi-liu/FrameFlow/internal/transport/response"
 	"github.com/gin-gonic/gin"
+	"net/http"
 )
 
 type SystemService struct {
@@ -20,21 +20,30 @@ type SystemService struct {
 }
 
 func (s SystemService) Health(g *gin.Context) {
-	response.Set(g, 200, gin.H{"status": "healthy", "service": "frameflow"}, nil)
+	g.JSON(http.StatusOK, gin.H{
+		"status":  "healthy",
+		"service": "frameflow",
+	})
 }
 func (s SystemService) Overview(g *gin.Context) {
 	ctx := g.Request.Context()
 	projects, err := s.Projects.Repo.List(ctx)
 	if err != nil {
-		response.Set(g, 200, nil, err)
+		writeError(g, err)
 		return
 	}
 	tasks, err := s.Tasks.Store.List(ctx)
 	if err != nil {
-		response.Set(g, 200, nil, err)
+		writeError(g, err)
 		return
 	}
-	counts := map[string]int{"projects": len(projects), "tasks": len(tasks), "running_tasks": 0, "providers": 0, "materials": 0}
+	counts := map[string]int{
+		"projects":      len(projects),
+		"tasks":         len(tasks),
+		"running_tasks": 0,
+		"providers":     0,
+		"materials":     0,
+	}
 	for _, item := range tasks {
 		if item.Status == task.StatusQueued || item.Status == task.StatusRunning {
 			counts["running_tasks"]++
@@ -43,7 +52,7 @@ func (s SystemService) Overview(g *gin.Context) {
 	for _, kind := range []provider.Capability{provider.Story, provider.Image, provider.Video} {
 		items, err := s.Providers.Repo.List(ctx, kind)
 		if err != nil {
-			response.Set(g, 200, nil, err)
+			writeError(g, err)
 			return
 		}
 		counts["providers"] += len(items)
@@ -51,26 +60,28 @@ func (s SystemService) Overview(g *gin.Context) {
 	for _, kind := range []material.Kind{material.Visual, material.Frame, material.Character, material.Voice, material.Music} {
 		items, err := s.Materials.Repo.List(ctx, kind)
 		if err != nil {
-			response.Set(g, 200, nil, err)
+			writeError(g, err)
 			return
 		}
 		counts["materials"] += len(items)
 	}
-	response.Set(g, 200, counts, nil)
-	return
+	g.JSON(http.StatusOK, counts)
 }
 func (s SystemService) Stop(g *gin.Context) {
 	if s.Shutdown == nil {
-		response.Set(g, 0, nil, unavailable("shutdown_unavailable", "shutdown is unavailable"))
+		writeError(g, unavailable("shutdown_unavailable", "shutdown is unavailable"))
 		return
 	}
-	response.Set(g, 202, gin.H{"status": "shutting_down"}, nil)
-	response.AfterWrite(g, s.Shutdown)
+	g.JSON(http.StatusAccepted, gin.H{
+		"status": "shutting_down",
+	})
+	g.Writer.Flush()
+	s.Shutdown()
 }
 func (s SystemService) Metrics(g *gin.Context) {
 	items, err := s.Tasks.Store.List(g.Request.Context())
 	if err != nil {
-		response.Set(g, 0, nil, err)
+		writeError(g, err)
 		return
 	}
 	g.Header("Content-Type", "text/plain; version=0.0.4")

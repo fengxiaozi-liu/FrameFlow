@@ -1,54 +1,68 @@
 package application
 
 import (
-	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/project"
-	"github.com/fengxiaozi-liu/FrameFlow/internal/transport/request"
-	"github.com/fengxiaozi-liu/FrameFlow/internal/transport/response"
-	"github.com/gin-gonic/gin"
+	"net/http"
 	"time"
+
+	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/project"
+	"github.com/gin-gonic/gin"
 )
 
-type ProjectService struct{ Repo project.Repository }
+type ProjectService struct {
+	Repo project.Repository
+}
 
-func (s ProjectService) Create(g *gin.Context) {
+func (s ProjectService) Create(ctx *gin.Context) {
 	var input struct {
 		Name string `json:"name"`
 	}
-	if !request.BindJSON(g, &input) {
+	if err := ctx.Bind(&input); err != nil {
 		return
 	}
-	ctx := g.Request.Context()
-	id := time.Now().UTC().Format("20060102150405.000000000")
-	name := input.Name
-	p, e := project.New(id, name, time.Now().UTC())
-	if e != nil {
-		response.Set(g, 201, p, Invalid("invalid_project", e))
+	now := time.Now().UTC()
+	p, err := project.New(now.Format("20060102150405.000000000"), input.Name, now)
+	if err != nil {
+		writeError(ctx, Invalid("invalid_project", err))
 		return
 	}
-	response.Set(g, 201, p, s.Repo.Save(ctx, p))
-	return
+	if err := s.Repo.Save(ctx.Request.Context(), p); err != nil {
+		writeError(ctx, err)
+		return
+	}
+	ctx.JSON(http.StatusCreated, p)
 }
-func (s ProjectService) List(g *gin.Context) {
-	items, err := s.Repo.List(g.Request.Context())
-	response.Set(g, 200, gin.H{"projects": items}, err)
+
+func (s ProjectService) List(ctx *gin.Context) {
+	items, err := s.Repo.List(ctx.Request.Context())
+	if err != nil {
+		writeError(ctx, err)
+		return
+	}
+	ctx.JSON(http.StatusOK, gin.H{
+		"projects": items,
+	})
 }
-func (s ProjectService) Get(g *gin.Context) {
-	item, err := s.Repo.Get(g.Request.Context(), g.Param("id"))
-	response.Set(g, 200, item, err)
+
+func (s ProjectService) Get(ctx *gin.Context) {
+	item, err := s.Repo.Get(ctx.Request.Context(), ctx.Param("id"))
+	if err != nil {
+		writeError(ctx, err)
+		return
+	}
+	ctx.JSON(http.StatusOK, item)
 }
-func (s ProjectService) SaveDraft(g *gin.Context) {
-	ctx := g.Request.Context()
-	projectID := g.Param("id")
+
+func (s ProjectService) SaveDraft(ctx *gin.Context) {
 	var d project.Draft
-	if !request.BindJSON(g, &d) {
+	if err := ctx.Bind(&d); err != nil {
 		return
 	}
 	if d.ID == "" {
 		d.ID = time.Now().UTC().Format("20060102150405.000000000")
 	}
-	p, err := s.Repo.Get(ctx, projectID)
+	p, err := s.Repo.Get(ctx.Request.Context(), ctx.Param("id"))
 	if err != nil {
-		response.Set(g, 200, p, err)
+		writeError(ctx, err)
 		return
 	}
 	found := false
@@ -62,11 +76,14 @@ func (s ProjectService) SaveDraft(g *gin.Context) {
 		}
 	}
 	if !found {
-		if e := p.AddDraft(d); e != nil {
-			response.Set(g, 200, p, Invalid("invalid_project", e))
+		if err := p.AddDraft(d); err != nil {
+			writeError(ctx, Invalid("invalid_project", err))
 			return
 		}
 	}
-	response.Set(g, 200, p, s.Repo.Save(ctx, p))
-	return
+	if err := s.Repo.Save(ctx.Request.Context(), p); err != nil {
+		writeError(ctx, err)
+		return
+	}
+	ctx.JSON(http.StatusOK, p)
 }

@@ -5,12 +5,14 @@ import type { Task, TaskEvent } from "../api/types";
 import { useTaskStore } from "./tasks";
 vi.mock("../api/client", () => ({
   api: {
-    socketUrl: () => "ws://test/ws?session_id=session",
+    socketUrl: () => "ws://test/ws",
     tasks: vi.fn(),
     createTask: vi.fn(),
   },
 }));
 class Socket {
+  readyState = 1;
+  send = vi.fn();
   onopen = async () => {};
   onmessage = (_: { data: string }) => {};
   onclose = () => {};
@@ -24,11 +26,11 @@ beforeEach(() => {
   sockets = [];
   vi.stubGlobal(
     "WebSocket",
-    vi.fn(function () {
+    Object.assign(vi.fn(function () {
       const socket = new Socket();
       sockets.push(socket);
       return socket;
-    }),
+    }), { OPEN: 1 }),
   );
   vi.mocked(api.tasks).mockResolvedValue({
     tasks: [task("a"), task("b")],
@@ -51,11 +53,10 @@ function event(
 ): TaskEvent {
   return {
     task_id: id,
-    sequence,
     status,
     progress: sequence * 10,
     stage: status,
-    at: "2026-09-16T00:00:00Z",
+    at: `2026-09-16T00:00:${String(sequence).padStart(2, "0")}Z`,
   };
 }
 function emit(socket: Socket, value: TaskEvent) {
@@ -72,6 +73,8 @@ it("shares one connection across tasks and keeps it after completion", async () 
   expect(store.items[0].status).toBe("succeeded");
   expect(store.items[1].progress).toBe(20);
   expect(sockets[0].close).not.toHaveBeenCalled();
+  await vi.advanceTimersByTimeAsync(15000);
+  expect(sockets[0].send).toHaveBeenCalledWith("ping");
 });
 it("buffers live events during HTTP catch-up and ignores old events", async () => {
   let resolve!: (value: { tasks: Task[]; total: number }) => void;
@@ -89,11 +92,13 @@ it("buffers live events during HTTP catch-up and ignores old events", async () =
   emit(sockets[0], event("a", 1));
   expect(store.items[0].progress).toBe(20);
 });
-it("reconnects with the same session and refreshes missed state", async () => {
+it("reconnects without a client session and refreshes missed state", async () => {
   const store = useTaskStore();
   store.connect();
   await sockets[0].onopen();
   sockets[0].onclose();
+  await Promise.resolve();
+  expect(api.tasks).toHaveBeenCalledTimes(2);
   await vi.advanceTimersByTimeAsync(1500);
   expect(sockets).toHaveLength(2);
   vi.mocked(api.tasks).mockResolvedValue({

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/fault"
+	"github.com/fengxiaozi-liu/FrameFlow/internal/interfaces/websocket"
 	"log"
 	"sync"
 	"time"
@@ -18,20 +19,25 @@ type Worker interface {
 }
 
 // Processor 通过已注册的 provider 执行队列中的生成任务。
-// 它只依赖领域契约，具体厂商客户端由组合根通过 provider.Registry 注入。
+// 具体厂商客户端由组合根通过 provider.Registry 注入。
 type Processor struct {
-	Configs   provider.Repository
-	Registry  *provider.Registry
-	Worker    Worker
-	Store     task.Repository
-	Events    task.EventRepository
-	SendEvent task.Sender
-	mu        sync.Mutex
-	running   map[string]context.CancelFunc
+	Configs     provider.Repository
+	Registry    *provider.Registry
+	Worker      Worker
+	Task        task.Repository
+	Connections *websocket.Hub
+	mu          sync.Mutex
+	running     map[string]context.CancelFunc
 }
 
 func New(configs provider.Repository, registry *provider.Registry, worker Worker, store task.Repository) *Processor {
-	return &Processor{Configs: configs, Registry: registry, Worker: worker, Store: store}
+	return &Processor{
+		Configs:     configs,
+		Registry:    registry,
+		Worker:      worker,
+		Task:        store,
+		Connections: websocket.Connections,
+	}
 }
 
 func (p *Processor) Enqueue(ctx context.Context, item task.Task) error {
@@ -56,10 +62,17 @@ func (p *Processor) Start(ctx context.Context) {
 	p.Worker.Run(ctx, p.Execute)
 }
 
-func (p *Processor) Process(ctx context.Context, item task.Task, progress func(int, string)) error {
+func (p *Processor) Process(ctx context.Context, item task.Task, progress func(int, task.Stage)) error {
 	config, err := p.Configs.Get(ctx, item.ProviderCode)
 	if errors.Is(err, fault.ErrNotFound) && item.ProviderCode == "" {
-		config = provider.Config{Code: "default-" + string(item.Kind), Vendor: "mock", Capability: capability(item.Kind), Model: "mock", Enabled: true, Status: provider.Healthy}
+		config = provider.Config{
+			Code:       "default-" + string(item.Kind),
+			Vendor:     "mock",
+			Capability: capability(item.Kind),
+			Model:      "mock",
+			Enabled:    true,
+			Status:     provider.Healthy,
+		}
 		err = nil
 	}
 	if err != nil {
@@ -72,7 +85,7 @@ func (p *Processor) Process(ctx context.Context, item task.Task, progress func(i
 	if err != nil {
 		return err
 	}
-	progress(20, "preparing")
+	progress(20, task.StagePreparing)
 	options := provider.RequestOptions{}
 	switch item.Kind {
 	case task.KindStory:
@@ -80,24 +93,36 @@ func (p *Processor) Process(ctx context.Context, item task.Task, progress func(i
 		if !ok {
 			return errors.New("provider does not support story generation")
 		}
-		progress(55, "generating_story")
-		_, err = generator.Generate(ctx, provider.StoryRequest{Prompt: item.Input.Prompt, Model: config.Model}, options)
+		progress(55, task.StageGeneratingStory)
+		_, err = generator.Generate(ctx, provider.StoryRequest{
+			Prompt: item.Input.Prompt,
+			Model:  config.Model,
+		}, options)
 	case task.KindImage:
 		generator, ok := client.(provider.ImageGenerator)
 		if !ok {
 			return errors.New("provider does not support image generation")
 		}
-		progress(55, "generating_image")
-		_, err = generator.Generate(ctx, provider.ImageRequest{Prompt: item.Input.Prompt, Model: config.Model, AspectRatio: item.Input.AspectRatio}, options)
+		progress(55, task.StageGeneratingImage)
+		_, err = generator.Generate(ctx, provider.ImageRequest{
+			Prompt:      item.Input.Prompt,
+			Model:       config.Model,
+			AspectRatio: item.Input.AspectRatio,
+		}, options)
 	case task.KindVideo:
 		generator, ok := client.(provider.VideoGenerator)
 		if !ok {
 			return errors.New("provider does not support video generation")
 		}
-		progress(55, "rendering_video")
-		_, err = generator.Generate(ctx, provider.VideoRequest{Prompt: item.Input.Prompt, Model: config.Model, AspectRatio: item.Input.AspectRatio, SourceImageURL: item.Input.SourceImageURL}, options)
+		progress(55, task.StageRenderingVideo)
+		_, err = generator.Generate(ctx, provider.VideoRequest{
+			Prompt:         item.Input.Prompt,
+			Model:          config.Model,
+			AspectRatio:    item.Input.AspectRatio,
+			SourceImageURL: item.Input.SourceImageURL,
+		}, options)
 		if err == nil {
-			progress(85, "composing")
+			progress(85, task.StageComposing)
 		}
 	default:
 		return errors.New("unsupported task kind")
@@ -133,28 +158,47 @@ func (p *Processor) Execute(ctx context.Context, item task.Task) {
 		delete(p.running, item.ID)
 		p.mu.Unlock()
 	}()
-	current, getErr := p.Store.Get(ctx, item.ID)
+	current, getErr := p.Task.Get(ctx, item.ID)
 	if getErr != nil || current.Status != task.StatusQueued || ctx.Err() != nil {
 		return
 	}
 	item = current
 	item.Start(time.Now().UTC())
-	item.Stage = "preparing"
-	if !p.save(ctx, item) {
+	item.Stage = task.StagePreparing
+	if err := p.Task.Save(ctx, item); err != nil {
+		log.Printf("save task %s: %v", item.ID, err)
 		return
 	}
+	p.Connections.Broadcast(ctx, task.Event{
+		TaskID:   item.ID,
+		Status:   item.Status,
+		Progress: item.Progress,
+		Stage:    item.Stage,
+		At:       item.UpdatedAt,
+	})
 	var err error
 	for attempt := 0; attempt < 3; attempt++ {
 		if !p.active(ctx, item) || ctx.Err() != nil {
 			return
 		}
 		saved := true
-		err = p.Process(ctx, item, func(progress int, stage string) {
+		err = p.Process(ctx, item, func(progress int, stage task.Stage) {
 			if !saved || !p.active(ctx, item) || ctx.Err() != nil {
 				return
 			}
 			item.Advance(progress, stage, time.Now().UTC())
-			saved = p.save(ctx, item)
+			if err := p.Task.Save(ctx, item); err != nil {
+				log.Printf("save task %s: %v", item.ID, err)
+				saved = false
+				return
+			}
+			p.Connections.Broadcast(ctx, task.Event{
+				TaskID:   item.ID,
+				Status:   item.Status,
+				Progress: item.Progress,
+				Stage:    item.Stage,
+				At:       item.UpdatedAt,
+			})
 		})
 		if !saved || !p.active(ctx, item) || ctx.Err() != nil {
 			return
@@ -178,26 +222,20 @@ func (p *Processor) Execute(ctx context.Context, item task.Task) {
 	} else {
 		item.Succeed(time.Now().UTC())
 	}
-	p.save(ctx, item)
+	if err := p.Task.Save(ctx, item); err != nil {
+		log.Printf("save task %s: %v", item.ID, err)
+		return
+	}
+	p.Connections.Broadcast(ctx, task.Event{
+		TaskID:   item.ID,
+		Status:   item.Status,
+		Progress: item.Progress,
+		Stage:    item.Stage,
+		At:       item.UpdatedAt,
+	})
 }
 
 func (p *Processor) active(ctx context.Context, item task.Task) bool {
-	current, getErr := p.Store.Get(ctx, item.ID)
+	current, getErr := p.Task.Get(ctx, item.ID)
 	return getErr == nil && current.Status == task.StatusRunning
-}
-
-func (p *Processor) save(ctx context.Context, item task.Task) bool {
-	if err := p.Store.Save(ctx, item); err != nil {
-		log.Printf("save task %s: %v", item.ID, err)
-		return false
-	}
-	events := p.Events
-	if events == nil {
-		events, _ = p.Store.(task.EventRepository)
-	}
-	if err := task.Publish(ctx, events, p.SendEvent, item.SessionID, task.Event{TaskID: item.ID, Status: item.Status, Progress: item.Progress, Stage: item.Stage, At: item.UpdatedAt}); err != nil {
-		log.Printf("publish task event %s: %v", item.ID, err)
-		return false
-	}
-	return true
 }

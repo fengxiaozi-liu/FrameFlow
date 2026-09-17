@@ -2,7 +2,6 @@ package http
 
 import (
 	"github.com/fengxiaozi-liu/FrameFlow/internal/application"
-	"github.com/fengxiaozi-liu/FrameFlow/internal/transport/response"
 	"github.com/gin-gonic/gin"
 	"io/fs"
 	"net/http"
@@ -11,7 +10,7 @@ import (
 )
 
 func UseMiddleware(engine *gin.Engine, token string, rateLimit int) {
-	engine.Use(audit(), response.Middleware(), cors(), newLimiter(rateLimit).middleware(), auth(token))
+	engine.Use(audit(), requestContext(), limitJSONBody(), cors(), newLimiter(rateLimit).middleware(), auth(token))
 	engine.HandleMethodNotAllowed = true
 }
 
@@ -39,7 +38,6 @@ func RegisterRoutes(
 	taskRoutes.POST("/:id/cancel", tasks.Cancel)
 	taskRoutes.POST("/:id/retry", tasks.Retry)
 	taskRoutes.GET("/:id/result", tasks.Result)
-	taskRoutes.GET("/:id/event-log", tasks.EventLog)
 
 	projectRoutes := api.Group("/projects")
 	projectRoutes.GET("", projects.List)

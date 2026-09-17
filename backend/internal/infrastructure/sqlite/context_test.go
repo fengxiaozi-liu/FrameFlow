@@ -28,9 +28,6 @@ func TestRepositoryPropagatesCancellationAndStorageErrors(t *testing.T) {
 	if _, err := store.List(ctx); !errors.Is(err, context.Canceled) {
 		t.Fatal(err)
 	}
-	if _, err := store.ListEvents(ctx, item.ID, 0); !errors.Is(err, context.Canceled) {
-		t.Fatal(err)
-	}
 	if _, err := store.Get(context.Background(), item.ID); !errors.Is(err, fault.ErrNotFound) {
 		t.Fatal("cancelled save wrote task", err)
 	}

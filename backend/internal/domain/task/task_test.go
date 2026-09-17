@@ -11,7 +11,7 @@ func TestTaskLifecycle(t *testing.T) {
 		t.Fatal(x.Status)
 	}
 	x.Start(time.Now())
-	x.Advance(130, "processing", time.Now())
+	x.Advance(130, StageProcessing, time.Now())
 	if x.Progress != 100 {
 		t.Fatal(x.Progress)
 	}

@@ -26,7 +26,6 @@ paths:
                 kind: {type: string, enum: [story, image, video]}
                 prompt: {type: string}
                 provider_code: {type: string}
-                session_id: {type: string, maxLength: 128, description: Session receiving live events; omitted tasks use HTTP queries only}
                 aspect_ratio: {type: string}
                 source_image_url: {type: string}
       responses: {'202': {description: Task accepted}}
@@ -36,16 +35,13 @@ paths:
   /api/tasks/{id}/cancel:
     post: {parameters: [{$ref: '#/components/parameters/ID'}], responses: {'200': {description: Cancelled}}}
   /api/tasks/{id}/retry:
-    post: {parameters: [{$ref: '#/components/parameters/ID'}, {name: session_id, in: query, schema: {type: string, maxLength: 128}, description: Session receiving events for the retried task}], responses: {'202': {description: Retried}}}
-  /api/tasks/{id}/event-log:
-    get: {parameters: [{$ref: '#/components/parameters/ID'}], responses: {'200': {description: Ordered events after sequence}}}
+    post: {parameters: [{$ref: '#/components/parameters/ID'}], responses: {'202': {description: Retried}}}
   /ws:
     get:
       parameters:
-        - {name: session_id, in: query, required: true, schema: {type: string, minLength: 1, maxLength: 128}, description: Page session ID; one connection receives events for tasks created with this session_id}
         - {name: token, in: query, required: false, schema: {type: string}, description: API authentication token}
       responses:
-        '101': {description: WebSocket live task events; query task details and history through the task HTTP API}
+        '101': {description: WebSocket broadcasts live task events to all connections; clients send text ping every 15 seconds and refresh tasks over HTTP after reconnect}
   /api/providers:
     get: {responses: {'200': {description: Provider list}}}
     post: {responses: {'201': {description: Provider saved}}}

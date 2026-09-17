@@ -53,8 +53,8 @@ func main() {
 		log.Print(err)
 		return
 	}
-	tasks, projects, providers, materials := InitService(store, vault, uploadDir, ws.Send)
-	worker, processor := InitProcessor(store, providers.Repo, ws.Send)
+	tasks, projects, providers, materials := InitService(store, vault, uploadDir, ws.Connections)
+	worker, processor := InitProcessor(store, providers.Repo, ws.Connections)
 	tasks.Enqueuer = processor
 	workerDone := make(chan struct{})
 	go func() { defer close(workerDone); processor.Start(ctx) }()

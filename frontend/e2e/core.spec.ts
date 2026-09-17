@@ -62,7 +62,7 @@ test.beforeEach(async ({ request }) => seedProviders(request));
 test("home, studio and WebSocket asynchronous task flow", async ({ page }) => {
   let upgraded = false;
   page.on("websocket", (socket) => {
-    if (socket.url().includes("/events")) upgraded = true;
+    if (socket.url().includes("/ws")) upgraded = true;
   });
   await page.goto("/");
   await expect(
@@ -168,14 +168,14 @@ test("failed task can be retried from task center", async ({
   await expect.poll(() => taskField(request, task.id, "status")).toBe("failed");
 });
 
-test("WebSocket disconnect falls back to incremental HTTP polling", async ({
+test("WebSocket disconnect falls back to HTTP task refresh", async ({
   page,
 }) => {
-  await page.routeWebSocket(/\/api\/tasks\/.*\/events/, (socket) =>
+  await page.routeWebSocket(/\/ws(?:\?|$)/, (socket) =>
     socket.close(),
   );
   const fallback = page.waitForRequest((request) =>
-    request.url().includes("/event-log?after="),
+    request.url().includes("/api/tasks?limit=100"),
   );
   await page.goto("/studio");
   await page.getByRole("button", { name: "新增分镜" }).click();

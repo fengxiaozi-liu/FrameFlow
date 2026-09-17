@@ -6,7 +6,6 @@ export interface TaskInput {
   source_image_url?: string;
 }
 export interface Task {
-  session_id?: string;
   id: string;
   kind: "story" | "image" | "video";
   status: TaskStatus;
@@ -21,7 +20,6 @@ export interface Task {
   updated_at: string;
 }
 export interface TaskEvent {
-  sequence: number;
   task_id: string;
   status: TaskStatus;
   progress: number;

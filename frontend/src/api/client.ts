@@ -7,14 +7,10 @@ import type {
   Project,
   Provider,
   Task,
-  TaskEvent,
   TaskInput,
 } from "./types";
 const base = import.meta.env.VITE_API_BASE_URL || "";
 const endpoint = base || location.origin;
-const sessionKey = "frameflow.session_id";
-const sessionID = sessionStorage.getItem(sessionKey) || crypto.randomUUID();
-sessionStorage.setItem(sessionKey, sessionID);
 const token = import.meta.env.VITE_API_TOKEN || "";
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
@@ -53,20 +49,12 @@ export const api = {
         kind,
         provider_code,
         ...input,
-        session_id: sessionID,
       }),
     }),
   cancelTask: (id: string) =>
     request<Task>(`/api/tasks/${id}/cancel`, { method: "POST" }),
   retryTask: (id: string) =>
-    request<Task>(
-      `/api/tasks/${id}/retry?session_id=${encodeURIComponent(sessionID)}`,
-      { method: "POST" },
-    ),
-  taskEvents: (id: string, after = 0) =>
-    request<{ events: TaskEvent[] }>(
-      `/api/tasks/${id}/event-log?after=${after}`,
-    ),
+    request<Task>(`/api/tasks/${id}/retry`, { method: "POST" }),
   resultUrl: (id: string) => `${endpoint}/api/tasks/${id}/result`,
   providers: (capability: Capability) =>
     request<{ providers: Provider[] }>(
@@ -101,5 +89,5 @@ export const api = {
   deleteMaterial: (id: string) =>
     request<void>(`/api/materials/${id}`, { method: "DELETE" }),
   socketUrl: () =>
-    `${endpoint.replace(/^http/, "ws")}/ws?session_id=${encodeURIComponent(sessionID)}${token ? `&token=${encodeURIComponent(token)}` : ""}`,
+    `${endpoint.replace(/^http/, "ws")}/ws${token ? `?token=${encodeURIComponent(token)}` : ""}`,
 };

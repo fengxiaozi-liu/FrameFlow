@@ -211,8 +211,6 @@ export interface paths {
             kind?: "story" | "image" | "video";
             prompt: string;
             provider_code?: string;
-            /** @description Session receiving live events; omitted tasks use HTTP queries only */
-            session_id?: string;
             aspect_ratio?: string;
             source_image_url?: string;
           };
@@ -334,10 +332,7 @@ export interface paths {
     put?: never;
     post: {
       parameters: {
-        query?: {
-          /** @description Session receiving events for the retried task */
-          session_id?: string;
-        };
+        query?: never;
         header?: never;
         path: {
           id: components["parameters"]["ID"];
@@ -361,41 +356,6 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/api/tasks/{id}/event-log": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get: {
-      parameters: {
-        query?: never;
-        header?: never;
-        path: {
-          id: components["parameters"]["ID"];
-        };
-        cookie?: never;
-      };
-      requestBody?: never;
-      responses: {
-        /** @description Ordered events after sequence */
-        200: {
-          headers: {
-            [name: string]: unknown;
-          };
-          content?: never;
-        };
-      };
-    };
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
   "/ws": {
     parameters: {
       query?: never;
@@ -405,9 +365,7 @@ export interface paths {
     };
     get: {
       parameters: {
-        query: {
-          /** @description Page session ID; one connection receives events for tasks created with this session_id */
-          session_id: string;
+        query?: {
           /** @description API authentication token */
           token?: string;
         };
@@ -417,7 +375,7 @@ export interface paths {
       };
       requestBody?: never;
       responses: {
-        /** @description WebSocket live task events; query task details and history through the task HTTP API */
+        /** @description WebSocket broadcasts live task events to all connections; clients send text ping every 15 seconds and refresh tasks over HTTP after reconnect */
         101: {
           headers: {
             [name: string]: unknown;

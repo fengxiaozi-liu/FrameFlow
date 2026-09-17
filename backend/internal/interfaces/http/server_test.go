@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"github.com/fengxiaozi-liu/FrameFlow/internal/application"
 	domainprocessor "github.com/fengxiaozi-liu/FrameFlow/internal/domain/processor"
 	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/provider"
@@ -17,26 +16,23 @@ import (
 	"github.com/gorilla/websocket"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 )
 
 func testServer(t *testing.T) (testServices, func()) {
-	db, e := sqlite.Open(context.Background(), filepath.Join(t.TempDir(), "api.db"))
+	db, e := sqlite.Open(context.Background(), ":memory:")
 	if e != nil {
 		t.Fatal(e)
 	}
 	worker := queue.NewWorker()
 	providers := application.ProviderService{Repo: sqlite.NewProviderRepository(db)}
 	processor := domainprocessor.New(providers.Repo, providerinfra.NewRegistry(), worker, db)
-	processor.Events = db
-	processor.SendEvent = ws.Send
 	ctx, cancel := context.WithCancel(context.Background())
 	workerDone := make(chan struct{})
 	go func() { defer close(workerDone); processor.Start(ctx) }()
-	tasks := application.TaskService{Store: db, Enqueuer: processor, Events: db, SendEvent: ws.Send, Providers: providers}
+	tasks := application.TaskService{Store: db, Enqueuer: processor, Connections: ws.Connections, Providers: providers}
 	return testServices{Worker: worker, TaskService: tasks, Projects: application.ProjectService{Repo: sqlite.NewProjectRepository(db)}, Providers: providers, Materials: application.MaterialService{Repo: sqlite.NewMaterialRepository(db)}}, func() { cancel(); <-workerDone; ws.CloseAll(); _ = db.Close() }
 }
 
@@ -158,7 +154,7 @@ func TestTaskEventsUpgradeThroughMiddleware(t *testing.T) {
 	}
 	server := httptest.NewServer(testRouter(s))
 	defer server.Close()
-	url := "ws" + strings.TrimPrefix(server.URL, "http") + "/ws?session_id=" + item.ID
+	url := "ws" + strings.TrimPrefix(server.URL, "http") + "/ws"
 	conn, response, err := websocket.DefaultDialer.Dial(url, nil)
 	if err != nil {
 		if response != nil {
@@ -168,10 +164,54 @@ func TestTaskEventsUpgradeThroughMiddleware(t *testing.T) {
 	}
 	defer conn.Close()
 	_ = conn.SetReadDeadline(time.Now().Add(2 * time.Second))
-	_ = ws.Send(context.Background(), item.ID, task.Event{TaskID: item.ID, Status: task.StatusRunning})
+	ws.Connections.Broadcast(context.Background(), task.Event{TaskID: item.ID, Status: task.StatusRunning})
 	var event map[string]any
 	if err = conn.ReadJSON(&event); err != nil {
 		t.Fatal(err)
+	}
+	if event["task_id"] != item.ID {
+		t.Fatal(event)
+	}
+}
+
+func TestTaskUpdatesBroadcastWithoutClientSession(t *testing.T) {
+	s, done := testServer(t)
+	defer done()
+	s.TaskService.Enqueuer = nil
+	server := httptest.NewServer(testRouter(s))
+	defer server.Close()
+	conn, _, err := websocket.DefaultDialer.Dial("ws"+strings.TrimPrefix(server.URL, "http")+"/ws", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	_ = conn.SetReadDeadline(time.Now().Add(3 * time.Second))
+	created := request(t, testRouter(s), http.MethodPost, "/api/tasks", `{"prompt":"broadcast"}`)
+	if created.Code != http.StatusAccepted {
+		t.Fatal(created.Code, created.Body.String())
+	}
+	var item task.Task
+	if err := json.Unmarshal(created.Body.Bytes(), &item); err != nil {
+		t.Fatal(err)
+	}
+	var event task.Event
+	if err := conn.ReadJSON(&event); err != nil || event.TaskID != item.ID || event.Status != task.StatusQueued {
+		t.Fatal(event, err)
+	}
+	stored, err := s.TaskService.Store.Get(context.Background(), item.ID)
+	if err != nil || stored.Status != task.StatusQueued {
+		t.Fatal(stored, err)
+	}
+	processor := domainprocessor.New(s.Providers.Repo, providerinfra.NewRegistry(), queue.NewWorker(), s.TaskService.Store)
+	processor.Execute(context.Background(), item)
+	for event.Status != task.StatusSucceeded {
+		if err := conn.ReadJSON(&event); err != nil {
+			t.Fatal(err)
+		}
+	}
+	stored, err = s.TaskService.Store.Get(context.Background(), item.ID)
+	if err != nil || stored.Status != event.Status || stored.Progress != event.Progress {
+		t.Fatal(stored, event, err)
 	}
 }
 
@@ -217,24 +257,11 @@ func testRouter(s testServices) *gin.Engine {
 	return engine
 }
 
-func TestSessionPersistsAndDeliveryFailureDoesNotFailTask(t *testing.T) {
+func TestTaskPersistsWithoutSessionAndProcessorCompletes(t *testing.T) {
 	services, done := testServer(t)
 	defer done()
 	services.TaskService.Enqueuer = nil
-	calls := 0
-	send := func(ctx context.Context, sessionID string, event task.Event) error {
-		if sessionID != "page-session" {
-			t.Fatalf("unexpected session %s", sessionID)
-		}
-		events, err := services.TaskService.Events.ListEvents(ctx, event.TaskID, 0)
-		if err != nil || len(events) == 0 || events[len(events)-1].Sequence != event.Sequence {
-			t.Fatal("notification sent before persistence", err)
-		}
-		calls++
-		return errors.New("connection closed")
-	}
-	services.TaskService.SendEvent = send
-	response := request(t, testRouter(services), "POST", "/api/tasks", `{"prompt":"session test","session_id":"page-session"}`)
+	response := request(t, testRouter(services), "POST", "/api/tasks", `{"prompt":"session test"}`)
 	if response.Code != 202 {
 		t.Fatal(response.Code, response.Body.String())
 	}
@@ -243,14 +270,13 @@ func TestSessionPersistsAndDeliveryFailureDoesNotFailTask(t *testing.T) {
 		t.Fatal(err)
 	}
 	current, err := services.TaskService.Store.Get(context.Background(), item.ID)
-	if err != nil || current.SessionID != "page-session" {
+	if err != nil || current.Status != task.StatusQueued {
 		t.Fatal(current, err)
 	}
 	processor := domainprocessor.New(services.Providers.Repo, providerinfra.NewRegistry(), queue.NewWorker(), services.TaskService.Store)
-	processor.SendEvent = send
 	processor.Execute(context.Background(), current)
 	current, err = services.TaskService.Store.Get(context.Background(), item.ID)
-	if err != nil || current.Status != task.StatusSucceeded || calls < 2 {
-		t.Fatal(current, calls, err)
+	if err != nil || current.Status != task.StatusSucceeded {
+		t.Fatal(current, err)
 	}
 }

@@ -51,7 +51,7 @@ func TestProcessorForwardsTaskInputToProvider(t *testing.T) {
 	item := task.New("task-1", task.KindVideo, input, time.Now())
 	item.ProviderCode = config.Code
 
-	if err := processor.Process(context.Background(), item, func(int, string) {}); err != nil {
+	if err := processor.Process(context.Background(), item, func(int, task.Stage) {}); err != nil {
 		t.Fatal(err)
 	}
 	if generator.request.Prompt != input.Prompt || generator.request.Model != config.Model || generator.request.AspectRatio != input.AspectRatio || generator.request.SourceImageURL != input.SourceImageURL {

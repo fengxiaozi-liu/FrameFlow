@@ -6,6 +6,7 @@ export default defineConfig({
   server: {
     proxy: {
       "/api": { target: proxyTarget, ws: true },
+      "/ws": { target: proxyTarget, ws: true },
       "/health": proxyTarget,
       "/media": proxyTarget,
     },

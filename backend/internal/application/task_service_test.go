@@ -4,7 +4,6 @@ import (
 	"context"
 	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/task"
 	"github.com/fengxiaozi-liu/FrameFlow/internal/infrastructure/queue"
-	"github.com/fengxiaozi-liu/FrameFlow/internal/transport/response"
 	"github.com/gin-gonic/gin"
 	"net/http/httptest"
 	"strings"
@@ -24,10 +23,11 @@ func TestCancelledSubmissionDoesNotLeaveUnscheduledQueuedTask(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
 	defer cancel()
 	router := gin.New()
-	router.Use(response.Middleware())
 	router.POST("/tasks", service.Create)
 	out := httptest.NewRecorder()
-	router.ServeHTTP(out, httptest.NewRequest("POST", "/tasks", strings.NewReader(`{"kind":"video","prompt":"test"}`)).WithContext(ctx))
+	req := httptest.NewRequest("POST", "/tasks", strings.NewReader(`{"kind":"video","prompt":"test"}`)).WithContext(ctx)
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(out, req)
 	if out.Code != 504 {
 		t.Fatal(out.Code, out.Body.String())
 	}

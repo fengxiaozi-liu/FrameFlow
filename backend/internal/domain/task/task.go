@@ -24,6 +24,21 @@ const (
 	KindVideo Kind = "video"
 )
 
+type Stage string
+
+const (
+	StageQueued          Stage = "queued"
+	StageProcessing      Stage = "processing"
+	StagePreparing       Stage = "preparing"
+	StageGeneratingStory Stage = "generating_story"
+	StageGeneratingImage Stage = "generating_image"
+	StageRenderingVideo  Stage = "rendering_video"
+	StageComposing       Stage = "composing"
+	StageCompleted       Stage = "completed"
+	StageFailed          Stage = "failed"
+	StageCancelled       Stage = "cancelled"
+)
+
 func ParseKind(value string) (Kind, error) {
 	switch Kind(value) {
 	case KindStory, KindImage, KindVideo:
@@ -47,12 +62,11 @@ func (i Input) Validate() error {
 }
 
 type Task struct {
-	SessionID    string    `json:"session_id,omitempty"`
 	ID           string    `json:"id"`
 	Kind         Kind      `json:"kind"`
 	Status       Status    `json:"status"`
 	Progress     int       `json:"progress"`
-	Stage        string    `json:"stage"`
+	Stage        Stage     `json:"stage"`
 	Error        string    `json:"error,omitempty"`
 	ProviderCode string    `json:"provider_code,omitempty"`
 	Input        Input     `json:"input"`
@@ -63,16 +77,24 @@ type Task struct {
 }
 
 func New(id string, kind Kind, input Input, now time.Time) Task {
-	return Task{ID: id, Kind: kind, Input: input, Status: StatusQueued, Stage: "queued", CreatedAt: now, UpdatedAt: now}
+	return Task{
+		ID:        id,
+		Kind:      kind,
+		Input:     input,
+		Status:    StatusQueued,
+		Stage:     StageQueued,
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
 }
 
 func (t *Task) Start(now time.Time) {
 	t.Status = StatusRunning
-	t.Stage = "processing"
+	t.Stage = StageProcessing
 	t.UpdatedAt = now
 }
 
-func (t *Task) Advance(progress int, stage string, now time.Time) {
+func (t *Task) Advance(progress int, stage Stage, now time.Time) {
 	if progress < 0 {
 		progress = 0
 	}
@@ -87,14 +109,14 @@ func (t *Task) Advance(progress int, stage string, now time.Time) {
 func (t *Task) Succeed(now time.Time) {
 	t.Status = StatusSucceeded
 	t.Progress = 100
-	t.Stage = "completed"
+	t.Stage = StageCompleted
 	t.UpdatedAt = now
 }
 
 func (t *Task) Fail(message string, now time.Time) {
 	t.Status = StatusFailed
 	t.Error = message
-	t.Stage = "failed"
+	t.Stage = StageFailed
 	t.UpdatedAt = now
 }
 
@@ -103,7 +125,7 @@ func (t *Task) Cancel(now time.Time) error {
 		return errors.New("completed task cannot be cancelled")
 	}
 	t.Status = StatusCancelled
-	t.Stage = "cancelled"
+	t.Stage = StageCancelled
 	t.UpdatedAt = now
 	return nil
 }
@@ -113,7 +135,7 @@ func (t *Task) Retry(now time.Time) error {
 		return errors.New("only failed or cancelled task can be retried")
 	}
 	t.Status = StatusQueued
-	t.Stage = "queued"
+	t.Stage = StageQueued
 	t.Progress = 0
 	t.Error = ""
 	t.RetryCount++

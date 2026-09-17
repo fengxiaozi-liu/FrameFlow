@@ -3,8 +3,6 @@ package application
 import (
 	"errors"
 	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/provider"
-	"github.com/fengxiaozi-liu/FrameFlow/internal/transport/request"
-	"github.com/fengxiaozi-liu/FrameFlow/internal/transport/response"
 	"github.com/gin-gonic/gin"
 	"net/http"
 	"time"
@@ -21,7 +19,7 @@ func (s ProviderService) Save(g *gin.Context) {
 		provider.Config
 		APIKey string `json:"api_key"`
 	}
-	if !request.BindJSON(g, &input) {
+	if err := g.Bind(&input); err != nil {
 		return
 	}
 	c := input.Config
@@ -31,13 +29,13 @@ func (s ProviderService) Save(g *gin.Context) {
 		status = 200
 	}
 	if err := c.Validate(); err != nil {
-		response.Set(g, 0, nil, Invalid("invalid_provider", err))
+		writeError(g, Invalid("invalid_provider", err))
 		return
 	}
 	if s.Vault != nil {
 		if input.APIKey != "" {
 			if err := s.Vault.Put(ctx, c.Code, input.APIKey); err != nil {
-				response.Set(g, 0, nil, err)
+				writeError(g, err)
 				return
 			}
 			c.CredentialSet = true
@@ -45,21 +43,34 @@ func (s ProviderService) Save(g *gin.Context) {
 			var err error
 			c.CredentialSet, err = s.Vault.Has(ctx, c.Code)
 			if err != nil {
-				response.Set(g, 0, nil, err)
+				writeError(g, err)
 				return
 			}
 		}
 	}
-	err := s.Repo.Save(ctx, c)
-	response.Set(g, status, c, err)
+	if err := s.Repo.Save(ctx, c); err != nil {
+		writeError(g, err)
+		return
+	}
+	g.JSON(status, c)
 }
 func (s ProviderService) List(g *gin.Context) {
 	items, err := s.Repo.List(g.Request.Context(), provider.Capability(g.Query("capability")))
-	response.Set(g, 200, gin.H{"providers": items}, err)
+	if err != nil {
+		writeError(g, err)
+		return
+	}
+	g.JSON(http.StatusOK, gin.H{
+		"providers": items,
+	})
 }
 func (s ProviderService) Get(g *gin.Context) {
 	item, err := s.Repo.Get(g.Request.Context(), g.Param("id"))
-	response.Set(g, 200, item, err)
+	if err != nil {
+		writeError(g, err)
+		return
+	}
+	g.JSON(http.StatusOK, item)
 }
 func (s ProviderService) Delete(g *gin.Context) {
 	ctx := g.Request.Context()
@@ -68,7 +79,11 @@ func (s ProviderService) Delete(g *gin.Context) {
 	if err == nil && s.Vault != nil {
 		err = s.Vault.Delete(ctx, id)
 	}
-	response.Set(g, 204, nil, err)
+	if err != nil {
+		writeError(g, err)
+		return
+	}
+	g.Status(http.StatusNoContent)
 }
 func (s ProviderService) SetEnabled(g *gin.Context) {
 	ctx := g.Request.Context()
@@ -76,13 +91,13 @@ func (s ProviderService) SetEnabled(g *gin.Context) {
 	var input struct {
 		Enabled bool `json:"enabled"`
 	}
-	if !request.BindJSON(g, &input) {
+	if err := g.Bind(&input); err != nil {
 		return
 	}
 	enabled := input.Enabled
 	c, err := s.Repo.Get(ctx, code)
 	if err != nil {
-		response.Set(g, 200, c, err)
+		writeError(g, err)
 		return
 	}
 	if enabled {
@@ -90,35 +105,52 @@ func (s ProviderService) SetEnabled(g *gin.Context) {
 	} else {
 		c.Disable()
 	}
-	response.Set(g, 200, c, s.Repo.Save(ctx, c))
-	return
+	if err := s.Repo.Save(ctx, c); err != nil {
+		writeError(g, err)
+		return
+	}
+	g.JSON(http.StatusOK, c)
 }
 func (s ProviderService) TestConnection(g *gin.Context) {
 	ctx := g.Request.Context()
 	code := g.Param("id")
 	c, err := s.Repo.Get(ctx, code)
 	if err != nil {
-		response.Set(g, 200, c, err)
+		writeError(g, err)
 		return
 	}
 	if c.BaseURL == "" || c.Model == "" {
 		err := errors.New("base_url and model are required")
 		c.MarkError(err)
 		_ = s.Repo.Save(ctx, c)
-		response.Set(g, 200, c, &Error{Kind: "provider", Code: "provider_unavailable", Cause: err})
+		writeError(g, &Error{
+			Kind:  "provider",
+			Code:  "provider_unavailable",
+			Cause: err,
+		})
 		return
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodHead, c.BaseURL, nil)
 	if err != nil {
-		response.Set(g, 200, c, &Error{Kind: "provider", Code: "provider_unavailable", Cause: err})
+		writeError(g, &Error{
+			Kind:  "provider",
+			Code:  "provider_unavailable",
+			Cause: err,
+		})
 		return
 	}
-	client := http.Client{Timeout: 5 * time.Second}
+	client := http.Client{
+		Timeout: 5 * time.Second,
+	}
 	res, err := client.Do(req)
 	if err != nil {
 		c.MarkError(err)
 		_ = s.Repo.Save(ctx, c)
-		response.Set(g, 200, c, &Error{Kind: "provider", Code: "provider_unavailable", Cause: err})
+		writeError(g, &Error{
+			Kind:  "provider",
+			Code:  "provider_unavailable",
+			Cause: err,
+		})
 		return
 	}
 	_ = res.Body.Close()
@@ -126,10 +158,17 @@ func (s ProviderService) TestConnection(g *gin.Context) {
 		err = errors.New("provider endpoint unavailable")
 		c.MarkError(err)
 		_ = s.Repo.Save(ctx, c)
-		response.Set(g, 200, c, &Error{Kind: "provider", Code: "provider_unavailable", Cause: err})
+		writeError(g, &Error{
+			Kind:  "provider",
+			Code:  "provider_unavailable",
+			Cause: err,
+		})
 		return
 	}
 	c.MarkHealthy()
-	response.Set(g, 200, c, s.Repo.Save(ctx, c))
-	return
+	if err := s.Repo.Save(ctx, c); err != nil {
+		writeError(g, err)
+		return
+	}
+	g.JSON(http.StatusOK, c)
 }

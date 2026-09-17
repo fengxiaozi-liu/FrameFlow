@@ -4,7 +4,6 @@ import (
 	"context"
 	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/fault"
 	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/provider"
-	"github.com/fengxiaozi-liu/FrameFlow/internal/transport/response"
 	"github.com/gin-gonic/gin"
 	"net/http/httptest"
 	"strings"
@@ -45,7 +44,6 @@ func TestProviderService(t *testing.T) {
 	r := &providerRepo{m: map[string]provider.Config{}}
 	s := ProviderService{Repo: r}
 	router := gin.New()
-	router.Use(response.Middleware())
 	router.POST("/providers", s.Save)
 	router.GET("/providers", s.List)
 	router.POST("/providers/:id/enabled", s.SetEnabled)
@@ -58,7 +56,9 @@ func TestProviderService(t *testing.T) {
 		{"POST", "/providers/video-a/enabled", `{"enabled":true}`, 200},
 	} {
 		out := httptest.NewRecorder()
-		router.ServeHTTP(out, httptest.NewRequest(tc.method, tc.path, strings.NewReader(tc.body)))
+		req := httptest.NewRequest(tc.method, tc.path, strings.NewReader(tc.body))
+		req.Header.Set("Content-Type", "application/json")
+		router.ServeHTTP(out, req)
 		if out.Code != tc.status {
 			t.Fatal(out.Code, out.Body.String())
 		}
