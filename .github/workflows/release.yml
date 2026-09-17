@@ -66,9 +66,6 @@ jobs:
           package_dir="release/${{ matrix.label }}"
           mkdir -p "$package_dir"
           ldflags="-s -w -X main.openOnStart=1"
-          if [ "${{ matrix.goos }}" = "windows" ]; then
-            ldflags="-H=windowsgui $ldflags"
-          fi
           (cd backend && go build -trimpath -ldflags "$ldflags" -o "../$package_dir/${{ matrix.binary }}" ./cmd/server)
           if [ "${{ matrix.goos }}" = "windows" ]; then
             cp "$package_dir/${{ matrix.binary }}" release/FrameFlow.exe

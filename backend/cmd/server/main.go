@@ -28,6 +28,8 @@ func main() {
 	defer cancel()
 	baseDir := "."
 	if openOnStart == "1" {
+		minimizeConsole()
+		gin.SetMode(gin.ReleaseMode)
 		if executable, pathErr := os.Executable(); pathErr == nil {
 			baseDir = filepath.Dir(executable)
 		}
@@ -92,7 +94,13 @@ func main() {
 		default:
 		}
 	}
-	router := gin.Default()
+	var router *gin.Engine
+	if openOnStart == "1" {
+		router = gin.New()
+		router.Use(gin.RecoveryWithWriter(log.Writer()))
+	} else {
+		router = gin.Default()
+	}
 	rateLimit, _ := strconv.Atoi(os.Getenv("FRAMEFLOW_RATE_LIMIT"))
 	httpapi.UseMiddleware(router, os.Getenv("FRAMEFLOW_API_TOKEN"), rateLimit)
 	httpapi.RegisterRoutes(router, tasks, projects, providers, materials, application.SystemService{Tasks: tasks, Projects: projects, Providers: providers, Materials: materials, Shutdown: shutdown, QueueDepth: worker.Depth})
