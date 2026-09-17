@@ -26,7 +26,7 @@ func (s ResultStore) Save(ctx context.Context, taskID string, kind task.Kind, re
 		return "", errors.New("unexpected model result host")
 	}
 	for _, c := range taskID {
-		if !(c >= '0' && c <= '9' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c == '-' || c == '_') {
+		if !(c >= '0' && c <= '9' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c == '-' || c == '_' || c == '.') {
 			return "", errors.New("invalid task id")
 		}
 	}

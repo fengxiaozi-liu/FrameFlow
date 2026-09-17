@@ -2,9 +2,13 @@ package processor
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
+	"fmt"
 	"github.com/fengxiaozi-liu/FrameFlow/internal/interfaces/websocket"
 	"log"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -24,6 +28,7 @@ type Processor struct {
 	ProviderConnections provider.ConnectionRepository
 	ModelClient         provider.ModelClient
 	SaveResult          func(context.Context, string, task.Kind, string) (string, error)
+	MediaDir            string
 	Worker              Worker
 	Task                task.Repository
 	Connections         *websocket.Hub
@@ -108,7 +113,11 @@ func (p *Processor) processModel(ctx context.Context, item *task.Task, progress 
 		pollCtx, endPoll := context.WithTimeout(ctx, 20*time.Minute)
 		defer endPoll()
 		if item.RemoteTaskID == "" {
-			result, err := p.ModelClient.GenerateVideo(ctx, connection, model, provider.VideoRequest{Prompt: item.Input.Prompt, Model: model.RemoteID, SourceImageURL: item.Input.SourceImageURL, AspectRatio: item.Input.AspectRatio}, options)
+			source, err := p.videoSource(item.Input.SourceImageURL)
+			if err != nil {
+				return err
+			}
+			result, err := p.ModelClient.GenerateVideo(ctx, connection, model, provider.VideoRequest{Prompt: item.Input.Prompt, Model: model.RemoteID, SourceImageURL: source, AspectRatio: item.Input.AspectRatio}, options)
 			if err != nil {
 				return err
 			}
@@ -157,6 +166,40 @@ func (p *Processor) processModel(ctx context.Context, item *task.Task, progress 
 		return p.Task.Save(ctx, *item)
 	}
 	return nil
+}
+
+func (p *Processor) videoSource(source string) (string, error) {
+	if !strings.HasPrefix(source, "/media/") {
+		return source, nil
+	}
+	name := strings.TrimPrefix(source, "/media/")
+	if p.MediaDir == "" || name == "" || filepath.Base(name) != name || strings.ContainsAny(name, `/\`) {
+		return "", errors.New("invalid local source image")
+	}
+	mime := ""
+	switch strings.ToLower(filepath.Ext(name)) {
+	case ".png":
+		mime = "image/png"
+	case ".jpg", ".jpeg":
+		mime = "image/jpeg"
+	case ".webp":
+		mime = "image/webp"
+	default:
+		return "", errors.New("source image must be PNG, JPEG or WebP")
+	}
+	path := filepath.Join(p.MediaDir, name)
+	info, err := os.Stat(path)
+	if err != nil {
+		return "", fmt.Errorf("read source image: %w", err)
+	}
+	if info.Size() > 10<<20 || info.Size() == 0 {
+		return "", errors.New("source image must be between 1 byte and 10 MB")
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", fmt.Errorf("read source image: %w", err)
+	}
+	return "data:" + mime + ";base64," + base64.StdEncoding.EncodeToString(data), nil
 }
 
 func capability(kind task.Kind) provider.Capability {

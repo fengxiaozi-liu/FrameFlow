@@ -43,11 +43,26 @@ func sessionIDs(h *Hub) []string {
 	return ids
 }
 
+func waitForSessionIDs(t *testing.T, h *Hub, count int) []string {
+	t.Helper()
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		ids := sessionIDs(h)
+		if len(ids) == count {
+			return ids
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("expected %d registered sessions, got %v", count, ids)
+		}
+		time.Sleep(time.Millisecond)
+	}
+}
+
 func TestSessionSendAndBroadcast(t *testing.T) {
 	h, dial := testHub(t, 5*time.Second)
 	first, second := dial(), dial()
-	ids := sessionIDs(h)
-	if len(ids) != 2 || ids[0] == ids[1] {
+	ids := waitForSessionIDs(t, h, 2)
+	if ids[0] == ids[1] {
 		t.Fatalf("expected distinct server-generated IDs: %v", ids)
 	}
 	if err := h.Send(context.Background(), ids[0], map[string]string{"message": "private"}); err != nil {
@@ -100,6 +115,7 @@ func TestSessionSendAndBroadcast(t *testing.T) {
 func TestHeartbeatExpiresAndKeepsLiveSession(t *testing.T) {
 	h, dial := testHub(t, 120*time.Millisecond)
 	stale, live := dial(), dial()
+	waitForSessionIDs(t, h, 2)
 	for i := 0; i < 5; i++ {
 		if err := live.WriteMessage(websocket.TextMessage, []byte("ping")); err != nil {
 			t.Fatal(err)

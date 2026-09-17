@@ -32,11 +32,35 @@ func baseURL(connection provider.Connection) (string, error) {
 	if err := connection.Validate(); err != nil {
 		return "", err
 	}
-	return strings.TrimRight(connection.BaseURL, "/"), nil
+	return strings.TrimSpace(connection.BaseURL), nil
+}
+
+// endpoint keeps a complete configured URL intact when it already targets the
+// operation; other Bailian operations use the same workspace host.
+func endpoint(connection provider.Connection, path string) (string, error) {
+	base, err := baseURL(connection)
+	if err != nil {
+		return "", err
+	}
+	u, err := url.Parse(base)
+	if err != nil {
+		return "", err
+	}
+	operation, err := url.Parse(path)
+	if err != nil {
+		return "", err
+	}
+	if u.Path == operation.Path && operation.RawQuery == "" {
+		return base, nil
+	}
+	u.Path = operation.Path
+	u.RawPath = ""
+	u.RawQuery = operation.RawQuery
+	return u.String(), nil
 }
 
 func (c Client) request(ctx context.Context, connection provider.Connection, key, method, path string, body any, out any, async bool) error {
-	base, err := baseURL(connection)
+	target, err := endpoint(connection, path)
 	if err != nil {
 		return err
 	}
@@ -48,7 +72,7 @@ func (c Client) request(ctx context.Context, connection provider.Connection, key
 		}
 		payload = bytes.NewReader(data)
 	}
-	req, err := http.NewRequestWithContext(ctx, method, base+path, payload)
+	req, err := http.NewRequestWithContext(ctx, method, target, payload)
 	if err != nil {
 		return err
 	}
@@ -103,8 +127,13 @@ func (c Client) Discover(ctx context.Context, connection provider.Connection, ke
 				var capabilities []provider.Capability
 				if json.Unmarshal(m.Capabilities, &capabilities) == nil {
 					for _, capability := range capabilities {
-						if capability == provider.Story || capability == provider.Image || capability == provider.Video {
-							entry.Capabilities = append(entry.Capabilities, capability)
+						switch {
+						case (capability == "TG" || capability == provider.Story) && chatProtocol(m.Model):
+							entry.Capabilities = append(entry.Capabilities, provider.Story)
+						case (capability == "IG" || capability == provider.Image) && imageProtocol(m.Model):
+							entry.Capabilities = append(entry.Capabilities, provider.Image)
+						case (capability == "VG" || capability == provider.Video) && strings.HasPrefix(m.Model, "wan2.7-i2v"):
+							entry.Capabilities = append(entry.Capabilities, provider.Video)
 						}
 					}
 				}
@@ -146,6 +175,10 @@ func (c Client) GenerateText(ctx context.Context, connection provider.Connection
 func chatProtocol(id string) bool {
 	return strings.HasPrefix(id, "qwen-") && !strings.HasPrefix(id, "qwen-image") && !strings.Contains(id, "audio") && !strings.Contains(id, "vl") && !strings.Contains(id, "omni") ||
 		strings.HasPrefix(id, "deepseek-") || strings.HasPrefix(id, "kimi-") || strings.HasPrefix(id, "glm-")
+}
+
+func imageProtocol(id string) bool {
+	return strings.HasPrefix(id, "qwen-image-2.0") || strings.HasPrefix(id, "qwen-image-max") || strings.HasPrefix(id, "qwen-image-plus") || id == "qwen-image"
 }
 
 func (c Client) GenerateImage(ctx context.Context, connection provider.Connection, model provider.Model, input provider.ImageRequest, options provider.RequestOptions) (provider.ImageResult, error) {
@@ -196,8 +229,8 @@ func (c Client) GenerateVideo(ctx context.Context, connection provider.Connectio
 	if !model.Supports(provider.Video) || !strings.HasPrefix(model.RemoteID, "wan2.7-i2v") {
 		return provider.VideoResult{}, provider.ErrUnsupported
 	}
-	if !strings.HasPrefix(input.SourceImageURL, "https://") && !strings.HasPrefix(input.SourceImageURL, "http://") {
-		return provider.VideoResult{}, errors.New("source image must be a publicly accessible URL")
+	if !strings.HasPrefix(input.SourceImageURL, "https://") && !strings.HasPrefix(input.SourceImageURL, "http://") && !strings.HasPrefix(input.SourceImageURL, "data:image/") {
+		return provider.VideoResult{}, errors.New("source image must be a public URL or an image data URI")
 	}
 	ctx, cancel := provider.WithTimeout(ctx, options)
 	defer cancel()

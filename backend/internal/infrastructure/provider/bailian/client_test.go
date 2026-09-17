@@ -29,7 +29,7 @@ func TestDiscoveryAndClientProtocolSelection(t *testing.T) {
 		var body string
 		switch req.URL.Path {
 		case "/api/v1/models":
-			body = `{"output":{"total":2,"models":[{"model":"qwen-plus","name":"Qwen Plus","capabilities":["story","embedding"]},{"model":"other","capabilities":{"unknown":true}}]}}`
+			body = `{"output":{"total":5,"models":[{"model":"qwen-plus","name":"Qwen Plus","capabilities":["Reasoning","TG"]},{"model":"qwen-image","capabilities":["IG"]},{"model":"wan2.7-i2v","capabilities":["VG"]},{"model":"wan2.7-t2v","capabilities":["VG"]},{"model":"other","capabilities":{"unknown":true}}]}}`
 		case "/compatible-mode/v1/chat/completions":
 			body = `{"choices":[{"message":{"content":"draft"}}]}`
 		case "/api/v1/services/aigc/multimodal-generation/generation":
@@ -66,7 +66,7 @@ func TestDiscoveryAndClientProtocolSelection(t *testing.T) {
 	})}}
 	connection := provider.Connection{ID: "custom", Name: "Custom", Vendor: "bailian", BaseURL: "https://custom.example.com/"}
 	models, err := client.Discover(context.Background(), connection, "secret")
-	if err != nil || len(models) != 2 || len(models[0].Capabilities) != 1 || models[0].Capabilities[0] != provider.Story || len(models[1].Capabilities) != 0 {
+	if err != nil || len(models) != 5 || len(models[0].Capabilities) != 1 || models[0].Capabilities[0] != provider.Story || len(models[1].Capabilities) != 1 || models[1].Capabilities[0] != provider.Image || len(models[2].Capabilities) != 1 || models[2].Capabilities[0] != provider.Video || len(models[3].Capabilities) != 0 || len(models[4].Capabilities) != 0 {
 		t.Fatal(models, err)
 	}
 	model := func(id string, cap provider.Capability) provider.Model {
@@ -100,11 +100,30 @@ func TestDiscoveryAndClientProtocolSelection(t *testing.T) {
 	}
 }
 
-func TestConnectionUsesExplicitHTTPSOrigin(t *testing.T) {
-	for _, origin := range []string{"", "http://example.com", "https://user:pass@example.com", "https://example.com/api", "https://example.com/?token=key"} {
+func TestConnectionUsesHTTPSBaseURL(t *testing.T) {
+	for _, origin := range []string{"", "http://example.com", "https://user:pass@example.com", "https://example.com/?token=key"} {
 		connection := provider.Connection{ID: "test", Name: "Test", Vendor: "bailian", BaseURL: origin}
 		if _, err := baseURL(connection); err == nil {
 			t.Fatalf("accepted invalid origin %q", origin)
 		}
+	}
+	connection := provider.Connection{ID: "test", Name: "Test", Vendor: "bailian", BaseURL: "https://example.com/compatible-mode/v1/chat/completions"}
+	if got, err := baseURL(connection); err != nil || got != connection.BaseURL {
+		t.Fatalf("changed complete endpoint: %q %v", got, err)
+	}
+	client := Client{HTTP: &http.Client{Transport: roundTrip(func(req *http.Request) (*http.Response, error) {
+		if req.URL.Path != "/api/v1/models" || req.URL.Query().Get("page_no") != "1" {
+			t.Fatalf("wrong discovery endpoint: %s", req.URL)
+		}
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"output":{"total":0,"models":[]}}`)), Header: make(http.Header)}, nil
+	})}}
+	if _, err := client.Discover(context.Background(), connection, "test-key"); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := endpoint(connection, "/compatible-mode/v1/chat/completions"); err != nil || got != connection.BaseURL {
+		t.Fatalf("complete chat endpoint changed: %q %v", got, err)
+	}
+	if got, err := endpoint(connection, "/api/v1/services/aigc/multimodal-generation/generation"); err != nil || got != "https://example.com/api/v1/services/aigc/multimodal-generation/generation" {
+		t.Fatalf("wrong image endpoint: %q %v", got, err)
 	}
 }

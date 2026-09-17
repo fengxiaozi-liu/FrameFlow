@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -55,6 +56,11 @@ func (s CatalogService) SaveConnection(g *gin.Context) {
 	}
 	if err := c.Validate(); err != nil {
 		writeError(g, Invalid("invalid_connection", err))
+		return
+	}
+	u, _ := url.Parse(strings.TrimSpace(c.BaseURL))
+	if u.Path == "" || u.Path == "/" {
+		writeError(g, Invalid("invalid_connection", errors.New("base_url must be a complete API endpoint, not just a host")))
 		return
 	}
 	if s.Vault != nil {
@@ -249,6 +255,7 @@ func (s CatalogService) SyncModels(g *gin.Context) {
 		if m.Source == "manual" {
 			continue
 		}
+		wasSupported := m.Supported
 		m.Name = entry.Name
 		if !exists || len(m.Capabilities) == 0 {
 			m.Capabilities, err = validCapabilities(entry.Capabilities)
@@ -258,7 +265,7 @@ func (s CatalogService) SyncModels(g *gin.Context) {
 			}
 		}
 		m.Supported = len(m.Capabilities) > 0
-		if !exists {
+		if !exists || !wasSupported {
 			m.Enabled = m.Supported
 		}
 		m.LastSeen = now

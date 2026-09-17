@@ -38,6 +38,7 @@ func RegisterRoutes(
 	taskRoutes.POST("/:id/cancel", tasks.Cancel)
 	taskRoutes.POST("/:id/retry", tasks.Retry)
 	taskRoutes.GET("/:id/result", tasks.Result)
+	taskRoutes.GET("/:id/download", tasks.Download)
 
 	projectRoutes := api.Group("/projects")
 	projectRoutes.GET("", projects.List)

@@ -13,6 +13,32 @@ const visible = computed(() =>
     ? store.items
     : store.items.filter((v) => v.status === filter.value),
 );
+const kindLabel: Record<Task["kind"], string> = { story: "文本", image: "图片", video: "视频" };
+function savedMedia(task: Task) {
+  if (task.kind !== "image" && task.kind !== "video") return false;
+  const ext = task.kind === "image" ? "png" : "mp4";
+  return task.result_url === `/media/generated-${task.id}.${ext}`;
+}
+function previewURL(task: Task) {
+  const url = task.result_url || "";
+  if (url.startsWith("/media/")) return api.mediaUrl(url);
+  if (url.startsWith("https://")) return url;
+  return "";
+}
+function sourcePoster(task: Task) {
+  const url = task.input?.source_image_url || "";
+  if (url.startsWith("/media/")) return api.mediaUrl(url);
+  return url.startsWith("https://") ? url : undefined;
+}
+async function download(task: Task) {
+  if (task.kind !== "image" && task.kind !== "video") return;
+  message.value = "";
+  try {
+    await api.downloadTask(task.id, task.kind);
+  } catch (error) {
+    message.value = (error as Error).message;
+  }
+}
 onMounted(async () => {
   await store.load();
 });
@@ -36,9 +62,7 @@ async function retry(item: Task) {
   <main class="page">
     <div class="page-intro split">
       <div>
-        <span class="eyebrow">后台任务</span>
         <h1>任务中心</h1>
-        <p>所有生成操作异步执行，可离开页面，完成后再查看结果。</p>
       </div>
       <button @click="store.load">刷新状态</button>
     </div>
@@ -64,13 +88,10 @@ async function retry(item: Task) {
     </div>
     <div class="task-list">
       <article v-for="task in visible" :key="task.id" class="card task-detail">
-        <div class="split">
+        <div class="split task-heading">
           <div>
-            <h2>{{ task.kind }} · {{ task.id.slice(-9) }}</h2>
-            <small
-              >{{ task.id }} ·
-              {{ new Date(task.created_at).toLocaleString() }}</small
-            >
+            <h2>{{ kindLabel[task.kind] }}生成 <span class="task-short-id">#{{ task.id.slice(-9) }}</span></h2>
+            <small>{{ new Date(task.created_at).toLocaleString() }} · {{ task.id }}</small>
           </div>
           <StatusBadge :status="task.status" />
         </div>
@@ -82,7 +103,13 @@ async function retry(item: Task) {
         <ProgressBar :value="task.progress" />
         <p v-if="task.error" class="error-text">{{ task.error }}</p>
         <p v-if="task.result_text" class="task-result-text">{{ task.result_text }}</p>
-        <a v-if="task.status === 'succeeded' && task.result_url" :href="task.result_url" target="_blank" rel="noopener noreferrer">查看生成结果</a>
+        <div v-if="task.status === 'succeeded' && task.kind === 'image' && previewURL(task)" class="task-preview image-preview">
+          <img :src="previewURL(task)" :alt="`${kindLabel[task.kind]}生成结果`" loading="lazy" />
+        </div>
+        <div v-if="task.status === 'succeeded' && task.kind === 'video' && previewURL(task)" class="task-preview video-preview">
+          <video :src="previewURL(task)" :poster="sourcePoster(task)" controls preload="metadata" playsinline aria-label="生成的视频" />
+        </div>
+        <p v-if="task.status === 'succeeded' && task.kind !== 'story' && !previewURL(task)" class="task-unavailable">此任务没有保存可预览的媒体文件。</p>
         <div class="actions">
           <button
             v-if="task.status === 'queued' || task.status === 'running'"
@@ -94,12 +121,12 @@ async function retry(item: Task) {
             @click="retry(task)"
           >
             重新执行</button
-          ><a
-            v-if="task.status === 'succeeded'"
-            class="button primary"
-            :href="api.resultUrl(task.id)"
-            >下载结果</a
-          >
+          ><button
+            v-if="task.status === 'succeeded' && savedMedia(task)"
+            class="primary"
+            @click="download(task)"
+          >下载{{ kindLabel[task.kind] }}</button
+          ><a v-else-if="task.status === 'succeeded' && previewURL(task)" :href="previewURL(task)" target="_blank" rel="noopener noreferrer">查看原始文件</a>
         </div>
       </article>
       <div v-if="!visible.length" class="empty">当前筛选下没有任务。</div>

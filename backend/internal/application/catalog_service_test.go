@@ -52,7 +52,8 @@ func TestCatalogSyncPreservesManualAndRejectsUnknown(t *testing.T) {
 		}
 		return out.Body.Bytes()
 	}
-	request("POST", "/connections", `{"id":"beijing","name":"Beijing","vendor":"bailian","base_url":"https://dashscope.aliyuncs.com","api_key":"secret"}`, 201)
+	request("POST", "/connections", `{"id":"invalid","name":"Invalid","vendor":"bailian","base_url":"https://dashscope.aliyuncs.com"}`, 400)
+	request("POST", "/connections", `{"id":"beijing","name":"Beijing","vendor":"bailian","base_url":"https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions","api_key":"secret"}`, 201)
 	request("POST", "/connections/beijing/models", `{"model_id":"qwen-plus","name":"My Qwen","capabilities":["story"]}`, 201)
 	request("POST", "/connections/beijing/models/sync", `{}`, 200)
 	manual, err := store.GetModel(ctx, "beijing:qwen-plus")
@@ -62,6 +63,17 @@ func TestCatalogSyncPreservesManualAndRejectsUnknown(t *testing.T) {
 	unknown, err := store.GetModel(ctx, "beijing:unknown-model")
 	if err != nil || unknown.Supported || unknown.Enabled {
 		t.Fatalf("unknown model enabled: %+v %v", unknown, err)
+	}
+	s.Discovery = testDiscovery{models: []provider.DiscoveredModel{{ID: "qwen-plus", Name: "Cloud name", Capabilities: []provider.Capability{provider.Story}}, {ID: "unknown-model", Name: "Unknown"}, {ID: "qwen-image", Name: "Qwen Image", Capabilities: []provider.Capability{provider.Image}}}}
+	router.POST("/connections/:id/models/sync-updated", s.SyncModels)
+	stale := provider.Model{ID: "beijing:qwen-image", ConnectionID: "beijing", RemoteID: "qwen-image", Name: "Qwen Image", Source: "discovered"}
+	if err := store.SaveModel(ctx, stale); err != nil {
+		t.Fatal(err)
+	}
+	request("POST", "/connections/beijing/models/sync-updated", `{}`, 200)
+	refreshed, err := store.GetModel(ctx, stale.ID)
+	if err != nil || !refreshed.Supports(provider.Image) {
+		t.Fatalf("newly recognized model not enabled: %+v %v", refreshed, err)
 	}
 	request("PATCH", "/connections/beijing/models/beijing:unknown-model", `{"enabled":true}`, 400)
 	request("PATCH", "/connections/beijing/models/beijing:unknown-model", `{"capabilities":["image"],"enabled":true}`, 200)
@@ -89,7 +101,7 @@ func TestCatalogSyncPreservesManualAndRejectsUnknown(t *testing.T) {
 	router.DELETE("/protected/:id/models/:model", s.DeleteModel)
 	request("DELETE", "/protected/beijing/models/beijing:qwen-plus", "", 409)
 	var saved provider.Connection
-	if err := json.Unmarshal(request("POST", "/connections", `{"id":"other","name":"Other","vendor":"bailian","base_url":"https://dashscope.aliyuncs.com"}`, 201), &saved); err != nil || saved.CredentialSet {
+	if err := json.Unmarshal(request("POST", "/connections", `{"id":"other","name":"Other","vendor":"bailian","base_url":"https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions"}`, 201), &saved); err != nil || saved.CredentialSet {
 		t.Fatal(saved, err)
 	}
 }

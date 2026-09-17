@@ -62,9 +62,9 @@ func (c Connection) Validate() error {
 		return errors.New("unsupported vendor")
 	}
 	if c.Vendor == "bailian" {
-		u, err := url.Parse(c.BaseURL)
-		if err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || (u.Path != "" && u.Path != "/") {
-			return errors.New("bailian base_url must be an HTTPS origin")
+		u, err := url.Parse(strings.TrimSpace(c.BaseURL))
+		if err != nil || u.Scheme != "https" || u.Hostname() == "" || u.Opaque != "" || u.User != nil || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" {
+			return errors.New("bailian base_url must be an HTTPS URL without credentials, query or fragment")
 		}
 	}
 	return nil

@@ -27,11 +27,11 @@ func TestResultStorePersistsRemoteAssetAndRejectsUntrustedHosts(t *testing.T) {
 	if _, err := store.Save(context.Background(), "task-1", task.KindImage, "https://127.0.0.1/image.png"); err == nil {
 		t.Fatal("local result URL was accepted")
 	}
-	path, err := store.Save(context.Background(), "task-1", task.KindImage, "https://results.aliyuncs.com/image.png")
-	if err != nil || path != "/media/generated-task-1.png" {
+	path, err := store.Save(context.Background(), "20260914160358.943272300", task.KindImage, "https://results.aliyuncs.com/image.png")
+	if err != nil || path != "/media/generated-20260914160358.943272300.png" {
 		t.Fatal(path, err)
 	}
-	data, err := os.ReadFile(filepath.Join(dir, "generated-task-1.png"))
+	data, err := os.ReadFile(filepath.Join(dir, "generated-20260914160358.943272300.png"))
 	if err != nil || string(data) != "image" {
 		t.Fatal(string(data), err)
 	}

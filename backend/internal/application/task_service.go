@@ -8,12 +8,16 @@ import (
 	"github.com/fengxiaozi-liu/FrameFlow/internal/interfaces/websocket"
 	"github.com/gin-gonic/gin"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 )
 
 type TaskService struct {
 	Store       task.Repository
+	UploadDir   string
 	Connections *websocket.Hub
 	Enqueuer    interface {
 		Enqueue(context.Context, task.Task) error
@@ -215,6 +219,37 @@ func (s TaskService) Result(g *gin.Context) {
 	}
 	g.Header("Content-Disposition", `attachment; filename="frameflow-result-`+id+`.json"`)
 	g.JSON(http.StatusOK, item)
+}
+
+func (s TaskService) Download(g *gin.Context) {
+	item, err := s.Store.Get(g.Request.Context(), g.Param("id"))
+	if err != nil {
+		writeError(g, err)
+		return
+	}
+	if item.Status != task.StatusSucceeded {
+		writeError(g, Conflict("result_not_ready", errors.New("task result is not ready")))
+		return
+	}
+	ext := ".png"
+	if item.Kind == task.KindVideo {
+		ext = ".mp4"
+	} else if item.Kind != task.KindImage {
+		writeError(g, Invalid("result_not_media", errors.New("task has no media result")))
+		return
+	}
+	name := "generated-" + item.ID + ext
+	if strings.ContainsAny(item.ID, `/\`) || item.ResultURL != "/media/"+name || s.UploadDir == "" {
+		writeError(g, Conflict("result_file_missing", errors.New("task has no saved media file")))
+		return
+	}
+	file := filepath.Join(s.UploadDir, name)
+	if info, err := os.Stat(file); err != nil || !info.Mode().IsRegular() {
+		writeError(g, Conflict("result_file_missing", errors.New("saved media file is unavailable")))
+		return
+	}
+	g.Header("X-Content-Type-Options", "nosniff")
+	g.FileAttachment(file, "frameflow-"+item.ID+ext)
 }
 func (s TaskService) rejectSubmission(ctx context.Context, t task.Task, cause error) error {
 	cleanup, stop := context.WithTimeout(context.WithoutCancel(ctx), time.Second)

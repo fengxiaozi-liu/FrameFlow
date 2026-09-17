@@ -25,7 +25,7 @@ func InitRepo(ctx context.Context, path string) (*sqlite.TaskRepository, error) 
 func InitService(store *sqlite.TaskRepository, vault provider.CredentialVault, uploadDir string, connections *ws.Hub) (application.TaskService, application.ProjectService, application.ProviderService, application.MaterialService) {
 	providers := application.ProviderService{Repo: sqlite.NewProviderRepository(store), Vault: vault}
 	providers.Catalog = application.CatalogService{Connections: store, Models: store, Tasks: store, Vault: vault, Discovery: providerinfra.NewDiscovery()}
-	return application.TaskService{Store: store, Connections: connections, Providers: providers}, application.ProjectService{Repo: sqlite.NewProjectRepository(store)}, providers, application.MaterialService{Repo: sqlite.NewMaterialRepository(store), UploadDir: uploadDir}
+	return application.TaskService{Store: store, UploadDir: uploadDir, Connections: connections, Providers: providers}, application.ProjectService{Repo: sqlite.NewProjectRepository(store)}, providers, application.MaterialService{Repo: sqlite.NewMaterialRepository(store), UploadDir: uploadDir}
 }
 func InitProcessor(store *sqlite.TaskRepository, connections *ws.Hub) (*queue.Worker, *processor.Processor) {
 	worker := queue.NewConcurrentWorker(3)

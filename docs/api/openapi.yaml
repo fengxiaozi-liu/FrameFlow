@@ -36,6 +36,14 @@ paths:
     post: {parameters: [{$ref: '#/components/parameters/ID'}], responses: {'200': {description: Cancelled}}}
   /api/tasks/{id}/retry:
     post: {parameters: [{$ref: '#/components/parameters/ID'}], responses: {'202': {description: Retried}}}
+  /api/tasks/{id}/result:
+    get: {parameters: [{$ref: '#/components/parameters/ID'}], responses: {'200': {description: Completed task metadata as a JSON attachment}, '409': {description: Result not ready}}}
+  /api/tasks/{id}/download:
+    get:
+      parameters: [{$ref: '#/components/parameters/ID'}]
+      responses:
+        '200': {description: Saved PNG or MP4 attachment, content: {image/png: {schema: {type: string, format: binary}}, video/mp4: {schema: {type: string, format: binary}}}}
+        '409': {description: No saved media file or result not ready}
   /ws:
     get:
       parameters:
@@ -77,5 +85,5 @@ components:
     Offset: {name: offset, in: query, schema: {type: integer, minimum: 0, default: 0}}
   schemas:
     CreateProject: {type: object, required: [name], properties: {name: {type: string, minLength: 1}}}
-    ConnectionInput: {type: object, required: [id, name, vendor], properties: {id: {type: string}, name: {type: string}, vendor: {type: string, enum: [bailian]}, base_url: {type: string, format: uri, description: "Required HTTPS origin for Bailian"}, api_key: {type: string, writeOnly: true}}}
+    ConnectionInput: {type: object, required: [id, name, vendor, base_url], properties: {id: {type: string}, name: {type: string}, vendor: {type: string, enum: [bailian]}, base_url: {type: string, format: uri, description: "Complete HTTPS Bailian API endpoint (for example, /compatible-mode/v1/chat/completions); other supported operations use the same workspace host with their documented endpoints"}, api_key: {type: string, writeOnly: true}}}
     ManualModel: {type: object, required: [model_id], properties: {model_id: {type: string}, name: {type: string}, capabilities: {type: array, items: {type: string, enum: [story, image, video]}}}}

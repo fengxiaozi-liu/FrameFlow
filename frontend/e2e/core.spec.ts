@@ -2,7 +2,7 @@ import { expect, test, type APIRequestContext } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 
 async function seedProviders(request: APIRequestContext) {
-  const connection = await request.post("/api/connections", { data: { id: "e2e-bailian", name: "百炼测试", vendor: "bailian", base_url: "https://dashscope.aliyuncs.com" } });
+  const connection = await request.post("/api/connections", { data: { id: "e2e-bailian", name: "百炼测试", vendor: "bailian", base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions" } });
   expect(connection.ok()).toBeTruthy();
   for (const [id, cap] of [["qwen-plus", "story"], ["qwen-image-2.0", "image"], ["wan2.7-i2v", "video"]]) {
     const saved = await request.post("/api/connections/e2e-bailian/models", { data: { model_id: id, capabilities: [cap] } });
@@ -80,7 +80,7 @@ test("configuration center adds a model without exposing protocol selection", as
   await page.goto("/config");
   await page.getByRole("button", { name: "添加厂商连接" }).click();
   await page.getByLabel("名称").fill("新建百炼连接");
-  await page.getByLabel("API 地址").fill("https://dashscope.aliyuncs.com");
+  await page.getByLabel("API 完整地址").fill("https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions");
   await page.getByRole("button", { name: "保存连接" }).click();
   await expect(page.getByRole("heading", { name: "新建百炼连接" })).toBeVisible();
   await page.getByRole("button", { name: "手动添加" }).click();
@@ -98,14 +98,21 @@ test("configuration center adds a model without exposing protocol selection", as
   await expect(page.getByText("调用适配器")).toHaveCount(0);
 });
 
-test("Bailian connection saves a user-provided API origin", async ({ page }) => {
+test("Bailian connection saves a complete HTTPS endpoint", async ({ page }, testInfo) => {
   await page.goto("/config");
   await page.getByRole("button", { name: "添加厂商连接" }).click();
   await page.getByLabel("名称").fill("自定义百炼连接");
-  await page.getByLabel("API 地址").fill("https://custom.example.com");
+  await page.getByLabel("API 完整地址").fill("https://custom.example.com/?token=unsafe");
+  await page.getByRole("button", { name: "保存连接" }).click();
+  await expect(page.locator(".notice.error")).toContainText("API 地址必须使用 HTTPS");
+  await page.screenshot({ path: testInfo.outputPath("connection-error.png"), fullPage: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
+  await page.screenshot({ path: testInfo.outputPath("connection-error-mobile.png"), fullPage: true });
+  await page.getByLabel("API 完整地址").fill("https://custom.example.com/compatible-mode/v1/chat/completions");
   await page.getByRole("button", { name: "保存连接" }).click();
   await expect(page.getByRole("heading", { name: "自定义百炼连接" })).toBeVisible();
-  await expect(page.getByLabel("API 地址")).toHaveValue("https://custom.example.com");
+  await expect(page.getByLabel("API 完整地址")).toHaveValue("https://custom.example.com/compatible-mode/v1/chat/completions");
 });
 
 test("empty material library opens the picker and uploads a local file", async ({

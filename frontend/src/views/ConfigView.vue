@@ -15,12 +15,27 @@ const modelCapabilities = ref<Capability[]>([]);
 const addingModel = ref(false);
 const busy = ref(false);
 const message = ref("");
+const messageIsError = ref(false);
 const filter = ref<Capability | "all">("all");
+const modelQuery = ref("");
+const shownCount = ref(50);
 const active = computed(() => connections.value.find((item) => item.id === selectedID.value));
-const visibleModels = computed(() => models.value.filter((item) =>
-  filter.value === "all" || item.capabilities.includes(filter.value),
+const filteredModels = computed(() => models.value.filter((item) =>
+  (filter.value === "all" || item.capabilities.includes(filter.value)) &&
+  `${item.name} ${item.remote_id}`.toLowerCase().includes(modelQuery.value.toLowerCase().trim()),
 ));
+const visibleModels = computed(() => filteredModels.value.slice(0, shownCount.value));
 const labels: Record<Capability, string> = { story: "文本生成", image: "文生图", video: "图生视频" };
+
+function showError(error: unknown) {
+  const detail = (error as Error).message;
+  message.value = detail.includes("base_url must be an HTTPS URL")
+    ? "API 地址必须使用 HTTPS，且不能包含账号、查询参数或 # 片段。"
+    : detail.includes("base_url must be a complete API endpoint")
+    ? "请输入完整的 API 接口地址，不能只填域名。"
+    : detail;
+  messageIsError.value = true;
+}
 
 function blankConnection(): ProviderConnection {
   return { id: crypto.randomUUID(), name: "", vendor: "bailian", region: "", workspace_id: "", base_url: "", credential_set: false };
@@ -35,12 +50,14 @@ function selectConnection(id: string) {
   draft.value = { ...(connections.value.find((item) => item.id === id) || blankConnection()) };
   apiKey.value = "";
   addingModel.value = false;
+  modelQuery.value = "";
+  shownCount.value = 50;
   if (id) void loadModels(id);
   else models.value = [];
 }
 async function loadModels(connectionID: string) {
   try { models.value = (await api.models(undefined, connectionID)).models; }
-  catch (error) { message.value = (error as Error).message; }
+  catch (error) { showError(error); }
 }
 function newConnection() {
   selectedID.value = "";
@@ -53,38 +70,42 @@ function newConnection() {
 async function saveConnection() {
   busy.value = true;
   message.value = "";
+  messageIsError.value = false;
   try {
     const saved = await api.saveConnection(draft.value, apiKey.value, creating.value);
     await loadConnections(saved.id);
     message.value = "连接已保存";
-  } catch (error) { message.value = (error as Error).message; }
+  } catch (error) { showError(error); }
   finally { busy.value = false; }
 }
 async function sync() {
   if (!active.value) return;
   busy.value = true;
   message.value = "";
+  messageIsError.value = false;
   try {
     const result = await api.syncModels(active.value.id);
     await loadModels(active.value.id);
     message.value = `同步完成，发现 ${result.synced} 个模型`;
-  } catch (error) { message.value = (error as Error).message; }
+  } catch (error) { showError(error); }
   finally { busy.value = false; }
 }
 async function testConnection() {
   if (!active.value) return;
   busy.value = true;
   message.value = "";
+  messageIsError.value = false;
   try {
     const result = await api.testConnection(active.value.id);
     message.value = `连接正常，可查询 ${result.model_count} 个模型`;
-  } catch (error) { message.value = (error as Error).message; }
+  } catch (error) { showError(error); }
   finally { busy.value = false; }
 }
 async function addModel() {
   if (!active.value || !modelID.value.trim()) return;
   busy.value = true;
   message.value = "";
+  messageIsError.value = false;
   try {
     const model = await api.addModel(active.value.id, modelID.value.trim(), modelName.value.trim(), modelCapabilities.value);
     await loadModels(active.value.id);
@@ -93,31 +114,34 @@ async function addModel() {
     modelCapabilities.value = [];
     addingModel.value = false;
     message.value = model.supported ? "模型已添加" : "模型已登记，请配置能力后启用";
-  } catch (error) { message.value = (error as Error).message; }
+  } catch (error) { showError(error); }
   finally { busy.value = false; }
 }
 async function changeModel(model: Model, values: { enabled?: boolean; default?: boolean; capabilities?: Capability[] }) {
   busy.value = true;
   message.value = "";
+  messageIsError.value = false;
   try { await api.updateModel(model, values); await loadModels(model.connection_id); }
-  catch (error) { message.value = (error as Error).message; }
+  catch (error) { showError(error); }
   finally { busy.value = false; }
 }
 async function removeModel(model: Model) {
   if (!confirm(`删除模型 ${model.name}？`)) return;
   busy.value = true;
+  messageIsError.value = false;
   try { await api.deleteModel(model); await loadModels(model.connection_id); }
-  catch (error) { message.value = (error as Error).message; }
+  catch (error) { showError(error); }
   finally { busy.value = false; }
 }
 async function removeConnection() {
   if (!active.value || !confirm(`删除连接 ${active.value.name}？请先移除其模型。`)) return;
   busy.value = true;
+  messageIsError.value = false;
   try { await api.deleteConnection(active.value.id); selectedID.value = ""; await loadConnections(); }
-  catch (error) { message.value = (error as Error).message; }
+  catch (error) { showError(error); }
   finally { busy.value = false; }
 }
-onMounted(() => { void loadConnections().catch((error: Error) => { message.value = error.message; }); });
+onMounted(() => { void loadConnections().catch(showError); });
 </script>
 
 <template>
@@ -126,8 +150,8 @@ onMounted(() => { void loadConnections().catch((error: Error) => { message.value
       <div><span class="eyebrow">WORKSPACE SETTINGS</span><h1>配置中心</h1></div>
       <button class="primary" @click="newConnection">添加厂商连接</button>
     </header>
-    <p v-if="message" class="notice" role="status">{{ message }}</p>
-    <div class="catalog-layout">
+    <p v-if="message" :class="['notice', { error: messageIsError }]" :role="messageIsError ? 'alert' : 'status'">{{ message }}</p>
+    <div :class="['catalog-layout', { 'catalog-layout-creating': creating }]">
       <aside class="catalog-sidebar">
         <h2>厂商连接</h2>
         <button v-for="connection in connections" :key="connection.id"
@@ -162,6 +186,7 @@ onMounted(() => { void loadConnections().catch((error: Error) => { message.value
             <button v-for="item in ([['all', '全部'], ['story', '文本生成'], ['image', '文生图'], ['video', '图生视频']] as const)"
               :key="item[0]" :class="{ active: filter === item[0] }" @click="filter = item[0]">{{ item[1] }}</button>
           </div>
+          <label class="catalog-model-search">查找模型<input v-model="modelQuery" type="search" placeholder="名称或模型 ID" @input="shownCount = 50" /></label>
           <div class="catalog-table-wrap">
             <table class="catalog-table">
               <thead><tr><th>模型</th><th>操作</th><th>来源</th><th>状态</th><th>默认</th><th></th></tr></thead>
@@ -180,6 +205,7 @@ onMounted(() => { void loadConnections().catch((error: Error) => { message.value
             </table>
             <div v-if="!visibleModels.length" class="empty">暂无模型</div>
           </div>
+          <button v-if="shownCount < filteredModels.length" class="quiet" @click="shownCount += 50">显示更多模型 ({{ filteredModels.length - shownCount }})</button>
         </template>
         <div v-else class="empty">选择或添加厂商连接</div>
       </section>
@@ -189,7 +215,7 @@ onMounted(() => { void loadConnections().catch((error: Error) => { message.value
         <form @submit.prevent="saveConnection">
           <label>名称<input v-model="draft.name" required placeholder="例如 百炼 · 北京" /></label>
           <label>厂商<select v-model="draft.vendor" :disabled="!creating"><option value="bailian">阿里云百炼</option></select></label>
-          <label v-if="draft.vendor === 'bailian'">API 地址<input v-model="draft.base_url" required type="url" placeholder="https://dashscope.aliyuncs.com" /></label>
+          <label v-if="draft.vendor === 'bailian'">API 完整地址<input v-model.trim="draft.base_url" required type="url" placeholder="https://{WorkspaceId}.cn-beijing.maas.aliyuncs.com/compatible-mode/v1/chat/completions" /></label>
           <label>API Key<input v-model="apiKey" type="password" autocomplete="new-password" :placeholder="draft.credential_set ? '已配置，留空表示不修改' : '输入 API Key'" /></label>
           <div class="catalog-settings-actions"><button class="primary" type="submit" :disabled="busy">保存连接</button><button v-if="active" type="button" class="quiet" :disabled="busy" @click="removeConnection">删除连接</button></div>
         </form>

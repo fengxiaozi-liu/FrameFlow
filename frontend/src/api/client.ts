@@ -58,6 +58,35 @@ export const api = {
   retryTask: (id: string) =>
     request<Task>(`/api/tasks/${id}/retry`, { method: "POST" }),
   resultUrl: (id: string) => `${endpoint}/api/tasks/${id}/result`,
+  downloadUrl: (id: string) => `${endpoint}/api/tasks/${encodeURIComponent(id)}/download`,
+  mediaUrl: (url: string) => url.startsWith("/media/") ? `${endpoint}${url}` : url,
+  downloadTask: async (id: string, kind: "image" | "video") => {
+    const destination = `${endpoint}/api/tasks/${encodeURIComponent(id)}/download`;
+    if (!token) {
+      const link = document.createElement("a");
+      link.href = destination;
+      link.download = `frameflow-${id}.${kind === "image" ? "png" : "mp4"}`;
+      document.body.append(link);
+      link.click();
+      link.remove();
+      return;
+    }
+    const headers = new Headers();
+    headers.set("Authorization", `Bearer ${token}`);
+    const response = await fetch(destination, { headers });
+    if (!response.ok) {
+      const payload = await response.json().catch(() => null);
+      throw new Error(payload?.error?.message || `下载失败 (${response.status})`);
+    }
+    const url = URL.createObjectURL(await response.blob());
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `frameflow-${id}.${kind === "image" ? "png" : "mp4"}`;
+    document.body.append(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  },
   providers: (capability: Capability) =>
     request<{ providers: Provider[] }>(
       `/api/providers?capability=${capability}`,

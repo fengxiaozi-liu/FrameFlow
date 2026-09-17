@@ -40,6 +40,8 @@ const uploadAccept = computed(() =>
     ? "audio/*"
     : "image/*",
 );
+const generatedImages = computed(() => tasks.items.filter((item) => item.kind === "image" && item.status === "succeeded" && item.result_url));
+const sourceImage = computed(() => videoSourceURL.value || (workspace.activeResource === "frame" ? materials.value.find((item) => item.id === workspace.selectedMaterials.frame)?.url : "") || "");
 onMounted(async () => {
   workspace.idea = sessionStorage.getItem("frameflow-idea") || workspace.idea;
   for (const key of ["story", "image", "video"] as Capability[])
@@ -51,6 +53,7 @@ onMounted(async () => {
   workspace.videoProvider ||=
     providers.value.video.find((v) => v.default)?.id || providers.value.video[0]?.id || "";
   await loadMaterials();
+  await tasks.load();
 });
 async function loadMaterials() {
   materials.value = (
@@ -102,7 +105,7 @@ function generationInput(kind: "story" | "image" | "video"): TaskInput {
   return {
     prompt,
     aspect_ratio: workspace.aspectRatio,
-    source_image_url: kind === "video" ? (videoSourceURL.value || workspace.selectedMaterials.frame || selected?.url) : undefined,
+    source_image_url: kind === "video" ? (sourceImage.value || selected?.url) : undefined,
   };
 }
 async function saveDraft() {
@@ -370,11 +373,15 @@ async function saveDraft() {
               </option>
             </select>
           </div>
-          <label>首帧图片 URL<input v-model="videoSourceURL" type="url" placeholder="https://..." /></label>
+          <label v-if="generatedImages.length">已生成的首帧图片<select v-model="videoSourceURL" aria-label="已生成的首帧图片">
+            <option value="">选择图片或填写下方地址</option>
+            <option v-for="item in generatedImages" :key="item.id" :value="item.result_url">{{ new Date(item.created_at).toLocaleString() }} · {{ item.input.prompt.slice(0, 32) }}</option>
+          </select></label>
+          <label>首帧图片 URL<input v-model="videoSourceURL" placeholder="https://... 或选择上方图片" /></label>
           <button
             class="primary full"
             :disabled="
-              !workspace.videoProvider || !workspace.draft.story.scenes.length || !videoSourceURL
+              !workspace.videoProvider || !workspace.draft.story.scenes.length || !sourceImage
             "
             @click="enqueue('video', workspace.videoProvider)"
           >
