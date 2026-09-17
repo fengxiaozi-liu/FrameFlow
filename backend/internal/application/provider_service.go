@@ -9,8 +9,9 @@ import (
 )
 
 type ProviderService struct {
-	Repo  provider.Repository
-	Vault provider.CredentialVault
+	Repo    provider.Repository
+	Vault   provider.CredentialVault
+	Catalog CatalogService
 }
 
 func (s ProviderService) Save(g *gin.Context) {

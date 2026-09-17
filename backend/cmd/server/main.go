@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"github.com/fengxiaozi-liu/FrameFlow/internal/application"
+	providerinfra "github.com/fengxiaozi-liu/FrameFlow/internal/infrastructure/provider"
 	securityinfra "github.com/fengxiaozi-liu/FrameFlow/internal/infrastructure/security"
 	httpapi "github.com/fengxiaozi-liu/FrameFlow/internal/interfaces/http"
 	ws "github.com/fengxiaozi-liu/FrameFlow/internal/interfaces/websocket"
@@ -15,6 +16,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"syscall"
 	"time"
 )
@@ -48,16 +50,36 @@ func main() {
 	}
 	defer store.Close()
 	uploadDir := filepath.Join(baseDir, "data", "uploads")
-	vault, err := securityinfra.OpenVault(ctx, filepath.Join(baseDir, "data", "secrets"))
+	if configured := os.Getenv("FRAMEFLOW_UPLOAD_DIR"); configured != "" {
+		uploadDir = configured
+	}
+	vaultDir := os.Getenv("FRAMEFLOW_VAULT_DIR")
+	if vaultDir == "" {
+		vaultDir = filepath.Join(baseDir, "data", "secrets")
+	}
+	vault, err := securityinfra.OpenVault(ctx, vaultDir)
 	if err != nil {
 		log.Print(err)
 		return
 	}
+	if err := migrateProviders(ctx, store, vault); err != nil {
+		log.Print("migrate provider configuration: ", err)
+		return
+	}
 	tasks, projects, providers, materials := InitService(store, vault, uploadDir, ws.Connections)
-	worker, processor := InitProcessor(store, providers.Repo, ws.Connections)
+	worker, processor := InitProcessor(store, ws.Connections)
+	processor.Models = store
+	processor.ProviderConnections = store
+	processor.ModelClient = providerinfra.NewRegistry(vault)
+	processor.SaveResult = (providerinfra.ResultStore{Directory: uploadDir}).Save
 	tasks.Enqueuer = processor
 	workerDone := make(chan struct{})
 	go func() { defer close(workerDone); processor.Start(ctx) }()
+	go func() {
+		if err := recoverModelTasks(ctx, store, processor.Enqueue); err != nil && ctx.Err() == nil {
+			log.Print("recover model tasks: ", err)
+		}
+	}()
 	staticFiles, _ := fs.Sub(web.Files, "dist")
 	address := os.Getenv("FRAMEFLOW_ADDRESS")
 	if address == "" {
@@ -71,7 +93,8 @@ func main() {
 		}
 	}
 	router := gin.Default()
-	httpapi.UseMiddleware(router, os.Getenv("FRAMEFLOW_API_TOKEN"), 0)
+	rateLimit, _ := strconv.Atoi(os.Getenv("FRAMEFLOW_RATE_LIMIT"))
+	httpapi.UseMiddleware(router, os.Getenv("FRAMEFLOW_API_TOKEN"), rateLimit)
 	httpapi.RegisterRoutes(router, tasks, projects, providers, materials, application.SystemService{Tasks: tasks, Projects: projects, Providers: providers, Materials: materials, Shutdown: shutdown, QueueDepth: worker.Depth})
 	router.GET("/ws", ws.Handler)
 	httpapi.RegisterStatic(router, uploadDir, staticFiles)

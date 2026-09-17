@@ -7,20 +7,21 @@ import type {
   Capability,
   Material,
   MaterialKind,
-  Provider,
+  Model,
   TaskInput,
 } from "../api/types";
 import StatusBadge from "../components/StatusBadge.vue";
 const workspace = useWorkspaceStore(),
   tasks = useTaskStore(),
   message = ref(""),
-  providers = ref<Record<Capability, Provider[]>>({
+  providers = ref<Record<Capability, Model[]>>({
     story: [],
     image: [],
     video: [],
   }),
   materials = ref<Material[]>([]),
   fileInput = ref<HTMLInputElement>(),
+  videoSourceURL = ref(""),
   uploading = ref(false);
 const tabs: { id: MaterialKind; label: string }[] = [
   { id: "visual", label: "画面" },
@@ -42,13 +43,13 @@ const uploadAccept = computed(() =>
 onMounted(async () => {
   workspace.idea = sessionStorage.getItem("frameflow-idea") || workspace.idea;
   for (const key of ["story", "image", "video"] as Capability[])
-    providers.value[key] = (await api.providers(key)).providers;
+    providers.value[key] = (await api.models(key)).models.filter((m) => m.enabled && m.supported);
   workspace.storyProvider ||=
-    providers.value.story.find((v) => v.status === "healthy")?.code || "";
+    providers.value.story.find((v) => v.default)?.id || providers.value.story[0]?.id || "";
   workspace.imageProvider ||=
-    providers.value.image.find((v) => v.status === "healthy")?.code || "";
+    providers.value.image.find((v) => v.default)?.id || providers.value.image[0]?.id || "";
   workspace.videoProvider ||=
-    providers.value.video.find((v) => v.status === "healthy")?.code || "";
+    providers.value.video.find((v) => v.default)?.id || providers.value.video[0]?.id || "";
   await loadMaterials();
 });
 async function loadMaterials() {
@@ -82,9 +83,9 @@ async function uploadMaterial(event: Event) {
     input.value = "";
   }
 }
-async function enqueue(kind: "story" | "image" | "video", provider: string) {
+async function enqueue(kind: "story" | "image" | "video", modelID: string) {
   try {
-    await tasks.create(kind, provider, generationInput(kind));
+    await tasks.create(kind, modelID, generationInput(kind));
     message.value = "任务已进入后台队列，可以继续编辑。";
   } catch (e) {
     message.value = (e as Error).message;
@@ -101,7 +102,7 @@ function generationInput(kind: "story" | "image" | "video"): TaskInput {
   return {
     prompt,
     aspect_ratio: workspace.aspectRatio,
-    source_image_url: kind === "video" ? selected?.url : undefined,
+    source_image_url: kind === "video" ? (videoSourceURL.value || workspace.selectedMaterials.frame || selected?.url) : undefined,
   };
 }
 async function saveDraft() {
@@ -168,10 +169,10 @@ async function saveDraft() {
               <option value="">请选择接口</option>
               <option
                 v-for="p in providers.story"
-                :key="p.code"
-                :value="p.code"
+                :key="p.id"
+                :value="p.id"
               >
-                {{ p.name }} · {{ p.model }}
+                {{ p.name }} · {{ p.remote_id }}
               </option></select
             ><small>仅用于故事与分镜生成</small>
           </div>
@@ -262,10 +263,10 @@ async function saveDraft() {
               <option value="">请选择接口</option>
               <option
                 v-for="p in providers.image"
-                :key="p.code"
-                :value="p.code"
+                :key="p.id"
+                :value="p.id"
               >
-                {{ p.name }} · {{ p.model }}
+                {{ p.name }} · {{ p.remote_id }}
               </option></select
             ><small>角色和首尾帧共用此选择</small>
           </div>
@@ -362,17 +363,18 @@ async function saveDraft() {
               <option value="">请选择接口</option>
               <option
                 v-for="p in providers.video"
-                :key="p.code"
-                :value="p.code"
+                :key="p.id"
+                :value="p.id"
               >
-                {{ p.name }} · {{ p.model }}
+                {{ p.name }} · {{ p.remote_id }}
               </option>
             </select>
           </div>
+          <label>首帧图片 URL<input v-model="videoSourceURL" type="url" placeholder="https://..." /></label>
           <button
             class="primary full"
             :disabled="
-              !workspace.videoProvider || !workspace.draft.story.scenes.length
+              !workspace.videoProvider || !workspace.draft.story.scenes.length || !videoSourceURL
             "
             @click="enqueue('video', workspace.videoProvider)"
           >

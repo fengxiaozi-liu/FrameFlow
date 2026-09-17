@@ -69,9 +69,19 @@ func (s *MemoryStore) Delete(ctx context.Context, id string) error {
 }
 
 // Worker executes queued tasks serially in the goroutine running Run.
-type Worker struct{ jobs chan task.Task }
+type Worker struct {
+	jobs        chan task.Task
+	concurrency int
+}
 
-func NewWorker() *Worker { return &Worker{jobs: make(chan task.Task, 32)} }
+func NewWorker() *Worker { return &Worker{jobs: make(chan task.Task, 32), concurrency: 1} }
+func NewConcurrentWorker(concurrency int) *Worker {
+	w := NewWorker()
+	if concurrency > 1 {
+		w.concurrency = concurrency
+	}
+	return w
+}
 func (w *Worker) Enqueue(ctx context.Context, t task.Task) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -85,6 +95,19 @@ func (w *Worker) Enqueue(ctx context.Context, t task.Task) error {
 }
 func (w *Worker) Depth() int { return len(w.jobs) }
 func (w *Worker) Run(ctx context.Context, process func(context.Context, task.Task)) {
+	if w.concurrency <= 1 {
+		w.run(ctx, process)
+		return
+	}
+	var workers sync.WaitGroup
+	defer workers.Wait()
+	for i := 0; i < w.concurrency; i++ {
+		workers.Add(1)
+		go func() { defer workers.Done(); w.run(ctx, process) }()
+	}
+	<-ctx.Done()
+}
+func (w *Worker) run(ctx context.Context, process func(context.Context, task.Task)) {
 	for {
 		if ctx.Err() != nil {
 			return

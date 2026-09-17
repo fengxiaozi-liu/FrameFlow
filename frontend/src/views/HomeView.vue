@@ -3,7 +3,7 @@ import { onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { api } from "../api/client";
 import { useTaskStore } from "../stores/tasks";
-import type { Overview, Project, Provider } from "../api/types";
+import type { Overview, Project, Model } from "../api/types";
 import StatusBadge from "../components/StatusBadge.vue";
 import ProgressBar from "../components/ProgressBar.vue";
 const router = useRouter(),
@@ -17,7 +17,7 @@ const router = useRouter(),
     materials: 0,
   }),
   projects = ref<Project[]>([]),
-  providers = ref<Record<string, Provider[]>>({
+  providers = ref<Record<string, Model[]>>({
     story: [],
     image: [],
     video: [],
@@ -28,7 +28,7 @@ onMounted(async () => {
     api.overview().then((v) => (overview.value = v)),
     api.projects().then((v) => (projects.value = v.projects)),
     ...(["story", "image", "video"] as const).map((k) =>
-      api.providers(k).then((v) => (providers.value[k] = v.providers)),
+      api.models(k).then((v) => (providers.value[k] = v.models.filter((m) => m.enabled && m.supported))),
     ),
   ]);
 });
@@ -82,7 +82,7 @@ function start() {
           </div>
           <StatusBadge
             :status="
-              providers[key]?.some((v) => v.status === 'healthy')
+              providers[key]?.some((v) => v.enabled && v.supported)
                 ? 'healthy'
                 : 'disabled'
             "

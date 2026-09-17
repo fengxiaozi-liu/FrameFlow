@@ -32,7 +32,7 @@ func TestRepositoriesPersistAggregates(t *testing.T) {
 	if _, ok := r.GetProject(context.Background(), "p1"); ok != nil {
 		t.Fatal("project missing")
 	}
-	c, _ := provider.New("v1", "Video", provider.Video)
+	c := provider.Config{Code: "v1", Name: "Video", Capability: provider.Video, Status: provider.Disabled}
 	if err = r.SaveProvider(context.Background(), c); err != nil {
 		t.Fatal(err)
 	}

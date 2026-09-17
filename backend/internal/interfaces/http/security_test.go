@@ -39,7 +39,7 @@ func TestCredentialIsEncryptedAndNeverReturnedOrLogged(t *testing.T) {
 	log.SetOutput(&logs)
 	defer log.SetOutput(previous)
 	secret := "sk-secret-value"
-	response := request(t, testRouter(server), stdhttp.MethodPost, "/api/providers", `{"code":"secure-story","name":"Secure","capability":"story","model":"mock-story","base_url":"mock://local","enabled":true,"status":"healthy","api_key":"`+secret+`"}`)
+	response := request(t, testRouter(server), stdhttp.MethodPost, "/api/providers", `{"code":"secure-story","name":"Secure","vendor":"bailian","capability":"story","model":"qwen-plus","base_url":"https://dashscope.aliyuncs.com","enabled":true,"status":"healthy","api_key":"`+secret+`"}`)
 	if response.Code != stdhttp.StatusCreated {
 		t.Fatal(response.Code, response.Body.String())
 	}

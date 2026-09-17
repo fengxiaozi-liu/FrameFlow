@@ -33,6 +33,9 @@ func Open(ctx context.Context, path string) (*TaskRepository, error) {
 		CREATE TABLE IF NOT EXISTS tasks (id TEXT PRIMARY KEY, payload TEXT NOT NULL);
 		CREATE TABLE IF NOT EXISTS projects (id TEXT PRIMARY KEY, payload TEXT NOT NULL);
 		CREATE TABLE IF NOT EXISTS providers (id TEXT PRIMARY KEY, capability TEXT NOT NULL, payload TEXT NOT NULL);
+		CREATE TABLE IF NOT EXISTS provider_connections (id TEXT PRIMARY KEY, payload TEXT NOT NULL);
+		CREATE TABLE IF NOT EXISTS provider_models (id TEXT PRIMARY KEY, connection_id TEXT NOT NULL, payload TEXT NOT NULL);
+		CREATE INDEX IF NOT EXISTS provider_models_connection ON provider_models(connection_id);
 		CREATE TABLE IF NOT EXISTS materials (id TEXT PRIMARY KEY, kind TEXT NOT NULL, payload TEXT NOT NULL);
 	`); err != nil {
 		_ = db.Close()
@@ -129,6 +132,41 @@ func (r *TaskRepository) ListProviders(ctx context.Context, kind provider.Capabi
 
 func (r *TaskRepository) DeleteProvider(ctx context.Context, id string) error {
 	return deleteJSON(ctx, r.db, "providers", id)
+}
+
+func (r *TaskRepository) SaveConnection(ctx context.Context, v provider.Connection) error {
+	return saveJSON(ctx, r.db, "provider_connections", v.ID, v, "", "")
+}
+func (r *TaskRepository) GetConnection(ctx context.Context, id string) (provider.Connection, error) {
+	return getJSON[provider.Connection](ctx, r.db, "provider_connections", id)
+}
+func (r *TaskRepository) ListConnections(ctx context.Context) ([]provider.Connection, error) {
+	return listJSON[provider.Connection](ctx, r.db, "provider_connections", "", "")
+}
+func (r *TaskRepository) DeleteConnection(ctx context.Context, id string) error {
+	models, err := r.ListModels(ctx, id)
+	if err != nil {
+		return err
+	}
+	if len(models) != 0 {
+		return errors.New("remove connection models before deleting connection")
+	}
+	return deleteJSON(ctx, r.db, "provider_connections", id)
+}
+func (r *TaskRepository) SaveModel(ctx context.Context, v provider.Model) error {
+	return saveJSON(ctx, r.db, "provider_models", v.ID, v, "connection_id", v.ConnectionID)
+}
+func (r *TaskRepository) GetModel(ctx context.Context, id string) (provider.Model, error) {
+	return getJSON[provider.Model](ctx, r.db, "provider_models", id)
+}
+func (r *TaskRepository) ListModels(ctx context.Context, connectionID string) ([]provider.Model, error) {
+	if connectionID == "" {
+		return listJSON[provider.Model](ctx, r.db, "provider_models", "", "")
+	}
+	return listJSON[provider.Model](ctx, r.db, "provider_models", "connection_id", connectionID)
+}
+func (r *TaskRepository) DeleteModel(ctx context.Context, id string) error {
+	return deleteJSON(ctx, r.db, "provider_models", id)
 }
 
 func (r *TaskRepository) SaveMaterial(ctx context.Context, v material.Asset) error {

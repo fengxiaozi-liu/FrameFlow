@@ -69,6 +69,9 @@ type Task struct {
 	Stage        Stage     `json:"stage"`
 	Error        string    `json:"error,omitempty"`
 	ProviderCode string    `json:"provider_code,omitempty"`
+	ModelID      string    `json:"model_id,omitempty"`
+	RemoteTaskID string    `json:"remote_task_id,omitempty"`
+	ResultText   string    `json:"result_text,omitempty"`
 	Input        Input     `json:"input"`
 	ResultURL    string    `json:"result_url,omitempty"`
 	RetryCount   int       `json:"retry_count"`

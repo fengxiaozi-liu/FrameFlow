@@ -76,11 +76,13 @@ async function retry(item: Task) {
         </div>
         <div class="task-meta">
           <span>阶段：{{ task.stage }}</span
-          ><span>接口：{{ task.provider_code || "未指定" }}</span
+          ><span>模型：{{ task.model_id || task.provider_code || "未指定" }}</span
           ><strong>{{ task.progress }}%</strong>
         </div>
         <ProgressBar :value="task.progress" />
         <p v-if="task.error" class="error-text">{{ task.error }}</p>
+        <p v-if="task.result_text" class="task-result-text">{{ task.result_text }}</p>
+        <a v-if="task.status === 'succeeded' && task.result_url" :href="task.result_url" target="_blank" rel="noopener noreferrer">查看生成结果</a>
         <div class="actions">
           <button
             v-if="task.status === 'queued' || task.status === 'running'"

@@ -8,7 +8,6 @@ import (
 	domainprocessor "github.com/fengxiaozi-liu/FrameFlow/internal/domain/processor"
 	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/provider"
 	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/task"
-	providerinfra "github.com/fengxiaozi-liu/FrameFlow/internal/infrastructure/provider"
 	"github.com/fengxiaozi-liu/FrameFlow/internal/infrastructure/queue"
 	"github.com/fengxiaozi-liu/FrameFlow/internal/infrastructure/sqlite"
 	ws "github.com/fengxiaozi-liu/FrameFlow/internal/interfaces/websocket"
@@ -28,12 +27,44 @@ func testServer(t *testing.T) (testServices, func()) {
 	}
 	worker := queue.NewWorker()
 	providers := application.ProviderService{Repo: sqlite.NewProviderRepository(db)}
-	processor := domainprocessor.New(providers.Repo, providerinfra.NewRegistry(), worker, db)
+	providers.Catalog = application.CatalogService{Connections: db, Models: db}
+	conn := provider.Connection{ID: "test-connection", Name: "Test", Vendor: "bailian", BaseURL: "https://dashscope.aliyuncs.com"}
+	if err := db.SaveConnection(context.Background(), conn); err != nil {
+		t.Fatal(err)
+	}
+	for _, cap := range []provider.Capability{provider.Story, provider.Image, provider.Video} {
+		model := provider.Model{ID: provider.ModelID(conn.ID, string(cap)), ConnectionID: conn.ID, RemoteID: string(cap), Name: string(cap), Capabilities: []provider.Capability{cap}, Supported: true, Enabled: true, Default: true}
+		if err := db.SaveModel(context.Background(), model); err != nil {
+			t.Fatal(err)
+		}
+	}
+	processor := domainprocessor.New(worker, db)
+	processor.Models, processor.ProviderConnections, processor.ModelClient = db, db, testModelClient{}
 	ctx, cancel := context.WithCancel(context.Background())
 	workerDone := make(chan struct{})
 	go func() { defer close(workerDone); processor.Start(ctx) }()
 	tasks := application.TaskService{Store: db, Enqueuer: processor, Connections: ws.Connections, Providers: providers}
 	return testServices{Worker: worker, TaskService: tasks, Projects: application.ProjectService{Repo: sqlite.NewProjectRepository(db)}, Providers: providers, Materials: application.MaterialService{Repo: sqlite.NewMaterialRepository(db)}}, func() { cancel(); <-workerDone; ws.CloseAll(); _ = db.Close() }
+}
+
+type testModelClient struct{}
+
+func (testModelClient) GenerateText(_ context.Context, _ provider.Connection, _ provider.Model, r provider.StoryRequest, _ provider.RequestOptions) (provider.StoryResult, error) {
+	return provider.StoryResult{Document: r.Prompt}, nil
+}
+func (testModelClient) GenerateImage(context.Context, provider.Connection, provider.Model, provider.ImageRequest, provider.RequestOptions) (provider.ImageResult, error) {
+	return provider.ImageResult{URL: "https://example.com/image.png"}, nil
+}
+func (testModelClient) GenerateVideo(context.Context, provider.Connection, provider.Model, provider.VideoRequest, provider.RequestOptions) (provider.VideoResult, error) {
+	return provider.VideoResult{URL: "https://example.com/video.mp4"}, nil
+}
+func (testModelClient) PollVideo(context.Context, provider.Connection, provider.Model, string) (provider.VideoResult, bool, error) {
+	return provider.VideoResult{}, false, provider.ErrUnsupported
+}
+func testProcessor(s testServices) *domainprocessor.Processor {
+	p := domainprocessor.New(queue.NewWorker(), s.TaskService.Store)
+	p.Models, p.ProviderConnections, p.ModelClient = s.Providers.Catalog.Models, s.Providers.Catalog.Connections, testModelClient{}
+	return p
 }
 
 func request(t *testing.T, h http.Handler, method, path, body string) *httptest.ResponseRecorder {
@@ -48,6 +79,10 @@ func TestAPICoreFlow(t *testing.T) {
 	s, done := testServer(t)
 	defer done()
 	h := testRouter(s)
+	legacy := request(t, h, "POST", "/api/tasks", `{"kind":"story","provider_code":"legacy","prompt":"test"}`)
+	if legacy.Code != http.StatusBadRequest {
+		t.Fatal(legacy.Code, legacy.Body.String())
+	}
 	w := request(t, h, "POST", "/api/projects", `{"name":"Demo"}`)
 	if w.Code != 201 {
 		t.Fatal(w.Code, w.Body.String())
@@ -63,7 +98,7 @@ func TestAPICoreFlow(t *testing.T) {
 	if w.Code != 201 {
 		t.Fatal(w.Code, w.Body.String())
 	}
-	w = request(t, h, "POST", "/api/tasks", `{"kind":"video","prompt":"测试视频"}`)
+	w = request(t, h, "POST", "/api/tasks", `{"kind":"video","prompt":"测试视频","source_image_url":"https://example.com/frame.png"}`)
 	if w.Code != 202 {
 		t.Fatal(w.Code, w.Body.String())
 	}
@@ -142,7 +177,7 @@ func TestShutdownEndpointUnavailable(t *testing.T) {
 func TestTaskEventsUpgradeThroughMiddleware(t *testing.T) {
 	s, done := testServer(t)
 	defer done()
-	created := request(t, testRouter(s), http.MethodPost, "/api/tasks", `{"kind":"video","prompt":"测试视频"}`)
+	created := request(t, testRouter(s), http.MethodPost, "/api/tasks", `{"kind":"video","prompt":"测试视频","source_image_url":"https://example.com/frame.png"}`)
 	if created.Code != http.StatusAccepted {
 		t.Fatal(created.Code, created.Body.String())
 	}
@@ -186,7 +221,7 @@ func TestTaskUpdatesBroadcastWithoutClientSession(t *testing.T) {
 	}
 	defer conn.Close()
 	_ = conn.SetReadDeadline(time.Now().Add(3 * time.Second))
-	created := request(t, testRouter(s), http.MethodPost, "/api/tasks", `{"prompt":"broadcast"}`)
+	created := request(t, testRouter(s), http.MethodPost, "/api/tasks", `{"kind":"story","prompt":"broadcast"}`)
 	if created.Code != http.StatusAccepted {
 		t.Fatal(created.Code, created.Body.String())
 	}
@@ -202,7 +237,7 @@ func TestTaskUpdatesBroadcastWithoutClientSession(t *testing.T) {
 	if err != nil || stored.Status != task.StatusQueued {
 		t.Fatal(stored, err)
 	}
-	processor := domainprocessor.New(s.Providers.Repo, providerinfra.NewRegistry(), queue.NewWorker(), s.TaskService.Store)
+	processor := testProcessor(s)
 	processor.Execute(context.Background(), item)
 	for event.Status != task.StatusSucceeded {
 		if err := conn.ReadJSON(&event); err != nil {
@@ -221,7 +256,7 @@ func TestTaskCreationPerformanceAndMetrics(t *testing.T) {
 	handler := testRouter(s)
 	for i := 0; i < 20; i++ {
 		started := time.Now()
-		response := request(t, handler, http.MethodPost, "/api/tasks", `{"kind":"video","prompt":"测试视频"}`)
+		response := request(t, handler, http.MethodPost, "/api/tasks", `{"kind":"story","prompt":"测试视频"}`)
 		if response.Code != http.StatusAccepted {
 			t.Fatal(response.Code, response.Body.String())
 		}
@@ -261,7 +296,7 @@ func TestTaskPersistsWithoutSessionAndProcessorCompletes(t *testing.T) {
 	services, done := testServer(t)
 	defer done()
 	services.TaskService.Enqueuer = nil
-	response := request(t, testRouter(services), "POST", "/api/tasks", `{"prompt":"session test"}`)
+	response := request(t, testRouter(services), "POST", "/api/tasks", `{"kind":"story","prompt":"session test"}`)
 	if response.Code != 202 {
 		t.Fatal(response.Code, response.Body.String())
 	}
@@ -273,7 +308,7 @@ func TestTaskPersistsWithoutSessionAndProcessorCompletes(t *testing.T) {
 	if err != nil || current.Status != task.StatusQueued {
 		t.Fatal(current, err)
 	}
-	processor := domainprocessor.New(services.Providers.Repo, providerinfra.NewRegistry(), queue.NewWorker(), services.TaskService.Store)
+	processor := testProcessor(services)
 	processor.Execute(context.Background(), current)
 	current, err = services.TaskService.Store.Get(context.Background(), item.ID)
 	if err != nil || current.Status != task.StatusSucceeded {

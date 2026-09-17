@@ -26,6 +26,7 @@ func (s TaskService) Create(g *gin.Context) {
 	var inputRequest struct {
 		Kind         string `json:"kind"`
 		ProviderCode string `json:"provider_code"`
+		ModelID      string `json:"model_id"`
 		task.Input
 	}
 	if err := g.Bind(&inputRequest); err != nil {
@@ -36,6 +37,11 @@ func (s TaskService) Create(g *gin.Context) {
 		kind = string(task.KindVideo)
 	}
 	providerCode := inputRequest.ProviderCode
+	modelID := inputRequest.ModelID
+	if providerCode != "" {
+		writeError(g, Invalid("invalid_task", errors.New("provider_code is no longer supported; select a model_id")))
+		return
+	}
 	input := inputRequest.Input
 	if err := input.Validate(); err != nil {
 		writeError(g, Invalid("invalid_task", err))
@@ -46,34 +52,45 @@ func (s TaskService) Create(g *gin.Context) {
 		writeError(g, Invalid("invalid_task", err))
 		return
 	}
-	if providerCode != "" {
-		expected := map[task.Kind]provider.Capability{
-			task.KindStory: provider.Story,
-			task.KindImage: provider.Image,
-			task.KindVideo: provider.Video,
-		}[kindValue]
-		if expected == "" {
-			writeError(g, Invalid("invalid_task", errors.New("unsupported generation kind")))
-			return
+	if s.Providers.Catalog.Models != nil {
+		cap := map[task.Kind]provider.Capability{task.KindStory: provider.Story, task.KindImage: provider.Image, task.KindVideo: provider.Video}[kindValue]
+		if modelID == "" && providerCode == "" {
+			models, err := s.Providers.Catalog.Models.ListModels(ctx, "")
+			if err != nil {
+				writeError(g, err)
+				return
+			}
+			for _, model := range models {
+				if model.Default && model.Supports(cap) {
+					modelID = model.ID
+					break
+				}
+			}
+			if modelID == "" {
+				writeError(g, Invalid("missing_default_model", errors.New("no default model is configured for this operation")))
+				return
+			}
 		}
-		config, err := s.Providers.Repo.Get(ctx, providerCode)
-		if err != nil {
-			writeError(g, err)
-			return
+		if modelID != "" {
+			model, err := s.Providers.Catalog.Models.GetModel(ctx, modelID)
+			if err != nil {
+				writeError(g, err)
+				return
+			}
+			if !model.Supports(cap) {
+				writeError(g, Invalid("unsupported_model", provider.ErrUnsupported))
+				return
+			}
+			if cap == provider.Video && input.SourceImageURL == "" {
+				writeError(g, Invalid("invalid_task", errors.New("image-to-video requires a source image")))
+				return
+			}
 		}
-		if config.Capability != expected {
-			writeError(g, Invalid("invalid_task", errors.New("provider capability mismatch")))
-			return
-		}
-		if !config.Enabled || config.Status != provider.Healthy {
-			writeError(g, Invalid("invalid_task", errors.New("provider is not ready")))
-			return
-		}
-
 	}
 	now := time.Now().UTC()
 	t := task.New(now.Format("20060102150405.000000000"), kindValue, input, now)
 	t.ProviderCode = providerCode
+	t.ModelID = modelID
 	if err := s.Store.Save(ctx, t); err != nil {
 		writeError(g, err)
 		return

@@ -3,9 +3,11 @@ import type {
   Draft,
   Material,
   MaterialKind,
+  Model,
   Overview,
   Project,
   Provider,
+  ProviderConnection,
   Task,
   TaskInput,
 } from "./types";
@@ -42,12 +44,12 @@ export const api = {
     }),
   tasks: () =>
     request<{ tasks: Task[]; total: number }>("/api/tasks?limit=100"),
-  createTask: (kind: Task["kind"], provider_code: string, input: TaskInput) =>
+  createTask: (kind: Task["kind"], model_id: string, input: TaskInput) =>
     request<Task>("/api/tasks", {
       method: "POST",
       body: JSON.stringify({
         kind,
-        provider_code,
+        model_id,
         ...input,
       }),
     }),
@@ -69,6 +71,35 @@ export const api = {
     request<void>(`/api/providers/${code}`, { method: "DELETE" }),
   testProvider: (code: string) =>
     request<Provider>(`/api/providers/${code}/test`, { method: "POST" }),
+  connections: () =>
+    request<{ connections: ProviderConnection[] }>("/api/connections"),
+  saveConnection: (item: ProviderConnection, api_key: string, create = false) =>
+    request<ProviderConnection>(create ? "/api/connections" : `/api/connections/${encodeURIComponent(item.id)}`, {
+      method: create ? "POST" : "PUT",
+      body: JSON.stringify({ ...item, api_key }),
+    }),
+  deleteConnection: (id: string) =>
+    request<void>(`/api/connections/${encodeURIComponent(id)}`, { method: "DELETE" }),
+  testConnection: (id: string) =>
+    request<{ reachable: boolean; model_count: number }>(`/api/connections/${encodeURIComponent(id)}/test`, { method: "POST" }),
+  models: (capability?: Capability, connectionID?: string) => {
+    const params = new URLSearchParams();
+    if (capability) params.set("capability", capability);
+    if (connectionID) params.set("connection_id", connectionID);
+    return request<{ models: Model[] }>(`/api/models?${params}`);
+  },
+  syncModels: (connectionID: string) =>
+    request<{ synced: number }>(`/api/connections/${encodeURIComponent(connectionID)}/models/sync`, { method: "POST" }),
+  addModel: (connectionID: string, model_id: string, name: string, capabilities: Capability[]) =>
+    request<Model>(`/api/connections/${encodeURIComponent(connectionID)}/models`, {
+      method: "POST", body: JSON.stringify({ model_id, name, capabilities }),
+    }),
+  updateModel: (item: Model, values: { enabled?: boolean; default?: boolean; capabilities?: Capability[] }) =>
+    request<Model>(`/api/connections/${encodeURIComponent(item.connection_id)}/models/${encodeURIComponent(item.id)}`, {
+      method: "PATCH", body: JSON.stringify(values),
+    }),
+  deleteModel: (item: Model) =>
+    request<void>(`/api/connections/${encodeURIComponent(item.connection_id)}/models/${encodeURIComponent(item.id)}`, { method: "DELETE" }),
   materials: (kind: MaterialKind) =>
     request<{ materials: Material[] }>(`/api/materials?kind=${kind}`),
   uploadMaterial: (file: File, kind: MaterialKind) => {

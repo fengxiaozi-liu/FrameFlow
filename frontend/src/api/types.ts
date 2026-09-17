@@ -12,6 +12,9 @@ export interface Task {
   progress: number;
   stage: string;
   provider_code?: string;
+  model_id?: string;
+  remote_task_id?: string;
+  result_text?: string;
   input: TaskInput;
   result_url?: string;
   retry_count: number;
@@ -58,6 +61,27 @@ export interface Provider {
   enabled: boolean;
   status: "disabled" | "enabled" | "healthy";
   last_error?: string;
+}
+export interface ProviderConnection {
+  id: string;
+  name: string;
+  vendor: "bailian";
+  region: string;
+  workspace_id?: string;
+  base_url: string;
+  credential_set: boolean;
+}
+export interface Model {
+  id: string;
+  connection_id: string;
+  remote_id: string;
+  name: string;
+  capabilities: Capability[];
+  source: "manual" | "discovered";
+  supported: boolean;
+  enabled: boolean;
+  default: boolean;
+  last_seen?: string;
 }
 export type MaterialKind = "visual" | "frame" | "character" | "voice" | "music";
 export interface Material {

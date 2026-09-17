@@ -3,9 +3,9 @@ package processor
 import (
 	"context"
 	"errors"
-	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/fault"
 	"github.com/fengxiaozi-liu/FrameFlow/internal/interfaces/websocket"
 	"log"
+	"strings"
 	"sync"
 	"time"
 
@@ -18,22 +18,21 @@ type Worker interface {
 	Run(context.Context, func(context.Context, task.Task))
 }
 
-// Processor 通过已注册的 provider 执行队列中的生成任务。
-// 具体厂商客户端由组合根通过 provider.Registry 注入。
+// Processor uses the configured model client to execute queued tasks.
 type Processor struct {
-	Configs     provider.Repository
-	Registry    *provider.Registry
-	Worker      Worker
-	Task        task.Repository
-	Connections *websocket.Hub
-	mu          sync.Mutex
-	running     map[string]context.CancelFunc
+	Models              provider.ModelRepository
+	ProviderConnections provider.ConnectionRepository
+	ModelClient         provider.ModelClient
+	SaveResult          func(context.Context, string, task.Kind, string) (string, error)
+	Worker              Worker
+	Task                task.Repository
+	Connections         *websocket.Hub
+	mu                  sync.Mutex
+	running             map[string]context.CancelFunc
 }
 
-func New(configs provider.Repository, registry *provider.Registry, worker Worker, store task.Repository) *Processor {
+func New(worker Worker, store task.Repository) *Processor {
 	return &Processor{
-		Configs:     configs,
-		Registry:    registry,
 		Worker:      worker,
 		Task:        store,
 		Connections: websocket.Connections,
@@ -62,72 +61,102 @@ func (p *Processor) Start(ctx context.Context) {
 	p.Worker.Run(ctx, p.Execute)
 }
 
-func (p *Processor) Process(ctx context.Context, item task.Task, progress func(int, task.Stage)) error {
-	config, err := p.Configs.Get(ctx, item.ProviderCode)
-	if errors.Is(err, fault.ErrNotFound) && item.ProviderCode == "" {
-		config = provider.Config{
-			Code:       "default-" + string(item.Kind),
-			Vendor:     "mock",
-			Capability: capability(item.Kind),
-			Model:      "mock",
-			Enabled:    true,
-			Status:     provider.Healthy,
+func (p *Processor) processModel(ctx context.Context, item *task.Task, progress func(int, task.Stage)) error {
+	if item.Kind == task.KindStory && item.ResultText != "" || item.ResultURL != "" && (item.Kind == task.KindImage || item.Kind == task.KindVideo) && strings.HasPrefix(item.ResultURL, "/media/") {
+		return nil
+	}
+	if p.Models == nil || p.ProviderConnections == nil || p.ModelClient == nil {
+		return errors.New("model execution is not configured")
+	}
+	model, err := p.Models.GetModel(ctx, item.ModelID)
+	if err != nil {
+		return err
+	}
+	connection, err := p.ProviderConnections.GetConnection(ctx, model.ConnectionID)
+	if err != nil {
+		return err
+	}
+	allowed := false
+	for _, cap := range model.Capabilities {
+		if cap == capability(item.Kind) {
+			allowed = true
+			break
 		}
-		err = nil
 	}
-	if err != nil {
-		return err
-	}
-	if !config.Enabled || config.Status != provider.Healthy {
-		return errors.New("provider is not ready")
-	}
-	client, err := p.Registry.Resolve(ctx, config)
-	if err != nil {
-		return err
+	if !model.Supported || !allowed {
+		return provider.ErrUnsupported
 	}
 	progress(20, task.StagePreparing)
-	options := provider.RequestOptions{}
+	options := provider.RequestOptions{Timeout: 5 * time.Minute}
 	switch item.Kind {
 	case task.KindStory:
-		generator, ok := client.(provider.StoryGenerator)
-		if !ok {
-			return errors.New("provider does not support story generation")
-		}
 		progress(55, task.StageGeneratingStory)
-		_, err = generator.Generate(ctx, provider.StoryRequest{
-			Prompt: item.Input.Prompt,
-			Model:  config.Model,
-		}, options)
+		result, err := p.ModelClient.GenerateText(ctx, connection, model, provider.StoryRequest{Prompt: item.Input.Prompt, Model: model.RemoteID}, options)
+		if err != nil {
+			return err
+		}
+		item.ResultText = result.Document
 	case task.KindImage:
-		generator, ok := client.(provider.ImageGenerator)
-		if !ok {
-			return errors.New("provider does not support image generation")
-		}
 		progress(55, task.StageGeneratingImage)
-		_, err = generator.Generate(ctx, provider.ImageRequest{
-			Prompt:      item.Input.Prompt,
-			Model:       config.Model,
-			AspectRatio: item.Input.AspectRatio,
-		}, options)
-	case task.KindVideo:
-		generator, ok := client.(provider.VideoGenerator)
-		if !ok {
-			return errors.New("provider does not support video generation")
+		result, err := p.ModelClient.GenerateImage(ctx, connection, model, provider.ImageRequest{Prompt: item.Input.Prompt, Model: model.RemoteID, AspectRatio: item.Input.AspectRatio}, options)
+		if err != nil {
+			return err
 		}
+		item.ResultURL = result.URL
+	case task.KindVideo:
 		progress(55, task.StageRenderingVideo)
-		_, err = generator.Generate(ctx, provider.VideoRequest{
-			Prompt:         item.Input.Prompt,
-			Model:          config.Model,
-			AspectRatio:    item.Input.AspectRatio,
-			SourceImageURL: item.Input.SourceImageURL,
-		}, options)
-		if err == nil {
-			progress(85, task.StageComposing)
+		pollCtx, endPoll := context.WithTimeout(ctx, 20*time.Minute)
+		defer endPoll()
+		if item.RemoteTaskID == "" {
+			result, err := p.ModelClient.GenerateVideo(ctx, connection, model, provider.VideoRequest{Prompt: item.Input.Prompt, Model: model.RemoteID, SourceImageURL: item.Input.SourceImageURL, AspectRatio: item.Input.AspectRatio}, options)
+			if err != nil {
+				return err
+			}
+			if result.URL != "" {
+				item.ResultURL = result.URL
+				break
+			}
+			if result.JobReference == "" {
+				return errors.New("video model returned neither result nor task id")
+			}
+			item.RemoteTaskID = result.JobReference
+			if p.Task == nil {
+				return errors.New("task repository required for async video")
+			}
+			if err := p.Task.Save(ctx, *item); err != nil {
+				return err
+			}
+		}
+		for {
+			result, done, err := p.ModelClient.PollVideo(pollCtx, connection, model, item.RemoteTaskID)
+			if err != nil {
+				return err
+			}
+			if done {
+				item.ResultURL = result.URL
+				progress(85, task.StageComposing)
+				break
+			}
+			select {
+			case <-pollCtx.Done():
+				return pollCtx.Err()
+			case <-time.After(15 * time.Second):
+			}
 		}
 	default:
-		return errors.New("unsupported task kind")
+		return provider.ErrUnsupported
 	}
-	return err
+	if item.ResultURL != "" && p.SaveResult != nil {
+		path, err := p.SaveResult(ctx, item.ID, item.Kind, item.ResultURL)
+		if err != nil {
+			return err
+		}
+		item.ResultURL = path
+	}
+	if p.Task != nil {
+		return p.Task.Save(ctx, *item)
+	}
+	return nil
 }
 
 func capability(kind task.Kind) provider.Capability {
@@ -182,7 +211,7 @@ func (p *Processor) Execute(ctx context.Context, item task.Task) {
 			return
 		}
 		saved := true
-		err = p.Process(ctx, item, func(progress int, stage task.Stage) {
+		process := func(progress int, stage task.Stage) {
 			if !saved || !p.active(ctx, item) || ctx.Err() != nil {
 				return
 			}
@@ -199,7 +228,12 @@ func (p *Processor) Execute(ctx context.Context, item task.Task) {
 				Stage:    item.Stage,
 				At:       item.UpdatedAt,
 			})
-		})
+		}
+		if item.ModelID == "" {
+			err = errors.New("legacy provider execution is unavailable; select a model")
+		} else {
+			err = p.processModel(ctx, &item, process)
+		}
 		if !saved || !p.active(ctx, item) || ctx.Err() != nil {
 			return
 		}
