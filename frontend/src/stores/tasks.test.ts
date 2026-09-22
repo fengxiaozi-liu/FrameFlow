@@ -26,11 +26,14 @@ beforeEach(() => {
   sockets = [];
   vi.stubGlobal(
     "WebSocket",
-    Object.assign(vi.fn(function () {
-      const socket = new Socket();
-      sockets.push(socket);
-      return socket;
-    }), { OPEN: 1 }),
+    Object.assign(
+      vi.fn(function () {
+        const socket = new Socket();
+        sockets.push(socket);
+        return socket;
+      }),
+      { OPEN: 1 },
+    ),
   );
   vi.mocked(api.tasks).mockResolvedValue({
     tasks: [task("a"), task("b")],
@@ -124,7 +127,10 @@ it("refreshes progress emitted before the create response without opening anothe
     tasks: [{ ...task("new"), status: "succeeded" }],
     total: 1,
   });
-  await store.create("video", "", { prompt: "test" });
+  await store.create("project", "draft", "video", "", { prompt: "test" });
+  expect(api.createTask).toHaveBeenCalledWith("project", "draft", "video", "", {
+    prompt: "test",
+  });
   expect(store.items[0].status).toBe("succeeded");
   expect(sockets).toHaveLength(1);
 });

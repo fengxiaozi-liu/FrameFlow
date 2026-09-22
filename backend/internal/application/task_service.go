@@ -3,6 +3,7 @@ package application
 import (
 	"context"
 	"errors"
+	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/project"
 	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/provider"
 	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/task"
 	"github.com/fengxiaozi-liu/FrameFlow/internal/interfaces/websocket"
@@ -23,12 +24,15 @@ type TaskService struct {
 		Enqueue(context.Context, task.Task) error
 	}
 	Providers ProviderService
+	Projects  project.Repository
 }
 
 func (s TaskService) Create(g *gin.Context) {
 	ctx := g.Request.Context()
 	var inputRequest struct {
 		Kind         string `json:"kind"`
+		ProjectID    string `json:"project_id"`
+		DraftID      string `json:"draft_id"`
 		ProviderCode string `json:"provider_code"`
 		ModelID      string `json:"model_id"`
 		task.Input
@@ -93,6 +97,25 @@ func (s TaskService) Create(g *gin.Context) {
 	}
 	now := time.Now().UTC()
 	t := task.New(now.Format("20060102150405.000000000"), kindValue, input, now)
+	t.ProjectID = inputRequest.ProjectID
+	t.DraftID = inputRequest.DraftID
+	if err := t.ValidateScope(); err != nil {
+		writeError(g, Invalid("missing_task_scope", err))
+		return
+	}
+	if s.Projects == nil {
+		writeError(g, errors.New("project repository is not configured"))
+		return
+	}
+	p, err := s.Projects.Get(ctx, t.ProjectID)
+	if err != nil {
+		writeError(g, err)
+		return
+	}
+	if !p.HasDraft(t.DraftID) {
+		writeError(g, Invalid("draft_not_found", errors.New("draft does not belong to project")))
+		return
+	}
 	t.ProviderCode = providerCode
 	t.ModelID = modelID
 	if err := s.Store.Save(ctx, t); err != nil {
@@ -169,7 +192,27 @@ func (s TaskService) Get(g *gin.Context) {
 	g.JSON(http.StatusOK, item)
 }
 func (s TaskService) List(g *gin.Context) {
-	items, err := s.Store.List(g.Request.Context())
+	scope := task.Scope{ProjectID: g.Query("project_id"), DraftID: g.Query("draft_id")}
+	var items []task.Task
+	var err error
+	if scope.ProjectID != "" || scope.DraftID != "" {
+		if scoped, ok := s.Store.(task.ScopedRepository); ok {
+			items, err = scoped.ListByScope(g.Request.Context(), scope)
+		} else {
+			items, err = s.Store.List(g.Request.Context())
+			if err == nil {
+				filtered := items[:0]
+				for _, item := range items {
+					if (scope.ProjectID == "" || item.ProjectID == scope.ProjectID) && (scope.DraftID == "" || item.DraftID == scope.DraftID) {
+						filtered = append(filtered, item)
+					}
+				}
+				items = filtered
+			}
+		}
+	} else {
+		items, err = s.Store.List(g.Request.Context())
+	}
 	if err != nil {
 		writeError(g, err)
 		return
@@ -268,11 +311,13 @@ func (s TaskService) rejectSubmission(ctx context.Context, t task.Task, cause er
 func (s TaskService) broadcast(ctx context.Context, t task.Task) {
 	if s.Connections != nil {
 		s.Connections.Broadcast(ctx, task.Event{
-			TaskID:   t.ID,
-			Status:   t.Status,
-			Progress: t.Progress,
-			Stage:    t.Stage,
-			At:       t.UpdatedAt,
+			TaskID:    t.ID,
+			ProjectID: t.ProjectID,
+			DraftID:   t.DraftID,
+			Status:    t.Status,
+			Progress:  t.Progress,
+			Stage:     t.Stage,
+			At:        t.UpdatedAt,
 		})
 	}
 }

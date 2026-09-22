@@ -16,6 +16,10 @@ export const useTaskStore = defineStore("tasks", () => {
   let stopped = true;
   let pending: TaskEvent[] = [];
   let loadingRequest: Promise<void> | undefined;
+  const listeners = new Set<(event: TaskEvent) => void>();
+  function notify(event: TaskEvent) {
+    listeners.forEach((listener) => listener(event));
+  }
   function patch(event: TaskEvent) {
     const item = items.value.find((v) => v.id === event.task_id);
     if (!item) return;
@@ -28,18 +32,41 @@ export const useTaskStore = defineStore("tasks", () => {
       stage: event.stage,
       updated_at: event.at,
     });
+    notify(event);
   }
-  function load(): Promise<void> {
+  function load(projectId = "", draftId = ""): Promise<void> {
     if (loadingRequest) return loadingRequest;
     loading.value = true;
     loadingRequest = (async () => {
       try {
-        items.value = (await api.tasks()).tasks;
+        const previous = new Map(
+          items.value.map((item) => [item.id, item.status]),
+        );
+        items.value = (await api.tasks(projectId, draftId)).tasks;
+        for (const item of items.value) {
+          if (
+            item.status === "succeeded" &&
+            previous.has(item.id) &&
+            previous.get(item.id) !== "succeeded"
+          ) {
+            notify({
+              task_id: item.id,
+              project_id: item.project_id,
+              draft_id: item.draft_id,
+              status: item.status,
+              progress: item.progress,
+              stage: item.stage,
+              at: item.updated_at,
+            });
+          }
+        }
         error.value = "";
       } catch (e) {
         error.value = (e as Error).message;
       } finally {
-        pending.sort((a, b) => Date.parse(a.at) - Date.parse(b.at)).forEach(patch);
+        pending
+          .sort((a, b) => Date.parse(a.at) - Date.parse(b.at))
+          .forEach(patch);
         pending = [];
         loading.value = false;
         loadingRequest = undefined;
@@ -101,16 +128,38 @@ export const useTaskStore = defineStore("tasks", () => {
     previous?.close();
   }
   async function create(
+    projectId: string,
+    draftId: string,
     kind: Task["kind"],
     provider: string,
     input: TaskInput,
   ) {
-    const value = await api.createTask(kind, provider, input);
+    const value = await api.createTask(
+      projectId,
+      draftId,
+      kind,
+      provider,
+      input,
+    );
     items.value.unshift(value);
     // Catch events emitted before the creation response arrived.
     if (loadingRequest) await loadingRequest;
     await load();
     return value;
   }
-  return { items, loading, error, running, load, create, connect, disconnect };
+  function subscribe(listener: (event: TaskEvent) => void) {
+    listeners.add(listener);
+    return () => listeners.delete(listener);
+  }
+  return {
+    items,
+    loading,
+    error,
+    running,
+    load,
+    create,
+    connect,
+    disconnect,
+    subscribe,
+  };
 });

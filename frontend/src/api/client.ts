@@ -32,6 +32,8 @@ export const api = {
   shutdown: () =>
     request<{ status: string }>("/api/system/shutdown", { method: "POST" }),
   projects: () => request<{ projects: Project[] }>("/api/projects"),
+  project: (id: string) =>
+    request<Project>(`/api/projects/${encodeURIComponent(id)}`),
   createProject: (name: string) =>
     request<Project>("/api/projects", {
       method: "POST",
@@ -42,12 +44,24 @@ export const api = {
       method: "POST",
       body: JSON.stringify(draft),
     }),
-  tasks: () =>
-    request<{ tasks: Task[]; total: number }>("/api/tasks?limit=100"),
-  createTask: (kind: Task["kind"], model_id: string, input: TaskInput) =>
+  tasks: (projectId = "", draftId = "") => {
+    const params = new URLSearchParams({ limit: "100" });
+    if (projectId) params.set("project_id", projectId);
+    if (draftId) params.set("draft_id", draftId);
+    return request<{ tasks: Task[]; total: number }>(`/api/tasks?${params}`);
+  },
+  createTask: (
+    project_id: string,
+    draft_id: string,
+    kind: Task["kind"],
+    model_id: string,
+    input: TaskInput,
+  ) =>
     request<Task>("/api/tasks", {
       method: "POST",
       body: JSON.stringify({
+        project_id,
+        draft_id,
         kind,
         model_id,
         ...input,
@@ -58,8 +72,10 @@ export const api = {
   retryTask: (id: string) =>
     request<Task>(`/api/tasks/${id}/retry`, { method: "POST" }),
   resultUrl: (id: string) => `${endpoint}/api/tasks/${id}/result`,
-  downloadUrl: (id: string) => `${endpoint}/api/tasks/${encodeURIComponent(id)}/download`,
-  mediaUrl: (url: string) => url.startsWith("/media/") ? `${endpoint}${url}` : url,
+  downloadUrl: (id: string) =>
+    `${endpoint}/api/tasks/${encodeURIComponent(id)}/download`,
+  mediaUrl: (url: string) =>
+    url.startsWith("/media/") ? `${endpoint}${url}` : url,
   downloadTask: async (id: string, kind: "image" | "video") => {
     const destination = `${endpoint}/api/tasks/${encodeURIComponent(id)}/download`;
     if (!token) {
@@ -76,7 +92,9 @@ export const api = {
     const response = await fetch(destination, { headers });
     if (!response.ok) {
       const payload = await response.json().catch(() => null);
-      throw new Error(payload?.error?.message || `下载失败 (${response.status})`);
+      throw new Error(
+        payload?.error?.message || `下载失败 (${response.status})`,
+      );
     }
     const url = URL.createObjectURL(await response.blob());
     const link = document.createElement("a");
@@ -103,14 +121,24 @@ export const api = {
   connections: () =>
     request<{ connections: ProviderConnection[] }>("/api/connections"),
   saveConnection: (item: ProviderConnection, api_key: string, create = false) =>
-    request<ProviderConnection>(create ? "/api/connections" : `/api/connections/${encodeURIComponent(item.id)}`, {
-      method: create ? "POST" : "PUT",
-      body: JSON.stringify({ ...item, api_key }),
-    }),
+    request<ProviderConnection>(
+      create
+        ? "/api/connections"
+        : `/api/connections/${encodeURIComponent(item.id)}`,
+      {
+        method: create ? "POST" : "PUT",
+        body: JSON.stringify({ ...item, api_key }),
+      },
+    ),
   deleteConnection: (id: string) =>
-    request<void>(`/api/connections/${encodeURIComponent(id)}`, { method: "DELETE" }),
+    request<void>(`/api/connections/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+    }),
   testConnection: (id: string) =>
-    request<{ reachable: boolean; model_count: number }>(`/api/connections/${encodeURIComponent(id)}/test`, { method: "POST" }),
+    request<{ reachable: boolean; model_count: number }>(
+      `/api/connections/${encodeURIComponent(id)}/test`,
+      { method: "POST" },
+    ),
   models: (capability?: Capability, connectionID?: string) => {
     const params = new URLSearchParams();
     if (capability) params.set("capability", capability);
@@ -118,17 +146,43 @@ export const api = {
     return request<{ models: Model[] }>(`/api/models?${params}`);
   },
   syncModels: (connectionID: string) =>
-    request<{ synced: number }>(`/api/connections/${encodeURIComponent(connectionID)}/models/sync`, { method: "POST" }),
-  addModel: (connectionID: string, model_id: string, name: string, capabilities: Capability[]) =>
-    request<Model>(`/api/connections/${encodeURIComponent(connectionID)}/models`, {
-      method: "POST", body: JSON.stringify({ model_id, name, capabilities }),
-    }),
-  updateModel: (item: Model, values: { enabled?: boolean; default?: boolean; capabilities?: Capability[] }) =>
-    request<Model>(`/api/connections/${encodeURIComponent(item.connection_id)}/models/${encodeURIComponent(item.id)}`, {
-      method: "PATCH", body: JSON.stringify(values),
-    }),
+    request<{ synced: number }>(
+      `/api/connections/${encodeURIComponent(connectionID)}/models/sync`,
+      { method: "POST" },
+    ),
+  addModel: (
+    connectionID: string,
+    model_id: string,
+    name: string,
+    capabilities: Capability[],
+  ) =>
+    request<Model>(
+      `/api/connections/${encodeURIComponent(connectionID)}/models`,
+      {
+        method: "POST",
+        body: JSON.stringify({ model_id, name, capabilities }),
+      },
+    ),
+  updateModel: (
+    item: Model,
+    values: {
+      enabled?: boolean;
+      default?: boolean;
+      capabilities?: Capability[];
+    },
+  ) =>
+    request<Model>(
+      `/api/connections/${encodeURIComponent(item.connection_id)}/models/${encodeURIComponent(item.id)}`,
+      {
+        method: "PATCH",
+        body: JSON.stringify(values),
+      },
+    ),
   deleteModel: (item: Model) =>
-    request<void>(`/api/connections/${encodeURIComponent(item.connection_id)}/models/${encodeURIComponent(item.id)}`, { method: "DELETE" }),
+    request<void>(
+      `/api/connections/${encodeURIComponent(item.connection_id)}/models/${encodeURIComponent(item.id)}`,
+      { method: "DELETE" },
+    ),
   materials: (kind: MaterialKind) =>
     request<{ materials: Material[] }>(`/api/materials?kind=${kind}`),
   uploadMaterial: (file: File, kind: MaterialKind) => {

@@ -1,6 +1,7 @@
 package application
 
 import (
+	"errors"
 	"net/http"
 	"time"
 
@@ -60,30 +61,54 @@ func (s ProjectService) SaveDraft(ctx *gin.Context) {
 	if d.ID == "" {
 		d.ID = time.Now().UTC().Format("20060102150405.000000000")
 	}
-	p, err := s.Repo.Get(ctx.Request.Context(), ctx.Param("id"))
+	if d.ProjectID != "" && d.ProjectID != ctx.Param("id") {
+		writeError(ctx, Invalid("invalid_project", errors.New("draft project_id does not match route project")))
+		return
+	}
+	projectID := ctx.Param("id")
+	change := func(p *project.Project) error {
+		for i := range p.Drafts {
+			if p.Drafts[i].ID != d.ID {
+				continue
+			}
+			d.ProjectID = p.ID
+			d.UpdatedAt = time.Now().UTC()
+			d.Outputs = mergeDraftOutputs(p.Drafts[i].Outputs, d.Outputs)
+			p.Drafts[i] = d
+			return nil
+		}
+		return p.AddDraft(d)
+	}
+	var p project.Project
+	var err error
+	if atomic, ok := s.Repo.(project.AtomicRepository); ok {
+		p, err = atomic.Update(ctx.Request.Context(), projectID, change)
+	} else {
+		p, err = s.Repo.Get(ctx.Request.Context(), projectID)
+		if err == nil {
+			err = change(&p)
+		}
+		if err == nil {
+			err = s.Repo.Save(ctx.Request.Context(), p)
+		}
+	}
 	if err != nil {
 		writeError(ctx, err)
 		return
 	}
-	found := false
-	for i := range p.Drafts {
-		if p.Drafts[i].ID == d.ID {
-			d.ProjectID = p.ID
-			d.UpdatedAt = time.Now().UTC()
-			p.Drafts[i] = d
-			found = true
-			break
-		}
-	}
-	if !found {
-		if err := p.AddDraft(d); err != nil {
-			writeError(ctx, Invalid("invalid_project", err))
-			return
-		}
-	}
-	if err := s.Repo.Save(ctx.Request.Context(), p); err != nil {
-		writeError(ctx, err)
-		return
-	}
 	ctx.JSON(http.StatusOK, p)
+}
+
+func mergeDraftOutputs(stored, submitted []project.DraftOutput) []project.DraftOutput {
+	merged := append([]project.DraftOutput(nil), submitted...)
+	known := make(map[string]bool, len(merged))
+	for _, output := range merged {
+		known[output.TaskID] = true
+	}
+	for _, output := range stored {
+		if !known[output.TaskID] {
+			merged = append(merged, output)
+		}
+	}
+	return merged
 }

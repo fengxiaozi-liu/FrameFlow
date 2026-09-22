@@ -83,6 +83,7 @@ func main() {
 	processor.ModelClient = providerinfra.NewRegistry(vault)
 	processor.SaveResult = (providerinfra.ResultStore{Directory: uploadDir}).Save
 	processor.MediaDir = uploadDir
+	processor.Results = application.TaskResultApplier{Projects: projects.Repo}
 	tasks.Enqueuer = processor
 	workerDone := make(chan struct{})
 	go func() { defer close(workerDone); processor.Start(ctx) }()

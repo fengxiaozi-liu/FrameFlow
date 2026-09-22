@@ -178,6 +178,8 @@ export interface paths {
         get: {
             parameters: {
                 query?: {
+                    project_id?: components["parameters"]["ProjectID"];
+                    draft_id?: components["parameters"]["DraftID"];
                     limit?: components["parameters"]["Limit"];
                     offset?: components["parameters"]["Offset"];
                 };
@@ -207,6 +209,8 @@ export interface paths {
             requestBody: {
                 content: {
                     "application/json": {
+                        project_id: string;
+                        draft_id: string;
                         /** @enum {string} */
                         kind?: "story" | "image" | "video";
                         prompt: string;
@@ -463,7 +467,7 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
-                /** @description WebSocket broadcasts live task events to all connections; clients send text ping every 15 seconds and refresh tasks over HTTP after reconnect */
+                /** @description WebSocket broadcasts task events including task_id */
                 101: {
                     headers: {
                         [name: string]: unknown;
@@ -996,6 +1000,8 @@ export interface components {
     responses: never;
     parameters: {
         ID: string;
+        ProjectID: string;
+        DraftID: string;
         ModelID: string;
         Limit: number;
         Offset: number;

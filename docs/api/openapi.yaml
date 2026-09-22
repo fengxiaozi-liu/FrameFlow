@@ -13,7 +13,7 @@ paths:
   /api/projects/{id}/drafts:
     post: {parameters: [{$ref: '#/components/parameters/ID'}], responses: {'200': {description: Draft saved}}}
   /api/tasks:
-    get: {parameters: [{$ref: '#/components/parameters/Limit'}, {$ref: '#/components/parameters/Offset'}], responses: {'200': {description: Task page}}}
+    get: {parameters: [{$ref: '#/components/parameters/ProjectID'}, {$ref: '#/components/parameters/DraftID'}, {$ref: '#/components/parameters/Limit'}, {$ref: '#/components/parameters/Offset'}], responses: {'200': {description: Task page, optionally filtered by project and draft}}}
     post:
       requestBody:
         required: true
@@ -21,8 +21,10 @@ paths:
           application/json:
             schema:
               type: object
-              required: [prompt]
+              required: [project_id, draft_id, prompt]
               properties:
+                project_id: {type: string, minLength: 1}
+                draft_id: {type: string, minLength: 1}
                 kind: {type: string, enum: [story, image, video]}
                 prompt: {type: string}
                 model_id: {type: string, description: Model selected from a provider connection; defaults to the operation default when omitted}
@@ -49,7 +51,7 @@ paths:
       parameters:
         - {name: token, in: query, required: false, schema: {type: string}, description: API authentication token}
       responses:
-        '101': {description: WebSocket broadcasts live task events to all connections; clients send text ping every 15 seconds and refresh tasks over HTTP after reconnect}
+        '101': {description: WebSocket broadcasts task events including task_id, project_id and draft_id; clients send text ping every 15 seconds and refresh tasks over HTTP after reconnect}
   /api/providers:
     get: {responses: {'200': {description: Provider list}}}
     post: {responses: {'201': {description: Provider saved}}}
@@ -80,6 +82,8 @@ components:
   securitySchemes: {bearerAuth: {type: http, scheme: bearer}}
   parameters:
     ID: {name: id, in: path, required: true, schema: {type: string}}
+    ProjectID: {name: project_id, in: query, required: false, schema: {type: string}}
+    DraftID: {name: draft_id, in: query, required: false, schema: {type: string}}
     ModelID: {name: model, in: path, required: true, schema: {type: string}}
     Limit: {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 20}}
     Offset: {name: offset, in: query, schema: {type: integer, minimum: 0, default: 0}}

@@ -63,6 +63,8 @@ func (i Input) Validate() error {
 
 type Task struct {
 	ID           string    `json:"id"`
+	ProjectID    string    `json:"project_id,omitempty"`
+	DraftID      string    `json:"draft_id,omitempty"`
 	Kind         Kind      `json:"kind"`
 	Status       Status    `json:"status"`
 	Progress     int       `json:"progress"`
@@ -77,6 +79,13 @@ type Task struct {
 	RetryCount   int       `json:"retry_count"`
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`
+}
+
+func (t Task) ValidateScope() error {
+	if strings.TrimSpace(t.ProjectID) == "" || strings.TrimSpace(t.DraftID) == "" {
+		return errors.New("task project_id and draft_id are required")
+	}
+	return nil
 }
 
 func New(id string, kind Kind, input Input, now time.Time) Task {

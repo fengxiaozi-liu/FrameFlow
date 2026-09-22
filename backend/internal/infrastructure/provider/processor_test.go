@@ -12,6 +12,7 @@ import (
 
 	"github.com/fengxiaozi-liu/FrameFlow/internal/application"
 	domainprocessor "github.com/fengxiaozi-liu/FrameFlow/internal/domain/processor"
+	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/project"
 	domain "github.com/fengxiaozi-liu/FrameFlow/internal/domain/provider"
 	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/task"
 	"github.com/fengxiaozi-liu/FrameFlow/internal/infrastructure/queue"
@@ -46,6 +47,7 @@ func TestTaskOutlivesRequestAndCancellationStopsProvider(t *testing.T) {
 	}
 	defer store.Close()
 	configs := sqlite.NewProviderRepository(store)
+	projects := seedTaskProject(t, store)
 	connection := domain.Connection{ID: "test", Name: "Test", Vendor: "bailian", BaseURL: "https://example.com"}
 	model := domain.Model{ID: "test:blocking", ConnectionID: connection.ID, RemoteID: "wan2.7-i2v", Capabilities: []domain.Capability{domain.Video}, Supported: true, Enabled: true}
 	if err := store.SaveConnection(context.Background(), connection); err != nil {
@@ -57,7 +59,7 @@ func TestTaskOutlivesRequestAndCancellationStopsProvider(t *testing.T) {
 	generator := waitingVideo{entered: make(chan context.Context, 1), stopped: make(chan struct{})}
 	processor := domainprocessor.New(queue.NewWorker(), store)
 	processor.Models, processor.ProviderConnections, processor.ModelClient = store, store, generator
-	service := application.TaskService{Store: store, Enqueuer: processor, Providers: application.ProviderService{Repo: configs, Catalog: application.CatalogService{Models: store}}}
+	service := application.TaskService{Store: store, Enqueuer: processor, Projects: projects, Providers: application.ProviderService{Repo: configs, Catalog: application.CatalogService{Models: store}}}
 	requestCtx, endRequest := context.WithCancel(context.Background())
 	item := createTask(t, service, requestCtx, "video", "blocking")
 	endRequest()
@@ -100,6 +102,7 @@ func TestAllProviderKindsCompleteThroughWorker(t *testing.T) {
 	}
 	defer store.Close()
 	configs := sqlite.NewProviderRepository(store)
+	projects := seedTaskProject(t, store)
 	connection := domain.Connection{ID: "test", Name: "Test", Vendor: "bailian", BaseURL: "https://example.com"}
 	if err := store.SaveConnection(context.Background(), connection); err != nil {
 		t.Fatal(err)
@@ -113,10 +116,11 @@ func TestAllProviderKindsCompleteThroughWorker(t *testing.T) {
 	worker := queue.NewWorker()
 	processor := domainprocessor.New(worker, store)
 	processor.Models, processor.ProviderConnections, processor.ModelClient = store, store, testClient{}
+	processor.Results = application.TaskResultApplier{Projects: projects}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go processor.Start(ctx)
-	service := application.TaskService{Store: store, Enqueuer: processor, Providers: application.ProviderService{Repo: configs, Catalog: application.CatalogService{Models: store}}}
+	service := application.TaskService{Store: store, Enqueuer: processor, Projects: projects, Providers: application.ProviderService{Repo: configs, Catalog: application.CatalogService{Models: store}}}
 	for _, kind := range []string{"story", "image", "video"} {
 		created := createTask(t, service, context.Background(), kind, kind+"-test")
 		deadline := time.Now().Add(5 * time.Second)
@@ -153,7 +157,7 @@ func createTask(t *testing.T, service application.TaskService, ctx context.Conte
 	t.Helper()
 	router := gin.New()
 	router.POST("/tasks", service.Create)
-	body, _ := json.Marshal(map[string]string{"kind": kind, "model_id": "test:" + code, "prompt": "test", "source_image_url": "https://example.com/start.png"})
+	body, _ := json.Marshal(map[string]string{"project_id": "test-project", "draft_id": "test-draft", "kind": kind, "model_id": "test:" + code, "prompt": "test", "source_image_url": "https://example.com/start.png"})
 	out := httptest.NewRecorder()
 	req := httptest.NewRequest("POST", "/tasks", strings.NewReader(string(body))).WithContext(ctx)
 	req.Header.Set("Content-Type", "application/json")
@@ -166,4 +170,20 @@ func createTask(t *testing.T, service application.TaskService, ctx context.Conte
 		t.Fatal(err)
 	}
 	return item
+}
+
+func seedTaskProject(t *testing.T, store *sqlite.TaskRepository) *sqlite.ProjectRepository {
+	t.Helper()
+	p, err := project.New("test-project", "Test", time.Now().UTC())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = p.AddDraft(project.Draft{ID: "test-draft", Name: "Draft"}); err != nil {
+		t.Fatal(err)
+	}
+	repo := sqlite.NewProjectRepository(store)
+	if err = repo.Save(context.Background(), p); err != nil {
+		t.Fatal(err)
+	}
+	return repo
 }

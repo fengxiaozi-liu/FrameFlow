@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/project"
 	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/task"
 	"github.com/fengxiaozi-liu/FrameFlow/internal/infrastructure/queue"
 	"github.com/gin-gonic/gin"
@@ -14,6 +15,15 @@ import (
 	"time"
 )
 
+type taskTestProjects struct{ value project.Project }
+
+func (r taskTestProjects) Save(context.Context, project.Project) error          { return nil }
+func (r taskTestProjects) Get(context.Context, string) (project.Project, error) { return r.value, nil }
+func (r taskTestProjects) List(context.Context) ([]project.Project, error) {
+	return []project.Project{r.value}, nil
+}
+func (r taskTestProjects) Delete(context.Context, string) error { return nil }
+
 func TestCancelledSubmissionDoesNotLeaveUnscheduledQueuedTask(t *testing.T) {
 	worker := queue.NewWorker()
 	for i := 0; i < 32; i++ {
@@ -22,13 +32,15 @@ func TestCancelledSubmissionDoesNotLeaveUnscheduledQueuedTask(t *testing.T) {
 		}
 	}
 	store := queue.NewStore()
-	service := TaskService{Store: store, Enqueuer: worker}
+	p, _ := project.New("project", "test", time.Now())
+	_ = p.AddDraft(project.Draft{ID: "draft"})
+	service := TaskService{Store: store, Enqueuer: worker, Projects: taskTestProjects{value: p}}
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
 	defer cancel()
 	router := gin.New()
 	router.POST("/tasks", service.Create)
 	out := httptest.NewRecorder()
-	req := httptest.NewRequest("POST", "/tasks", strings.NewReader(`{"kind":"video","prompt":"test"}`)).WithContext(ctx)
+	req := httptest.NewRequest("POST", "/tasks", strings.NewReader(`{"project_id":"project","draft_id":"draft","kind":"video","prompt":"test"}`)).WithContext(ctx)
 	req.Header.Set("Content-Type", "application/json")
 	router.ServeHTTP(out, req)
 	if out.Code != 504 {

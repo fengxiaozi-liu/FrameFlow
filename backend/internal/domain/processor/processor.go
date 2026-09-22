@@ -32,8 +32,11 @@ type Processor struct {
 	Worker              Worker
 	Task                task.Repository
 	Connections         *websocket.Hub
-	mu                  sync.Mutex
-	running             map[string]context.CancelFunc
+	Results             interface {
+		Apply(context.Context, task.Task) error
+	}
+	mu      sync.Mutex
+	running map[string]context.CancelFunc
 }
 
 func New(worker Worker, store task.Repository) *Processor {
@@ -242,11 +245,13 @@ func (p *Processor) Execute(ctx context.Context, item task.Task) {
 		return
 	}
 	p.Connections.Broadcast(ctx, task.Event{
-		TaskID:   item.ID,
-		Status:   item.Status,
-		Progress: item.Progress,
-		Stage:    item.Stage,
-		At:       item.UpdatedAt,
+		TaskID:    item.ID,
+		ProjectID: item.ProjectID,
+		DraftID:   item.DraftID,
+		Status:    item.Status,
+		Progress:  item.Progress,
+		Stage:     item.Stage,
+		At:        item.UpdatedAt,
 	})
 	var err error
 	for attempt := 0; attempt < 3; attempt++ {
@@ -265,11 +270,13 @@ func (p *Processor) Execute(ctx context.Context, item task.Task) {
 				return
 			}
 			p.Connections.Broadcast(ctx, task.Event{
-				TaskID:   item.ID,
-				Status:   item.Status,
-				Progress: item.Progress,
-				Stage:    item.Stage,
-				At:       item.UpdatedAt,
+				TaskID:    item.ID,
+				ProjectID: item.ProjectID,
+				DraftID:   item.DraftID,
+				Status:    item.Status,
+				Progress:  item.Progress,
+				Stage:     item.Stage,
+				At:        item.UpdatedAt,
 			})
 		}
 		if item.ModelID == "" {
@@ -294,6 +301,12 @@ func (p *Processor) Execute(ctx context.Context, item task.Task) {
 			}
 		}
 	}
+	if err == nil && p.Results != nil {
+		err = p.Results.Apply(ctx, item)
+		if err != nil {
+			err = fmt.Errorf("apply task result: %w", err)
+		}
+	}
 	if err != nil {
 		item.Fail(err.Error(), time.Now().UTC())
 	} else {
@@ -304,11 +317,13 @@ func (p *Processor) Execute(ctx context.Context, item task.Task) {
 		return
 	}
 	p.Connections.Broadcast(ctx, task.Event{
-		TaskID:   item.ID,
-		Status:   item.Status,
-		Progress: item.Progress,
-		Stage:    item.Stage,
-		At:       item.UpdatedAt,
+		TaskID:    item.ID,
+		ProjectID: item.ProjectID,
+		DraftID:   item.DraftID,
+		Status:    item.Status,
+		Progress:  item.Progress,
+		Stage:     item.Stage,
+		At:        item.UpdatedAt,
 	})
 }
 

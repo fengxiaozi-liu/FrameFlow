@@ -2,18 +2,45 @@
 import { computed, onMounted, ref } from "vue";
 import { api } from "../api/client";
 import { useTaskStore } from "../stores/tasks";
-import type { Task, TaskStatus } from "../api/types";
+import type { Project, Task, TaskStatus } from "../api/types";
 import StatusBadge from "../components/StatusBadge.vue";
 import ProgressBar from "../components/ProgressBar.vue";
 const store = useTaskStore(),
   filter = ref<"all" | TaskStatus>("all"),
-  message = ref("");
+  message = ref(""),
+  projects = ref<Project[]>([]);
 const visible = computed(() =>
   filter.value === "all"
     ? store.items
     : store.items.filter((v) => v.status === filter.value),
 );
-const kindLabel: Record<Task["kind"], string> = { story: "文本", image: "图片", video: "视频" };
+const kindLabel: Record<Task["kind"], string> = {
+  story: "文本",
+  image: "图片",
+  video: "视频",
+};
+const groups = computed(() => {
+  const values = new Map<string, Task[]>();
+  for (const item of visible.value) {
+    const key = item.project_id || "";
+    values.set(key, [...(values.get(key) || []), item]);
+  }
+  return [...values].map(([id, items]) => ({
+    id: id || "unassigned",
+    name:
+      projects.value.find((project) => project.id === id)?.name ||
+      (id ? "未知项目" : "未归属任务"),
+    tasks: items,
+  }));
+});
+function draftLabel(item: Task) {
+  const project = projects.value.find((value) => value.id === item.project_id);
+  return (
+    project?.drafts.find((draft) => draft.id === item.draft_id)?.name ||
+    item.draft_id ||
+    "未归属草稿"
+  );
+}
 function savedMedia(task: Task) {
   if (task.kind !== "image" && task.kind !== "video") return false;
   const ext = task.kind === "image" ? "png" : "mp4";
@@ -40,7 +67,10 @@ async function download(task: Task) {
   }
 }
 onMounted(async () => {
-  await store.load();
+  await Promise.all([
+    store.load(),
+    api.projects().then((value) => (projects.value = value.projects)),
+  ]);
 });
 async function cancel(item: Task) {
   try {
@@ -64,7 +94,7 @@ async function retry(item: Task) {
       <div>
         <h1>任务中心</h1>
       </div>
-      <button @click="store.load">刷新状态</button>
+      <button @click="store.load()">刷新状态</button>
     </div>
     <div v-if="message || store.error" class="notice error">
       {{ message || store.error }}
@@ -87,48 +117,113 @@ async function retry(item: Task) {
       </button>
     </div>
     <div class="task-list">
-      <article v-for="task in visible" :key="task.id" class="card task-detail">
-        <div class="split task-heading">
-          <div>
-            <h2>{{ kindLabel[task.kind] }}生成 <span class="task-short-id">#{{ task.id.slice(-9) }}</span></h2>
-            <small>{{ new Date(task.created_at).toLocaleString() }} · {{ task.id }}</small>
+      <section
+        v-for="group in groups"
+        :key="group.id"
+        class="task-project-group"
+      >
+        <div class="section-head">
+          <h2>{{ group.name }}</h2>
+          <span>{{ group.tasks.length }} 个任务</span>
+        </div>
+        <article
+          v-for="task in group.tasks"
+          :key="task.id"
+          class="card task-detail"
+        >
+          <div class="split task-heading">
+            <div>
+              <h2>
+                {{ kindLabel[task.kind] }}生成
+                <span class="task-short-id">#{{ task.id.slice(-9) }}</span>
+              </h2>
+              <small
+                >{{ draftLabel(task) }} ·
+                {{ new Date(task.created_at).toLocaleString() }} ·
+                {{ task.id }}</small
+              >
+            </div>
+            <StatusBadge :status="task.status" />
           </div>
-          <StatusBadge :status="task.status" />
-        </div>
-        <div class="task-meta">
-          <span>阶段：{{ task.stage }}</span
-          ><span>模型：{{ task.model_id || task.provider_code || "未指定" }}</span
-          ><strong>{{ task.progress }}%</strong>
-        </div>
-        <ProgressBar :value="task.progress" />
-        <p v-if="task.error" class="error-text">{{ task.error }}</p>
-        <p v-if="task.result_text" class="task-result-text">{{ task.result_text }}</p>
-        <div v-if="task.status === 'succeeded' && task.kind === 'image' && previewURL(task)" class="task-preview image-preview">
-          <img :src="previewURL(task)" :alt="`${kindLabel[task.kind]}生成结果`" loading="lazy" />
-        </div>
-        <div v-if="task.status === 'succeeded' && task.kind === 'video' && previewURL(task)" class="task-preview video-preview">
-          <video :src="previewURL(task)" :poster="sourcePoster(task)" controls preload="metadata" playsinline aria-label="生成的视频" />
-        </div>
-        <p v-if="task.status === 'succeeded' && task.kind !== 'story' && !previewURL(task)" class="task-unavailable">此任务没有保存可预览的媒体文件。</p>
-        <div class="actions">
-          <button
-            v-if="task.status === 'queued' || task.status === 'running'"
-            @click="cancel(task)"
+          <div class="task-meta">
+            <span>阶段：{{ task.stage }}</span
+            ><span
+              >模型：{{ task.model_id || task.provider_code || "未指定" }}</span
+            ><strong>{{ task.progress }}%</strong>
+          </div>
+          <ProgressBar :value="task.progress" />
+          <p v-if="task.error" class="error-text">{{ task.error }}</p>
+          <p v-if="task.result_text" class="task-result-text">
+            {{ task.result_text }}
+          </p>
+          <div
+            v-if="
+              task.status === 'succeeded' &&
+              task.kind === 'image' &&
+              previewURL(task)
+            "
+            class="task-preview image-preview"
           >
-            取消任务</button
-          ><button
-            v-if="task.status === 'failed' || task.status === 'cancelled'"
-            @click="retry(task)"
+            <img
+              :src="previewURL(task)"
+              :alt="`${kindLabel[task.kind]}生成结果`"
+              loading="lazy"
+            />
+          </div>
+          <div
+            v-if="
+              task.status === 'succeeded' &&
+              task.kind === 'video' &&
+              previewURL(task)
+            "
+            class="task-preview video-preview"
           >
-            重新执行</button
-          ><button
-            v-if="task.status === 'succeeded' && savedMedia(task)"
-            class="primary"
-            @click="download(task)"
-          >下载{{ kindLabel[task.kind] }}</button
-          ><a v-else-if="task.status === 'succeeded' && previewURL(task)" :href="previewURL(task)" target="_blank" rel="noopener noreferrer">查看原始文件</a>
-        </div>
-      </article>
+            <video
+              :src="previewURL(task)"
+              :poster="sourcePoster(task)"
+              controls
+              preload="metadata"
+              playsinline
+              aria-label="生成的视频"
+            />
+          </div>
+          <p
+            v-if="
+              task.status === 'succeeded' &&
+              task.kind !== 'story' &&
+              !previewURL(task)
+            "
+            class="task-unavailable"
+          >
+            此任务没有保存可预览的媒体文件。
+          </p>
+          <div class="actions">
+            <button
+              v-if="task.status === 'queued' || task.status === 'running'"
+              @click="cancel(task)"
+            >
+              取消任务</button
+            ><button
+              v-if="task.status === 'failed' || task.status === 'cancelled'"
+              @click="retry(task)"
+            >
+              重新执行</button
+            ><button
+              v-if="task.status === 'succeeded' && savedMedia(task)"
+              class="primary"
+              @click="download(task)"
+            >
+              下载{{ kindLabel[task.kind] }}</button
+            ><a
+              v-else-if="task.status === 'succeeded' && previewURL(task)"
+              :href="previewURL(task)"
+              target="_blank"
+              rel="noopener noreferrer"
+              >查看原始文件</a
+            >
+          </div>
+        </article>
+      </section>
       <div v-if="!visible.length" class="empty">当前筛选下没有任务。</div>
     </div>
   </main>

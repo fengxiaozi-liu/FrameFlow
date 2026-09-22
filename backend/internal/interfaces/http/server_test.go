@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"github.com/fengxiaozi-liu/FrameFlow/internal/application"
 	domainprocessor "github.com/fengxiaozi-liu/FrameFlow/internal/domain/processor"
+	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/project"
 	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/provider"
 	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/task"
 	"github.com/fengxiaozi-liu/FrameFlow/internal/infrastructure/queue"
@@ -26,6 +27,12 @@ func testServer(t *testing.T) (testServices, func()) {
 		t.Fatal(e)
 	}
 	worker := queue.NewWorker()
+	projectRepo := sqlite.NewProjectRepository(db)
+	testProject, _ := project.New("test-project", "Test", time.Now().UTC())
+	_ = testProject.AddDraft(project.Draft{ID: "test-draft", Name: "Draft"})
+	if err := projectRepo.Save(context.Background(), testProject); err != nil {
+		t.Fatal(err)
+	}
 	providers := application.ProviderService{Repo: sqlite.NewProviderRepository(db)}
 	providers.Catalog = application.CatalogService{Connections: db, Models: db}
 	conn := provider.Connection{ID: "test-connection", Name: "Test", Vendor: "bailian", BaseURL: "https://dashscope.aliyuncs.com"}
@@ -40,11 +47,12 @@ func testServer(t *testing.T) (testServices, func()) {
 	}
 	processor := domainprocessor.New(worker, db)
 	processor.Models, processor.ProviderConnections, processor.ModelClient = db, db, testModelClient{}
+	processor.Results = application.TaskResultApplier{Projects: projectRepo}
 	ctx, cancel := context.WithCancel(context.Background())
 	workerDone := make(chan struct{})
 	go func() { defer close(workerDone); processor.Start(ctx) }()
-	tasks := application.TaskService{Store: db, Enqueuer: processor, Connections: ws.Connections, Providers: providers}
-	return testServices{Worker: worker, TaskService: tasks, Projects: application.ProjectService{Repo: sqlite.NewProjectRepository(db)}, Providers: providers, Materials: application.MaterialService{Repo: sqlite.NewMaterialRepository(db)}}, func() { cancel(); <-workerDone; ws.CloseAll(); _ = db.Close() }
+	tasks := application.TaskService{Store: db, Enqueuer: processor, Connections: ws.Connections, Providers: providers, Projects: projectRepo}
+	return testServices{Worker: worker, TaskService: tasks, Projects: application.ProjectService{Repo: projectRepo}, Providers: providers, Materials: application.MaterialService{Repo: sqlite.NewMaterialRepository(db)}}, func() { cancel(); <-workerDone; ws.CloseAll(); _ = db.Close() }
 }
 
 type testModelClient struct{}
@@ -64,6 +72,7 @@ func (testModelClient) PollVideo(context.Context, provider.Connection, provider.
 func testProcessor(s testServices) *domainprocessor.Processor {
 	p := domainprocessor.New(queue.NewWorker(), s.TaskService.Store)
 	p.Models, p.ProviderConnections, p.ModelClient = s.Providers.Catalog.Models, s.Providers.Catalog.Connections, testModelClient{}
+	p.Results = application.TaskResultApplier{Projects: s.Projects.Repo}
 	return p
 }
 
@@ -98,7 +107,7 @@ func TestAPICoreFlow(t *testing.T) {
 	if w.Code != 201 {
 		t.Fatal(w.Code, w.Body.String())
 	}
-	w = request(t, h, "POST", "/api/tasks", `{"kind":"video","prompt":"测试视频","source_image_url":"https://example.com/frame.png"}`)
+	w = request(t, h, "POST", "/api/tasks", `{"project_id":"`+id+`","draft_id":"d1","kind":"video","prompt":"测试视频","source_image_url":"https://example.com/frame.png"}`)
 	if w.Code != 202 {
 		t.Fatal(w.Code, w.Body.String())
 	}
@@ -106,6 +115,52 @@ func TestAPICoreFlow(t *testing.T) {
 	w = request(t, h, "GET", "/api/tasks", "")
 	if w.Code != 200 || !bytes.Contains(w.Body.Bytes(), []byte("succeeded")) {
 		t.Fatal(w.Code, w.Body.String())
+	}
+}
+
+func TestTaskScopeValidationAndStoryResultWriteback(t *testing.T) {
+	s, done := testServer(t)
+	defer done()
+	h := testRouter(s)
+	missing := request(t, h, http.MethodPost, "/api/tasks", `{"kind":"story","prompt":"test"}`)
+	if missing.Code != http.StatusBadRequest || !strings.Contains(missing.Body.String(), "missing_task_scope") {
+		t.Fatalf("missing scope: %d %s", missing.Code, missing.Body.String())
+	}
+	wrong := request(t, h, http.MethodPost, "/api/tasks", `{"project_id":"test-project","draft_id":"wrong","kind":"story","prompt":"test"}`)
+	if wrong.Code != http.StatusBadRequest || !strings.Contains(wrong.Body.String(), "draft_not_found") {
+		t.Fatalf("wrong draft: %d %s", wrong.Code, wrong.Body.String())
+	}
+	created := request(t, h, http.MethodPost, "/api/tasks", scopedTaskJSON(`"kind":"story","prompt":"generated body"`))
+	if created.Code != http.StatusAccepted {
+		t.Fatal(created.Code, created.Body.String())
+	}
+	var item task.Task
+	if err := json.Unmarshal(created.Body.Bytes(), &item); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		current, _ := s.TaskService.Store.Get(context.Background(), item.ID)
+		if current.Status == task.StatusSucceeded {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	p, err := s.Projects.Repo.Get(context.Background(), "test-project")
+	if err != nil || p.Drafts[0].Story.Body != "generated body" || len(p.Drafts[0].Outputs) != 1 {
+		t.Fatalf("story result not applied: %#v, %v", p, err)
+	}
+	saved := request(t, h, http.MethodPost, "/api/projects/test-project/drafts", `{"id":"test-draft","name":"Draft","story":{"body":"user edit","scenes":[],"updated_at":"2026-09-22T00:00:00Z"}}`)
+	if saved.Code != http.StatusOK {
+		t.Fatal(saved.Code, saved.Body.String())
+	}
+	p, err = s.Projects.Repo.Get(context.Background(), "test-project")
+	if err != nil || p.Drafts[0].Story.Body != "user edit" || len(p.Drafts[0].Outputs) != 1 {
+		t.Fatalf("draft save lost generated outputs: %#v, %v", p, err)
+	}
+	filtered := request(t, h, http.MethodGet, "/api/tasks?project_id=test-project&draft_id=test-draft", "")
+	if filtered.Code != http.StatusOK || !strings.Contains(filtered.Body.String(), item.ID) {
+		t.Fatalf("scoped query: %d %s", filtered.Code, filtered.Body.String())
 	}
 }
 
@@ -177,7 +232,7 @@ func TestShutdownEndpointUnavailable(t *testing.T) {
 func TestTaskEventsUpgradeThroughMiddleware(t *testing.T) {
 	s, done := testServer(t)
 	defer done()
-	created := request(t, testRouter(s), http.MethodPost, "/api/tasks", `{"kind":"video","prompt":"测试视频","source_image_url":"https://example.com/frame.png"}`)
+	created := request(t, testRouter(s), http.MethodPost, "/api/tasks", scopedTaskJSON(`"kind":"video","prompt":"测试视频","source_image_url":"https://example.com/frame.png"`))
 	if created.Code != http.StatusAccepted {
 		t.Fatal(created.Code, created.Body.String())
 	}
@@ -221,7 +276,7 @@ func TestTaskUpdatesBroadcastWithoutClientSession(t *testing.T) {
 	}
 	defer conn.Close()
 	_ = conn.SetReadDeadline(time.Now().Add(3 * time.Second))
-	created := request(t, testRouter(s), http.MethodPost, "/api/tasks", `{"kind":"story","prompt":"broadcast"}`)
+	created := request(t, testRouter(s), http.MethodPost, "/api/tasks", scopedTaskJSON(`"kind":"story","prompt":"broadcast"`))
 	if created.Code != http.StatusAccepted {
 		t.Fatal(created.Code, created.Body.String())
 	}
@@ -244,6 +299,9 @@ func TestTaskUpdatesBroadcastWithoutClientSession(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	if event.ProjectID != item.ProjectID || event.DraftID != item.DraftID {
+		t.Fatalf("completion event lost task scope: %+v", event)
+	}
 	stored, err = s.TaskService.Store.Get(context.Background(), item.ID)
 	if err != nil || stored.Status != event.Status || stored.Progress != event.Progress {
 		t.Fatal(stored, event, err)
@@ -256,7 +314,7 @@ func TestTaskCreationPerformanceAndMetrics(t *testing.T) {
 	handler := testRouter(s)
 	for i := 0; i < 20; i++ {
 		started := time.Now()
-		response := request(t, handler, http.MethodPost, "/api/tasks", `{"kind":"story","prompt":"测试视频"}`)
+		response := request(t, handler, http.MethodPost, "/api/tasks", scopedTaskJSON(`"kind":"story","prompt":"测试视频"`))
 		if response.Code != http.StatusAccepted {
 			t.Fatal(response.Code, response.Body.String())
 		}
@@ -296,7 +354,7 @@ func TestTaskPersistsWithoutSessionAndProcessorCompletes(t *testing.T) {
 	services, done := testServer(t)
 	defer done()
 	services.TaskService.Enqueuer = nil
-	response := request(t, testRouter(services), "POST", "/api/tasks", `{"kind":"story","prompt":"session test"}`)
+	response := request(t, testRouter(services), "POST", "/api/tasks", scopedTaskJSON(`"kind":"story","prompt":"session test"`))
 	if response.Code != 202 {
 		t.Fatal(response.Code, response.Body.String())
 	}
@@ -314,4 +372,8 @@ func TestTaskPersistsWithoutSessionAndProcessorCompletes(t *testing.T) {
 	if err != nil || current.Status != task.StatusSucceeded {
 		t.Fatal(current, err)
 	}
+}
+
+func scopedTaskJSON(fields string) string {
+	return `{"project_id":"test-project","draft_id":"test-draft",` + fields + `}`
 }

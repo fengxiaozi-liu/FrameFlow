@@ -28,7 +28,14 @@ onMounted(async () => {
     api.overview().then((v) => (overview.value = v)),
     api.projects().then((v) => (projects.value = v.projects)),
     ...(["story", "image", "video"] as const).map((k) =>
-      api.models(k).then((v) => (providers.value[k] = v.models.filter((m) => m.enabled && m.supported))),
+      api
+        .models(k)
+        .then(
+          (v) =>
+            (providers.value[k] = v.models.filter(
+              (m) => m.enabled && m.supported,
+            )),
+        ),
     ),
   ]);
 });
@@ -106,7 +113,13 @@ function start() {
             <h3>{{ project.name }}</h3>
             <p>{{ project.drafts?.length || 0 }} 个草稿</p>
           </div>
-          <RouterLink class="text-link" to="/studio">继续编辑</RouterLink>
+          <RouterLink
+            v-if="project.drafts?.[0]"
+            class="text-link"
+            :to="'/studio/' + project.id + '/' + project.drafts[0].id"
+            >继续编辑</RouterLink
+          >
+          <span v-else class="muted">暂无可编辑草稿</span>
         </article>
         <div v-if="!projects.length" class="empty">
           暂无草稿，从上方输入想法开始创作。

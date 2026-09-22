@@ -7,6 +7,8 @@ export interface TaskInput {
 }
 export interface Task {
   id: string;
+  project_id?: string;
+  draft_id?: string;
   kind: "story" | "image" | "video";
   status: TaskStatus;
   progress: number;
@@ -24,6 +26,8 @@ export interface Task {
 }
 export interface TaskEvent {
   task_id: string;
+  project_id?: string;
+  draft_id?: string;
   status: TaskStatus;
   progress: number;
   stage: string;
@@ -42,6 +46,7 @@ export interface Draft {
   project_id?: string;
   name: string;
   story: { summary: string; body: string; scenes: Scene[]; updated_at: string };
+  outputs?: DraftOutput[];
   created_at?: string;
   updated_at?: string;
 }
@@ -61,6 +66,13 @@ export interface Provider {
   enabled: boolean;
   status: "disabled" | "enabled" | "healthy";
   last_error?: string;
+}
+export interface DraftOutput {
+  task_id: string;
+  kind: Task["kind"];
+  text?: string;
+  url?: string;
+  created_at: string;
 }
 export interface ProviderConnection {
   id: string;

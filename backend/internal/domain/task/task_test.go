@@ -26,3 +26,14 @@ func TestInputRequiresPrompt(t *testing.T) {
 		t.Fatal("empty prompt should be rejected")
 	}
 }
+
+func TestTaskScopeRequiresProjectAndDraft(t *testing.T) {
+	item := New("1", KindStory, Input{Prompt: "test"}, time.Now())
+	if err := item.ValidateScope(); err == nil {
+		t.Fatal("missing scope should be rejected")
+	}
+	item.ProjectID, item.DraftID = "project", "draft"
+	if err := item.ValidateScope(); err != nil {
+		t.Fatal(err)
+	}
+}

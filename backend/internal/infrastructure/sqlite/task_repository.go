@@ -12,6 +12,7 @@ import (
 	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/provider"
 	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/task"
 	_ "modernc.org/sqlite"
+	"strings"
 )
 
 type TaskRepository struct{ db *sql.DB }
@@ -30,7 +31,7 @@ func Open(ctx context.Context, path string) (*TaskRepository, error) {
 		return nil, err
 	}
 	if _, err = db.ExecContext(ctx, `
-		CREATE TABLE IF NOT EXISTS tasks (id TEXT PRIMARY KEY, payload TEXT NOT NULL);
+		CREATE TABLE IF NOT EXISTS tasks (id TEXT PRIMARY KEY, project_id TEXT, draft_id TEXT, payload TEXT NOT NULL);
 		CREATE TABLE IF NOT EXISTS projects (id TEXT PRIMARY KEY, payload TEXT NOT NULL);
 		CREATE TABLE IF NOT EXISTS providers (id TEXT PRIMARY KEY, capability TEXT NOT NULL, payload TEXT NOT NULL);
 		CREATE TABLE IF NOT EXISTS provider_connections (id TEXT PRIMARY KEY, payload TEXT NOT NULL);
@@ -41,7 +42,49 @@ func Open(ctx context.Context, path string) (*TaskRepository, error) {
 		_ = db.Close()
 		return nil, err
 	}
+	for _, column := range []struct{ name, definition string }{
+		{"project_id", "TEXT"},
+		{"draft_id", "TEXT"},
+	} {
+		if err = ensureColumn(ctx, db, "tasks", column.name, column.definition); err != nil {
+			_ = db.Close()
+			return nil, err
+		}
+	}
+	if _, err = db.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS tasks_scope ON tasks(project_id, draft_id, id DESC)`); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
 	return &TaskRepository{db: db}, nil
+}
+
+func ensureColumn(ctx context.Context, db *sql.DB, table, name, definition string) error {
+	rows, err := db.QueryContext(ctx, "PRAGMA table_info("+table+")")
+	if err != nil {
+		return err
+	}
+	found := false
+	for rows.Next() {
+		var cid int
+		var column, kind string
+		var notNull, primaryKey int
+		var defaultValue any
+		if err := rows.Scan(&cid, &column, &kind, &notNull, &defaultValue, &primaryKey); err != nil {
+			_ = rows.Close()
+			return err
+		}
+		if column == name {
+			found = true
+		}
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	if found {
+		return nil
+	}
+	_, err = db.ExecContext(ctx, "ALTER TABLE "+table+" ADD COLUMN "+name+" "+definition)
+	return err
 }
 
 func saveJSON(ctx context.Context, db *sql.DB, table, id string, value any, categoryColumn, category string) error {
@@ -207,6 +250,35 @@ func (r *ProjectRepository) Delete(ctx context.Context, id string) error {
 	return r.root.DeleteProject(ctx, id)
 }
 
+func (r *ProjectRepository) Update(ctx context.Context, id string, change func(*project.Project) error) (project.Project, error) {
+	var value project.Project
+	tx, err := r.root.db.BeginTx(ctx, nil)
+	if err != nil {
+		return value, err
+	}
+	defer tx.Rollback()
+	var raw string
+	if err = tx.QueryRowContext(ctx, `SELECT payload FROM projects WHERE id=?`, id).Scan(&raw); errors.Is(err, sql.ErrNoRows) {
+		return value, fault.ErrNotFound
+	} else if err != nil {
+		return value, err
+	}
+	if err = json.Unmarshal([]byte(raw), &value); err != nil {
+		return value, err
+	}
+	if err = change(&value); err != nil {
+		return value, err
+	}
+	payload, err := json.Marshal(value)
+	if err != nil {
+		return value, err
+	}
+	if _, err = tx.ExecContext(ctx, `UPDATE projects SET payload=? WHERE id=?`, string(payload), id); err != nil {
+		return value, err
+	}
+	return value, tx.Commit()
+}
+
 type ProviderRepository struct{ root *TaskRepository }
 
 func NewProviderRepository(root *TaskRepository) *ProviderRepository {
@@ -260,8 +332,14 @@ func (r *TaskRepository) Save(ctx context.Context, t task.Task) error {
 	if err != nil {
 		return err
 	}
-	_, err = r.db.ExecContext(ctx, `INSERT INTO tasks(id,payload) VALUES(?,?) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload`, t.ID, string(b))
+	_, err = r.db.ExecContext(ctx, `INSERT INTO tasks(id,project_id,draft_id,payload) VALUES(?,?,?,?) ON CONFLICT(id) DO UPDATE SET project_id=excluded.project_id,draft_id=excluded.draft_id,payload=excluded.payload`, t.ID, nullString(t.ProjectID), nullString(t.DraftID), string(b))
 	return err
+}
+func nullString(value string) any {
+	if value == "" {
+		return nil
+	}
+	return value
 }
 
 func (r *TaskRepository) Get(ctx context.Context, id string) (task.Task, error) {
@@ -269,6 +347,42 @@ func (r *TaskRepository) Get(ctx context.Context, id string) (task.Task, error) 
 }
 func (r *TaskRepository) List(ctx context.Context) ([]task.Task, error) {
 	return listJSON[task.Task](ctx, r.db, "tasks", "", "")
+}
+
+func (r *TaskRepository) ListByScope(ctx context.Context, scope task.Scope) ([]task.Task, error) {
+	query := `SELECT payload FROM tasks`
+	args := []any{}
+	conditions := []string{}
+	if scope.ProjectID != "" {
+		conditions = append(conditions, "project_id=?")
+		args = append(args, scope.ProjectID)
+	}
+	if scope.DraftID != "" {
+		conditions = append(conditions, "draft_id=?")
+		args = append(args, scope.DraftID)
+	}
+	if len(conditions) > 0 {
+		query += " WHERE " + strings.Join(conditions, " AND ")
+	}
+	query += " ORDER BY id DESC"
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []task.Task{}
+	for rows.Next() {
+		var raw string
+		var item task.Task
+		if err := rows.Scan(&raw); err != nil {
+			return nil, err
+		}
+		if err := json.Unmarshal([]byte(raw), &item); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
 }
 
 func (r *TaskRepository) Delete(ctx context.Context, id string) error {
