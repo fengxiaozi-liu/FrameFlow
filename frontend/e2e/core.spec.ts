@@ -121,6 +121,58 @@ test("a storyboard card can delete its own scene after the settings panel is clo
   await expect(cards).toHaveCount(1);
 });
 
+test("a completed storyboard task reveals its candidate and applying it opens the scene list", async ({ page, request }) => {
+  const { projectId, draftId } = await createDraft(request);
+  const draftPath = `/api/projects/${projectId}/drafts/${draftId}`;
+  const draftResponse = await request.get(draftPath);
+  expect(draftResponse.ok()).toBeTruthy();
+  const draft = await draftResponse.json();
+  expect(draft.id).toBe(draftId);
+  draft.story.body = "清晨的街道上，艾琳走进书店。";
+  draft.story.scenes = [];
+  const taskId = "storyboard-navigation-task";
+  const scene = { id: "generated-scene", order: 1, title: "走进书店", visual_prompt: "清晨的书店", narration: "", duration_seconds: 5 };
+  const candidate = { id: taskId, task_id: taskId, target: "storyboard", source_version: draft.version || 0, source_body: draft.story.body, scenes: [scene], status: "preview" };
+  let candidateReady = false;
+  await page.route(`**/api/projects/${projectId}`, async (route) => {
+    const response = await route.fetch();
+    const project = await response.json();
+    project.drafts = project.drafts.map((item: { id: string }) => item.id === draftId ? { ...draft, candidates: candidateReady ? [candidate] : [] } : item);
+    await route.fulfill({ response, json: project });
+  });
+  await page.route(`**${draftPath}`, (route) => {
+    if (route.request().method() !== "GET") return route.continue();
+    return route.fulfill({ json: { ...draft, candidates: candidateReady ? [candidate] : [] } });
+  });
+  await page.route(`**${draftPath}/candidates/${taskId}/apply`, (route) => {
+    candidateReady = false;
+    draft.story.scenes = [scene];
+    draft.candidates = [{ ...candidate, status: "applied" }];
+    draft.version = (draft.version || 0) + 1;
+    return route.fulfill({ json: draft });
+  });
+  await page.route("**/api/tasks?*", (route) => route.fulfill({ json: { tasks: [{ id: taskId, project_id: projectId, draft_id: draftId, kind: "story", status: "running", progress: 50, stage: "generating", updated_at: new Date(0).toISOString() }], total: 1 } }));
+  let sendTaskEvent: ((payload: string) => void) | undefined;
+  await page.routeWebSocket(/\/ws(?:\?|$)/, (socket) => { sendTaskEvent = (payload) => socket.send(payload); });
+  await page.goto(`/studio/${projectId}/${draftId}`);
+  await expect(page.getByLabel("故事正文")).toHaveValue("清晨的街道上，艾琳走进书店。");
+  await expect(page.locator(".editor-card .candidate-card")).toHaveCount(0);
+  await expect.poll(() => !!sendTaskEvent).toBe(true);
+  candidateReady = true;
+  sendTaskEvent!(JSON.stringify({ task_id: taskId, project_id: projectId, draft_id: draftId, status: "succeeded", progress: 100, stage: "completed", at: new Date().toISOString() }));
+  const card = page.locator(".editor-card .candidate-card");
+  await expect(card).toContainText("走进书店");
+  await expect.poll(() => page.evaluate(() => scrollY)).toBeGreaterThan(0);
+  await expect.poll(async () => {
+    const button = (await card.getByRole("button", { name: "应用分镜" }).boundingBox())!;
+    return button.y + button.height <= page.viewportSize()!.height;
+  }).toBe(true);
+  await card.getByRole("button", { name: "应用分镜" }).click();
+  await expect(page.locator(".workspace-tabs button.active")).toContainText("分镜");
+  await expect(page.locator(".scene-list .scene-row")).toContainText("走进书店");
+  await expect.poll(async () => (await page.locator(".scene-board").boundingBox())!.y).toBeLessThan(150);
+});
+
 test("story editor follows the wide card layout and stays usable on mobile", async ({ page }, testInfo) => {
   await page.goto("/studio");
   const card = page.locator(".editor-card");

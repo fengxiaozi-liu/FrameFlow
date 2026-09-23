@@ -185,12 +185,12 @@ async function handleTaskEvent(event: TaskEvent) {
   if (event.status === "succeeded" || event.status === "failed") {
     try {
       await refreshDraft();
-      await tasks.load();
       if (event.status === "succeeded" && latestStoryboard.value?.id === event.task_id) {
         activeTab.value = "body";
         await nextTick();
         storyboardCandidateElement.value?.scrollIntoView({ block: "start" });
       }
+      await tasks.load();
     }
     catch (error) { message.value = (error as Error).message; }
   }
