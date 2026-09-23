@@ -22,6 +22,20 @@ type CatalogService struct {
 	Discovery   provider.Discovery
 }
 
+func (s CatalogService) VideoCapability(g *gin.Context) {
+	model, err := s.Models.GetModel(g.Request.Context(), g.Param("model"))
+	if err != nil {
+		writeError(g, err)
+		return
+	}
+	capability, known := provider.VideoCapabilityFor(model.RemoteID)
+	if !known || !model.Supports(provider.Video) {
+		g.JSON(http.StatusOK, gin.H{"supported": false, "reason": "该模型的视频输入能力尚未确认"})
+		return
+	}
+	g.JSON(http.StatusOK, gin.H{"supported": true, "capability": capability})
+}
+
 func (s CatalogService) ListConnections(g *gin.Context) {
 	items, err := s.Connections.ListConnections(g.Request.Context())
 	if err != nil {

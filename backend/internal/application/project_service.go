@@ -5,12 +5,16 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/material"
 	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/project"
+	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/task"
 	"github.com/gin-gonic/gin"
 )
 
 type ProjectService struct {
-	Repo project.Repository
+	Repo      project.Repository
+	Materials material.Repository
+	Tasks     task.Repository
 }
 
 func (s ProjectService) Create(ctx *gin.Context) {
@@ -53,6 +57,53 @@ func (s ProjectService) Get(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, item)
 }
 
+func (s ProjectService) SaveDraftRevision(ctx *gin.Context) {
+	var input struct {
+		ExpectedVersion *int64  `json:"expected_version"`
+		Body            string  `json:"body"`
+		Name            *string `json:"name"`
+	}
+	if err := ctx.ShouldBindJSON(&input); err != nil {
+		writeError(ctx, Invalid("invalid_draft_revision", err))
+		return
+	}
+	if input.ExpectedVersion == nil || *input.ExpectedVersion < 0 {
+		writeError(ctx, Invalid("expected_version_required", errors.New("expected_version must be non-negative")))
+		return
+	}
+	projectID, draftID := ctx.Param("id"), ctx.Param("draftId")
+	var saved project.Draft
+	change := func(p *project.Project) error {
+		var err error
+		saved, err = p.UpdateDraftBody(draftID, *input.ExpectedVersion, input.Body, time.Now().UTC())
+		if err == nil && input.Name != nil {
+			for i := range p.Drafts {
+				if p.Drafts[i].ID == draftID {
+					p.Drafts[i].Name = *input.Name
+					saved.Name = *input.Name
+					break
+				}
+			}
+		}
+		return err
+	}
+	var err error
+	if atomic, ok := s.Repo.(project.AtomicRepository); ok {
+		_, err = atomic.Update(ctx.Request.Context(), projectID, change)
+	} else {
+		err = errors.New("atomic project repository is required for versioned saves")
+	}
+	if errors.Is(err, project.ErrVersionConflict) {
+		ctx.JSON(http.StatusConflict, gin.H{"code": "draft_version_conflict", "draft": saved})
+		return
+	}
+	if err != nil {
+		writeError(ctx, err)
+		return
+	}
+	ctx.JSON(http.StatusOK, saved)
+}
+
 func (s ProjectService) SaveDraft(ctx *gin.Context) {
 	var d project.Draft
 	if err := ctx.Bind(&d); err != nil {
@@ -74,6 +125,15 @@ func (s ProjectService) SaveDraft(ctx *gin.Context) {
 			d.ProjectID = p.ID
 			d.UpdatedAt = time.Now().UTC()
 			d.Outputs = mergeDraftOutputs(p.Drafts[i].Outputs, d.Outputs)
+			// Legacy draft saves do not know about new server-owned history.
+			d.Candidates = p.Drafts[i].Candidates
+			d.StoryboardSnapshots = p.Drafts[i].StoryboardSnapshots
+			d.BodySnapshots = p.Drafts[i].BodySnapshots
+			d.Bindings = p.Drafts[i].Bindings
+			d.VideoVersions = p.Drafts[i].VideoVersions
+			d.SelectedVersions = p.Drafts[i].SelectedVersions
+			d.Compositions = p.Drafts[i].Compositions
+			d.Version = p.Drafts[i].Version + 1
 			p.Drafts[i] = d
 			return nil
 		}

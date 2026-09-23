@@ -55,7 +55,86 @@ func Open(ctx context.Context, path string) (*TaskRepository, error) {
 		_ = db.Close()
 		return nil, err
 	}
+	if err = migrateStoryWorkspace(ctx, db); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
 	return &TaskRepository{db: db}, nil
+}
+
+func migrateStoryWorkspace(ctx context.Context, db *sql.DB) error {
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err = tx.ExecContext(ctx, `
+		CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY);
+		CREATE TABLE IF NOT EXISTS material_references (
+			project_id TEXT NOT NULL, draft_id TEXT NOT NULL, scene_id TEXT NOT NULL,
+			material_id TEXT NOT NULL, source_kind TEXT NOT NULL, source_id TEXT NOT NULL,
+			PRIMARY KEY (project_id, draft_id, scene_id, material_id, source_kind, source_id),
+			FOREIGN KEY (material_id) REFERENCES materials(id) ON DELETE RESTRICT
+		);
+		CREATE INDEX IF NOT EXISTS material_references_material ON material_references(material_id);
+	`); err != nil {
+		return err
+	}
+	var version int
+	err = tx.QueryRowContext(ctx, `SELECT version FROM schema_migrations WHERE version=1`).Scan(&version)
+	if err == nil {
+		return tx.Commit()
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+	rows, err := tx.QueryContext(ctx, `SELECT id,payload FROM materials`)
+	if err != nil {
+		return err
+	}
+	type updatedAsset struct {
+		id      string
+		kind    material.Kind
+		payload string
+	}
+	var updates []updatedAsset
+	for rows.Next() {
+		var id, payload string
+		if err = rows.Scan(&id, &payload); err != nil {
+			_ = rows.Close()
+			return err
+		}
+		var asset material.Asset
+		if err = json.Unmarshal([]byte(payload), &asset); err != nil {
+			_ = rows.Close()
+			return fmt.Errorf("legacy material %s: %w", id, err)
+		}
+		if !asset.NormalizeLegacyKind() {
+			continue
+		}
+		encoded, encodeErr := json.Marshal(asset)
+		if encodeErr != nil {
+			_ = rows.Close()
+			return encodeErr
+		}
+		updates = append(updates, updatedAsset{id: id, kind: asset.Kind, payload: string(encoded)})
+	}
+	if err = rows.Err(); err != nil {
+		_ = rows.Close()
+		return err
+	}
+	if err = rows.Close(); err != nil {
+		return err
+	}
+	for _, update := range updates {
+		if _, err = tx.ExecContext(ctx, `UPDATE materials SET kind=?,payload=? WHERE id=?`, string(update.kind), update.payload, update.id); err != nil {
+			return err
+		}
+	}
+	if _, err = tx.ExecContext(ctx, `INSERT INTO schema_migrations(version) VALUES(1)`); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func ensureColumn(ctx context.Context, db *sql.DB, table, name, definition string) error {
@@ -213,6 +292,7 @@ func (r *TaskRepository) DeleteModel(ctx context.Context, id string) error {
 }
 
 func (r *TaskRepository) SaveMaterial(ctx context.Context, v material.Asset) error {
+	v.NormalizeLegacyKind()
 	return saveJSON(ctx, r.db, "materials", v.ID, v, "kind", string(v.Kind))
 }
 
@@ -221,6 +301,12 @@ func (r *TaskRepository) GetMaterial(ctx context.Context, id string) (material.A
 }
 
 func (r *TaskRepository) ListMaterials(ctx context.Context, kind material.Kind) ([]material.Asset, error) {
+	if kind == material.Visual || kind == material.Frame {
+		kind = material.Scene
+	}
+	if kind == "" {
+		return listJSON[material.Asset](ctx, r.db, "materials", "", "")
+	}
 	return listJSON[material.Asset](ctx, r.db, "materials", "kind", string(kind))
 }
 

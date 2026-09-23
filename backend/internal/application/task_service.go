@@ -3,6 +3,7 @@ package application
 import (
 	"context"
 	"errors"
+	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/material"
 	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/project"
 	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/provider"
 	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/task"
@@ -25,16 +26,19 @@ type TaskService struct {
 	}
 	Providers ProviderService
 	Projects  project.Repository
+	Materials material.Repository
+	Probe     func(context.Context, string) (task.MediaProbeResult, error)
 }
 
 func (s TaskService) Create(g *gin.Context) {
 	ctx := g.Request.Context()
 	var inputRequest struct {
-		Kind         string `json:"kind"`
-		ProjectID    string `json:"project_id"`
-		DraftID      string `json:"draft_id"`
-		ProviderCode string `json:"provider_code"`
-		ModelID      string `json:"model_id"`
+		Kind            string `json:"kind"`
+		ProjectID       string `json:"project_id"`
+		DraftID         string `json:"draft_id"`
+		ProviderCode    string `json:"provider_code"`
+		ModelID         string `json:"model_id"`
+		ExpectedVersion *int64 `json:"expected_version"`
 		task.Input
 	}
 	if err := g.Bind(&inputRequest); err != nil {
@@ -58,6 +62,10 @@ func (s TaskService) Create(g *gin.Context) {
 	kindValue, err := task.ParseKind(kind)
 	if err != nil {
 		writeError(g, Invalid("invalid_task", err))
+		return
+	}
+	if kindValue == task.KindComposition {
+		writeError(g, Invalid("invalid_task", errors.New("use the scoped composition endpoint")))
 		return
 	}
 	if s.Providers.Catalog.Models != nil {
@@ -115,6 +123,22 @@ func (s TaskService) Create(g *gin.Context) {
 	if !p.HasDraft(t.DraftID) {
 		writeError(g, Invalid("draft_not_found", errors.New("draft does not belong to project")))
 		return
+	}
+	if inputRequest.ExpectedVersion != nil {
+		matched := false
+		for _, draft := range p.Drafts {
+			if draft.ID == t.DraftID {
+				matched = draft.Version == *inputRequest.ExpectedVersion
+				if matched {
+					t.InputVersion = draft.Version
+				}
+				break
+			}
+		}
+		if !matched {
+			writeError(g, Conflict("draft_version_conflict", errors.New("save draft changes before starting generation")))
+			return
+		}
 	}
 	t.ProviderCode = providerCode
 	t.ModelID = modelID
@@ -275,13 +299,16 @@ func (s TaskService) Download(g *gin.Context) {
 		return
 	}
 	ext := ".png"
-	if item.Kind == task.KindVideo {
+	if item.Kind == task.KindVideo || item.Kind == task.KindComposition {
 		ext = ".mp4"
 	} else if item.Kind != task.KindImage {
 		writeError(g, Invalid("result_not_media", errors.New("task has no media result")))
 		return
 	}
 	name := "generated-" + item.ID + ext
+	if item.Kind == task.KindComposition {
+		name = "composition-" + item.ID + ".mp4"
+	}
 	if strings.ContainsAny(item.ID, `/\`) || item.ResultURL != "/media/"+name || s.UploadDir == "" {
 		writeError(g, Conflict("result_file_missing", errors.New("task has no saved media file")))
 		return

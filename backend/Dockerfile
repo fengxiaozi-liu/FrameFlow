@@ -5,6 +5,7 @@ RUN go mod download
 COPY . .
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /frameflow ./cmd/server
 FROM alpine:3.21
+RUN apk add --no-cache ffmpeg
 RUN addgroup -S frameflow && adduser -S frameflow -G frameflow
 WORKDIR /app
 COPY --from=build /frameflow /usr/local/bin/frameflow

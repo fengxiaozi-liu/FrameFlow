@@ -1,0 +1,4 @@
+[
+  {"id":"p-old-a","name":"旧项目 A","drafts":[{"id":"d-old-a1","project_id":"p-old-a","name":"草稿一","story":{"summary":"旧概述","body":"旧正文","scenes":[{"id":"s-old-a1","order":1,"title":"晨光","visual_prompt":"晨光穿过窗户","narration":"早晨到了","duration_seconds":5}],"updated_at":"2026-01-01T00:00:00Z"},"outputs":[],"created_at":"2026-01-01T00:00:00Z","updated_at":"2026-01-01T00:00:00Z"},{"id":"d-old-a2","project_id":"p-old-a","name":"草稿二","story":{"summary":"","body":"另一份正文","scenes":[],"updated_at":"2026-01-02T00:00:00Z"},"created_at":"2026-01-02T00:00:00Z","updated_at":"2026-01-02T00:00:00Z"}],"created_at":"2026-01-01T00:00:00Z"},
+  {"id":"p-old-b","name":"旧项目 B","drafts":[{"id":"d-old-b1","project_id":"p-old-b","name":"独立草稿","story":{"summary":"","body":"项目 B 的正文","scenes":[],"updated_at":"2026-01-03T00:00:00Z"},"created_at":"2026-01-03T00:00:00Z","updated_at":"2026-01-03T00:00:00Z"}],"created_at":"2026-01-03T00:00:00Z"}
+]

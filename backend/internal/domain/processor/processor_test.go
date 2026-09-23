@@ -55,3 +55,35 @@ func TestProcessorForwardsTaskInputToModelClient(t *testing.T) {
 		t.Fatalf("model request does not contain task input: %+v", client.request)
 	}
 }
+
+func TestProcessorExecutesCompositionSnapshotWithoutModel(t *testing.T) {
+	ctx := context.Background()
+	store, err := sqlite.Open(ctx, filepath.Join(t.TempDir(), "composition.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	p := New(nil, store)
+	snapshot := task.CompositionInput{Clips: []task.CompositionClip{{SceneID: "scene-1", VersionID: "v1", MediaPath: "/media/old.mp4", DurationSeconds: 5}}, AspectRatio: "16:9", Resolution: "720P"}
+	called := false
+	p.Compose = func(_ context.Context, id string, input task.CompositionInput, progress func(int, task.Stage)) (string, float64, error) {
+		called = true
+		if id != "compose-1" || input.Clips[0].VersionID != "v1" {
+			t.Fatal(id, input)
+		}
+		progress(50, task.StageComposing)
+		return "/media/composition-compose-1.mp4", 5, nil
+	}
+	item := task.New("compose-1", task.KindComposition, task.Input{Prompt: "compose"}, time.Now())
+	item.Composition = &snapshot
+	if err := p.processModel(ctx, &item, func(int, task.Stage) {}); err != nil {
+		t.Fatal(err)
+	}
+	if !called || item.ResultURL != "/media/composition-compose-1.mp4" || item.ResultDurationSeconds != 5 {
+		t.Fatal(item)
+	}
+	saved, err := store.Get(ctx, item.ID)
+	if err != nil || saved.ResultURL != item.ResultURL {
+		t.Fatal(saved, err)
+	}
+}

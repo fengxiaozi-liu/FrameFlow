@@ -18,6 +18,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"testing/fstest"
 	"time"
 )
 
@@ -51,8 +52,9 @@ func testServer(t *testing.T) (testServices, func()) {
 	ctx, cancel := context.WithCancel(context.Background())
 	workerDone := make(chan struct{})
 	go func() { defer close(workerDone); processor.Start(ctx) }()
-	tasks := application.TaskService{Store: db, Enqueuer: processor, Connections: ws.Connections, Providers: providers, Projects: projectRepo}
-	return testServices{Worker: worker, TaskService: tasks, Projects: application.ProjectService{Repo: projectRepo}, Providers: providers, Materials: application.MaterialService{Repo: sqlite.NewMaterialRepository(db)}}, func() { cancel(); <-workerDone; ws.CloseAll(); _ = db.Close() }
+	materials := sqlite.NewMaterialRepository(db)
+	tasks := application.TaskService{Store: db, Enqueuer: processor, Connections: ws.Connections, Providers: providers, Projects: projectRepo, Materials: materials}
+	return testServices{Worker: worker, TaskService: tasks, Projects: application.ProjectService{Repo: projectRepo, Materials: materials, Tasks: db}, Providers: providers, Materials: application.MaterialService{Repo: materials, Projects: projectRepo, Tasks: db}}, func() { cancel(); <-workerDone; ws.CloseAll(); _ = db.Close() }
 }
 
 type testModelClient struct{}
@@ -82,6 +84,23 @@ func request(t *testing.T, h http.Handler, method, path, body string) *httptest.
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, r)
 	return w
+}
+
+func TestStaticSPARespondsSuccessfully(t *testing.T) {
+	router := gin.New()
+	RegisterStatic(router, "", fstest.MapFS{
+		"index.html":    &fstest.MapFile{Data: []byte("<html>FrameFlow</html>")},
+		"assets/app.js": &fstest.MapFile{Data: []byte("console.log('ready')")},
+	})
+	for _, path := range []string{"/", "/studio/example", "/assets/app.js"} {
+		response := request(t, router, http.MethodGet, path, "")
+		if response.Code != http.StatusOK {
+			t.Fatalf("%s: %d %s", path, response.Code, response.Body.String())
+		}
+	}
+	if response := request(t, router, http.MethodGet, "/api/missing", ""); response.Code != http.StatusNotFound {
+		t.Fatalf("unknown API route: %d", response.Code)
+	}
 }
 
 func TestAPICoreFlow(t *testing.T) {

@@ -41,6 +41,15 @@ func (s ResultStore) Save(ctx context.Context, taskID string, kind task.Kind, re
 		return "", err
 	}
 	name := "generated-" + taskID + ext
+	destination := filepath.Join(s.Directory, name)
+	if kind == task.KindVideo {
+		if _, err := os.Stat(destination); err == nil {
+			if err := validateMP4(destination); err != nil {
+				return "", fmt.Errorf("existing video result is invalid: %w", err)
+			}
+			return "/media/" + name, nil
+		}
+	}
 	client := s.HTTP
 	if client == nil {
 		client = &http.Client{Timeout: 5 * time.Minute, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
@@ -76,11 +85,35 @@ func (s ResultStore) Save(ctx context.Context, taskID string, kind task.Kind, re
 	if info.Size() > limit {
 		return "", errors.New("model result is too large")
 	}
+	if info.Size() == 0 {
+		return "", errors.New("model result is empty")
+	}
+	if kind == task.KindVideo {
+		if err := validateMP4(file.Name()); err != nil {
+			return "", err
+		}
+	}
 	if err := file.Close(); err != nil {
 		return "", err
 	}
-	if err := os.Rename(file.Name(), filepath.Join(s.Directory, name)); err != nil {
+	if err := os.Rename(file.Name(), destination); err != nil {
 		return "", err
 	}
 	return "/media/" + name, nil
+}
+
+func validateMP4(name string) error {
+	file, err := os.Open(name)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	header := make([]byte, 12)
+	if _, err := io.ReadFull(file, header); err != nil {
+		return errors.New("video result is too short")
+	}
+	if string(header[4:8]) != "ftyp" {
+		return errors.New("video result is not an MP4 file")
+	}
+	return nil
 }

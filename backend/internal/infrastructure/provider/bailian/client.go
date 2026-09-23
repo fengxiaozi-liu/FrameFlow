@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -80,6 +81,14 @@ func (c Client) request(ctx context.Context, connection provider.Connection, key
 	req.Header.Set("Content-Type", "application/json")
 	if async {
 		req.Header.Set("X-DashScope-Async", "enable")
+	}
+	if video, ok := body.(protocol.WanxiangVideoRequest); ok {
+		for _, media := range video.Input.Media {
+			if strings.HasPrefix(media.URL, "oss://") {
+				req.Header.Set("X-DashScope-OssResourceResolve", "enable")
+				break
+			}
+		}
 	}
 	resp, err := c.httpClient().Do(req)
 	if err != nil {
@@ -158,6 +167,12 @@ func (c Client) GenerateText(ctx context.Context, connection provider.Connection
 		return provider.StoryResult{}, err
 	}
 	req := protocol.QianwenChatRequest{Model: model.RemoteID}
+	if input.SystemPrompt != "" {
+		req.Messages = append(req.Messages, struct {
+			Role    string `json:"role"`
+			Content string `json:"content"`
+		}{Role: "system", Content: input.SystemPrompt})
+	}
 	req.Messages = append(req.Messages, struct {
 		Role    string `json:"role"`
 		Content string `json:"content"`
@@ -226,11 +241,46 @@ func (c Client) GenerateImage(ctx context.Context, connection provider.Connectio
 }
 
 func (c Client) GenerateVideo(ctx context.Context, connection provider.Connection, model provider.Model, input provider.VideoRequest, options provider.RequestOptions) (provider.VideoResult, error) {
-	if !model.Supports(provider.Video) || !strings.HasPrefix(model.RemoteID, "wan2.7-i2v") {
+	capability, known := provider.VideoCapabilityFor(model.RemoteID)
+	if !model.Supports(provider.Video) || !known {
 		return provider.VideoResult{}, provider.ErrUnsupported
 	}
 	if !strings.HasPrefix(input.SourceImageURL, "https://") && !strings.HasPrefix(input.SourceImageURL, "http://") && !strings.HasPrefix(input.SourceImageURL, "data:image/") {
 		return provider.VideoResult{}, errors.New("source image must be a public URL or an image data URI")
+	}
+	if input.LastFrameURL != "" && !strings.HasPrefix(input.LastFrameURL, "https://") && !strings.HasPrefix(input.LastFrameURL, "http://") && !strings.HasPrefix(input.LastFrameURL, "data:image/") {
+		return provider.VideoResult{}, errors.New("last frame must be a public URL or an image data URI")
+	}
+	if input.DrivingAudioURL != "" && !strings.HasPrefix(input.DrivingAudioURL, "https://") && !strings.HasPrefix(input.DrivingAudioURL, "http://") && !strings.HasPrefix(input.DrivingAudioURL, "oss://") {
+		return provider.VideoResult{}, errors.New("driving audio must be a public URL or an OSS URL")
+	}
+	if input.DrivingAudioURL != "" {
+		audioURL, parseErr := url.Parse(input.DrivingAudioURL)
+		if parseErr != nil {
+			return provider.VideoResult{}, parseErr
+		}
+		if expiry := audioURL.Query().Get("Expires"); expiry != "" {
+			expiryUnix, parseErr := strconv.ParseInt(expiry, 10, 64)
+			if parseErr != nil || expiryUnix <= time.Now().Unix()+300 {
+				return provider.VideoResult{}, errors.New("driving audio URL has expired or expires too soon")
+			}
+		}
+	}
+	if input.Duration == 0 {
+		input.Duration = 5
+	}
+	if input.Resolution == "" {
+		input.Resolution = "1080P"
+	}
+	usages := []string{"first_frame"}
+	if input.LastFrameURL != "" {
+		usages = append(usages, "last_frame")
+	}
+	if input.DrivingAudioURL != "" {
+		usages = append(usages, "driving_audio")
+	}
+	if err := capability.ValidateInput(input.Duration, input.Resolution, usages); err != nil {
+		return provider.VideoResult{}, err
 	}
 	ctx, cancel := provider.WithTimeout(ctx, options)
 	defer cancel()
@@ -244,6 +294,20 @@ func (c Client) GenerateVideo(ctx context.Context, connection provider.Connectio
 		Type string `json:"type"`
 		URL  string `json:"url"`
 	}{Type: "first_frame", URL: input.SourceImageURL})
+	if input.LastFrameURL != "" {
+		req.Input.Media = append(req.Input.Media, struct {
+			Type string `json:"type"`
+			URL  string `json:"url"`
+		}{Type: "last_frame", URL: input.LastFrameURL})
+	}
+	if input.DrivingAudioURL != "" {
+		req.Input.Media = append(req.Input.Media, struct {
+			Type string `json:"type"`
+			URL  string `json:"url"`
+		}{Type: "driving_audio", URL: input.DrivingAudioURL})
+	}
+	req.Parameters.Resolution = input.Resolution
+	req.Parameters.Duration = input.Duration
 	var response protocol.WanxiangVideoResponse
 	if err := c.request(ctx, connection, key, http.MethodPost, "/api/v1/services/aigc/video-generation/video-synthesis", req, &response, true); err != nil {
 		return provider.VideoResult{}, err

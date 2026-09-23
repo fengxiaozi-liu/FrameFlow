@@ -5,6 +5,7 @@ import (
 	"github.com/fengxiaozi-liu/FrameFlow/internal/application"
 	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/processor"
 	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/provider"
+	"github.com/fengxiaozi-liu/FrameFlow/internal/infrastructure/media"
 	providerinfra "github.com/fengxiaozi-liu/FrameFlow/internal/infrastructure/provider"
 	"github.com/fengxiaozi-liu/FrameFlow/internal/infrastructure/queue"
 	"github.com/fengxiaozi-liu/FrameFlow/internal/infrastructure/sqlite"
@@ -26,7 +27,8 @@ func InitService(store *sqlite.TaskRepository, vault provider.CredentialVault, u
 	providers := application.ProviderService{Repo: sqlite.NewProviderRepository(store), Vault: vault}
 	projects := sqlite.NewProjectRepository(store)
 	providers.Catalog = application.CatalogService{Connections: store, Models: store, Tasks: store, Vault: vault, Discovery: providerinfra.NewDiscovery()}
-	return application.TaskService{Store: store, UploadDir: uploadDir, Connections: connections, Providers: providers, Projects: projects}, application.ProjectService{Repo: projects}, providers, application.MaterialService{Repo: sqlite.NewMaterialRepository(store), UploadDir: uploadDir}
+	materials := sqlite.NewMaterialRepository(store)
+	return application.TaskService{Store: store, UploadDir: uploadDir, Connections: connections, Providers: providers, Projects: projects, Materials: materials, Probe: media.Probe}, application.ProjectService{Repo: projects, Materials: materials, Tasks: store}, providers, application.MaterialService{Repo: materials, Projects: projects, Tasks: store, UploadDir: uploadDir}
 }
 func InitProcessor(store *sqlite.TaskRepository, connections *ws.Hub) (*queue.Worker, *processor.Processor) {
 	worker := queue.NewConcurrentWorker(3)

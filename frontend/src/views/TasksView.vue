@@ -18,6 +18,7 @@ const kindLabel: Record<Task["kind"], string> = {
   story: "文本",
   image: "图片",
   video: "视频",
+  composition: "成片",
 };
 const groups = computed(() => {
   const values = new Map<string, Task[]>();
@@ -41,10 +42,16 @@ function draftLabel(item: Task) {
     "未归属草稿"
   );
 }
+function sceneLink(item: Task) {
+  if (!item.project_id || !item.draft_id || !item.scene_id) return "";
+  const draft = projects.value.find((value) => value.id === item.project_id)?.drafts.find((value) => value.id === item.draft_id);
+  return draft?.story.scenes.some((scene) => scene.id === item.scene_id)
+    ? `/studio/${encodeURIComponent(item.project_id)}/${encodeURIComponent(item.draft_id)}?scene=${encodeURIComponent(item.scene_id)}` : "";
+}
 function savedMedia(task: Task) {
-  if (task.kind !== "image" && task.kind !== "video") return false;
+  if (task.kind !== "image" && task.kind !== "video" && task.kind !== "composition") return false;
   const ext = task.kind === "image" ? "png" : "mp4";
-  return task.result_url === `/media/generated-${task.id}.${ext}`;
+  return task.result_url === `/media/${task.kind === "composition" ? "composition" : "generated"}-${task.id}.${ext}`;
 }
 function previewURL(task: Task) {
   const url = task.result_url || "";
@@ -58,7 +65,7 @@ function sourcePoster(task: Task) {
   return url.startsWith("https://") ? url : undefined;
 }
 async function download(task: Task) {
-  if (task.kind !== "image" && task.kind !== "video") return;
+  if (task.kind !== "image" && task.kind !== "video" && task.kind !== "composition") return;
   message.value = "";
   try {
     await api.downloadTask(task.id, task.kind);
@@ -142,6 +149,7 @@ async function retry(item: Task) {
                 {{ new Date(task.created_at).toLocaleString() }} ·
                 {{ task.id }}</small
               >
+              <RouterLink v-if="sceneLink(task)" :to="sceneLink(task)" class="text-link">查看镜头</RouterLink><small v-else-if="task.scene_id">原镜头已删除，结果仅保留在任务中心</small>
             </div>
             <StatusBadge :status="task.status" />
           </div>
@@ -173,7 +181,7 @@ async function retry(item: Task) {
           <div
             v-if="
               task.status === 'succeeded' &&
-              task.kind === 'video' &&
+              (task.kind === 'video' || task.kind === 'composition') &&
               previewURL(task)
             "
             class="task-preview video-preview"

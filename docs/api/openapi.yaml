@@ -12,6 +12,78 @@ paths:
     get: {parameters: [{$ref: '#/components/parameters/ID'}], responses: {'200': {description: Project}, '404': {description: Not found}}}
   /api/projects/{id}/drafts:
     post: {parameters: [{$ref: '#/components/parameters/ID'}], responses: {'200': {description: Draft saved}}}
+  /api/projects/{id}/drafts/{draftId}:
+    get: {parameters: [{$ref: '#/components/parameters/ID'}, {$ref: '#/components/parameters/DraftPathID'}], responses: {'200': {description: Scoped draft including revision and saved candidate state, content: {application/json: {schema: {$ref: '#/components/schemas/Draft'}}}}, '404': {description: Draft not found}}}
+    put:
+      parameters: [{$ref: '#/components/parameters/ID'}, {$ref: '#/components/parameters/DraftPathID'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/DraftRevisionWrite'}}}}
+      responses: {'200': {description: Saved draft with new revision, content: {application/json: {schema: {$ref: '#/components/schemas/Draft'}}}}, '409': {description: Revision conflict; current draft returned}}
+  /api/projects/{id}/drafts/{draftId}/candidates:
+    get: {parameters: [{$ref: '#/components/parameters/ID'}, {$ref: '#/components/parameters/DraftPathID'}], responses: {'200': {description: Story and storyboard candidates for this draft, content: {application/json: {schema: {type: object, properties: {candidates: {type: array, items: {$ref: '#/components/schemas/Candidate'}}}}}}}}}
+    post:
+      parameters: [{$ref: '#/components/parameters/ID'}, {$ref: '#/components/parameters/DraftPathID'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/CreateCandidate'}}}}
+      responses: {'202': {description: Generation task and candidate accepted}, '409': {description: Draft revision conflict}}
+  /api/projects/{id}/drafts/{draftId}/candidates/{candidateId}:
+    get: {parameters: [{$ref: '#/components/parameters/ID'}, {$ref: '#/components/parameters/DraftPathID'}, {$ref: '#/components/parameters/CandidateID'}], responses: {'200': {description: Candidate preview, content: {application/json: {schema: {$ref: '#/components/schemas/Candidate'}}}}}}
+  /api/projects/{id}/drafts/{draftId}/candidates/{candidateId}/apply:
+    post:
+      parameters: [{$ref: '#/components/parameters/ID'}, {$ref: '#/components/parameters/DraftPathID'}, {$ref: '#/components/parameters/CandidateID'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ApplyCandidate'}}}}
+      responses: {'200': {description: Candidate applied with undo or restore point}, '409': {description: Draft changed; explicit reconfirmation required}}
+  /api/projects/{id}/drafts/{draftId}/restore:
+    post:
+      parameters: [{$ref: '#/components/parameters/ID'}, {$ref: '#/components/parameters/DraftPathID'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/RestoreDraft'}}}}
+      responses: {'200': {description: Saved prior body or storyboard restored}, '409': {description: Draft revision conflict}}
+  /api/projects/{id}/drafts/{draftId}/scenes:
+    post:
+      parameters: [{$ref: '#/components/parameters/ID'}, {$ref: '#/components/parameters/DraftPathID'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/SceneWrite'}}}}
+      responses: {'201': {description: Scene created with stable ID}, '409': {description: Draft revision conflict}}
+  /api/projects/{id}/drafts/{draftId}/scenes/{sceneId}:
+    patch:
+      parameters: [{$ref: '#/components/parameters/ID'}, {$ref: '#/components/parameters/DraftPathID'}, {$ref: '#/components/parameters/SceneID'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/SceneWrite'}}}}
+      responses: {'200': {description: Scene updated copied or reordered}, '409': {description: Draft revision conflict}}
+    delete:
+      parameters: [{$ref: '#/components/parameters/ID'}, {$ref: '#/components/parameters/DraftPathID'}, {$ref: '#/components/parameters/SceneID'}, {$ref: '#/components/parameters/ExpectedVersion'}]
+      responses: {'200': {description: Scene deleted with recovery snapshot}, '409': {description: Draft revision conflict}}
+  /api/projects/{id}/drafts/{draftId}/scenes/{sceneId}/bindings:
+    put:
+      parameters: [{$ref: '#/components/parameters/ID'}, {$ref: '#/components/parameters/DraftPathID'}, {$ref: '#/components/parameters/SceneID'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/BindingWrite'}}}}
+      responses: {'200': {description: Confirmed bindings for this scene}, '409': {description: Draft revision conflict}}
+  /api/projects/{id}/drafts/{draftId}/scenes/{sceneId}/video-validation:
+    post:
+      parameters: [{$ref: '#/components/parameters/ID'}, {$ref: '#/components/parameters/DraftPathID'}, {$ref: '#/components/parameters/SceneID'}]
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [model_id, resolution], properties: {model_id: {type: string}, resolution: {type: string, enum: [720P, 1080P]}}}}}}
+      responses: {'200': {description: Per-field video input validation result, content: {application/json: {schema: {$ref: '#/components/schemas/VideoValidationResult'}}}}}
+  /api/projects/{id}/drafts/{draftId}/scenes/{sceneId}/video-tasks:
+    post:
+      parameters: [{$ref: '#/components/parameters/ID'}, {$ref: '#/components/parameters/DraftPathID'}, {$ref: '#/components/parameters/SceneID'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/CreateVideoTask'}}}}
+      responses: {'202': {description: Scoped immutable task created, content: {application/json: {schema: {$ref: '#/components/schemas/Task'}}}}, '409': {description: Draft revision conflict}, '422': {description: Model input rejected with scene and field errors}}
+  /api/projects/{id}/drafts/{draftId}/video-tasks/batch:
+    post:
+      parameters: [{$ref: '#/components/parameters/ID'}, {$ref: '#/components/parameters/DraftPathID'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/CreateVideoTask'}}}}
+      responses: {'202': {description: Per-scene created and failed lists, content: {application/json: {schema: {$ref: '#/components/schemas/BatchVideoResult'}}}}, '422': {description: Invalid scenes listed}}
+  /api/projects/{id}/drafts/{draftId}/scenes/{sceneId}/versions:
+    get: {parameters: [{$ref: '#/components/parameters/ID'}, {$ref: '#/components/parameters/DraftPathID'}, {$ref: '#/components/parameters/SceneID'}], responses: {'200': {description: Saved video versions and selected version, content: {application/json: {schema: {type: object, properties: {versions: {type: array, items: {$ref: '#/components/schemas/VideoVersion'}}, selected_version_id: {type: string}}}}}}}}
+  /api/projects/{id}/drafts/{draftId}/scenes/{sceneId}/selected-version:
+    put:
+      parameters: [{$ref: '#/components/parameters/ID'}, {$ref: '#/components/parameters/DraftPathID'}, {$ref: '#/components/parameters/SceneID'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/SelectVersion'}}}}
+      responses: {'200': {description: Selected version updated}, '409': {description: Draft revision conflict}}
+  /api/projects/{id}/drafts/{draftId}/compositions:
+    get: {parameters: [{$ref: '#/components/parameters/ID'}, {$ref: '#/components/parameters/DraftPathID'}], responses: {'200': {description: Saved compositions for this draft, content: {application/json: {schema: {type: object, properties: {compositions: {type: array, items: {$ref: '#/components/schemas/Composition'}}}}}}}}}
+    post:
+      parameters: [{$ref: '#/components/parameters/ID'}, {$ref: '#/components/parameters/DraftPathID'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/CreateComposition'}}}}
+      responses: {'202': {description: Immutable composition task accepted, content: {application/json: {schema: {$ref: '#/components/schemas/Task'}}}}, '409': {description: Draft revision conflict}, '422': {description: Missing or invalid scene clips listed}}
+  /api/projects/{id}/drafts/{draftId}/compositions/{compositionId}/download:
+    get: {parameters: [{$ref: '#/components/parameters/ID'}, {$ref: '#/components/parameters/DraftPathID'}, {$ref: '#/components/parameters/CompositionID'}], responses: {'200': {description: Saved MP4 attachment}, '409': {description: Composition not ready}}}
   /api/tasks:
     get: {parameters: [{$ref: '#/components/parameters/ProjectID'}, {$ref: '#/components/parameters/DraftID'}, {$ref: '#/components/parameters/Limit'}, {$ref: '#/components/parameters/Offset'}], responses: {'200': {description: Task page, optionally filtered by project and draft}}}
     post:
@@ -30,6 +102,11 @@ paths:
                 model_id: {type: string, description: Model selected from a provider connection; defaults to the operation default when omitted}
                 aspect_ratio: {type: string}
                 source_image_url: {type: string}
+                last_frame_url: {type: string}
+                driving_audio_url: {type: string}
+                duration: {type: integer, minimum: 2, maximum: 15}
+                resolution: {type: string, enum: [720P, 1080P]}
+                expected_version: {type: integer, minimum: 0}
       responses: {'202': {description: Task accepted}}
   /api/tasks/{id}:
     get: {parameters: [{$ref: '#/components/parameters/ID'}], responses: {'200': {description: Task}}}
@@ -75,9 +152,23 @@ paths:
     delete: {parameters: [{$ref: '#/components/parameters/ID'}, {$ref: '#/components/parameters/ModelID'}], responses: {'204': {description: Model removed}}}
   /api/models:
     get: {parameters: [{name: capability, in: query, schema: {type: string, enum: [story, image, video]}}, {name: connection_id, in: query, schema: {type: string}}], responses: {'200': {description: Model list}}}
+  /api/models/{model}/video-capability:
+    get: {parameters: [{$ref: '#/components/parameters/ModelID'}], responses: {'200': {description: Verified model input limits or unsupported reason}}}
   /api/materials:
-    get: {responses: {'200': {description: Material list}}}
-    post: {responses: {'201': {description: Material saved}}}
+    get:
+      parameters: [{name: kind, in: query, schema: {type: string, enum: [scene, character, prop, voice, music]}}, {name: q, in: query, schema: {type: string}}, {name: media_type, in: query, schema: {type: string, enum: [image, audio]}}]
+      responses: {'200': {description: Material list sorted newest first, content: {application/json: {schema: {type: object, properties: {materials: {type: array, items: {$ref: '#/components/schemas/Material'}}}}}}}}
+    post: {requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/Material'}}}}, responses: {'201': {description: Material saved}}}
+  /api/materials/upload:
+    post:
+      requestBody: {required: true, content: {multipart/form-data: {schema: {type: object, required: [file, kind], properties: {file: {type: string, format: binary}, kind: {type: string, enum: [scene, character, prop, voice, music]}, name: {type: string}}}}}}
+      responses: {'201': {description: Uploaded material with extracted metadata, content: {application/json: {schema: {$ref: '#/components/schemas/Material'}}}}}
+  /api/materials/{id}:
+    get: {parameters: [{$ref: '#/components/parameters/ID'}], responses: {'200': {description: Material, content: {application/json: {schema: {$ref: '#/components/schemas/Material'}}}}}}
+    put: {parameters: [{$ref: '#/components/parameters/ID'}], requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/Material'}}}}, responses: {'200': {description: Metadata updated}}}
+    delete: {parameters: [{$ref: '#/components/parameters/ID'}], responses: {'204': {description: Unreferenced material deleted}, '409': {description: Material still referenced}}}
+  /api/materials/{id}/uses:
+    get: {parameters: [{$ref: '#/components/parameters/ID'}], responses: {'200': {description: Material usage locations, content: {application/json: {schema: {type: object, properties: {uses: {type: array, items: {type: string}}}}}}}}}
 components:
   securitySchemes: {bearerAuth: {type: http, scheme: bearer}}
   parameters:
@@ -85,9 +176,34 @@ components:
     ProjectID: {name: project_id, in: query, required: false, schema: {type: string}}
     DraftID: {name: draft_id, in: query, required: false, schema: {type: string}}
     ModelID: {name: model, in: path, required: true, schema: {type: string}}
+    DraftPathID: {name: draftId, in: path, required: true, schema: {type: string}}
+    SceneID: {name: sceneId, in: path, required: true, schema: {type: string}}
+    CandidateID: {name: candidateId, in: path, required: true, schema: {type: string}}
+    CompositionID: {name: compositionId, in: path, required: true, schema: {type: string}}
+    ExpectedVersion: {name: expected_version, in: query, required: true, schema: {type: integer, minimum: 0}}
     Limit: {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 20}}
     Offset: {name: offset, in: query, schema: {type: integer, minimum: 0, default: 0}}
   schemas:
     CreateProject: {type: object, required: [name], properties: {name: {type: string, minLength: 1}}}
     ConnectionInput: {type: object, required: [id, name, vendor, base_url], properties: {id: {type: string}, name: {type: string}, vendor: {type: string, enum: [bailian]}, base_url: {type: string, format: uri, description: "Complete HTTPS Bailian API endpoint (for example, /compatible-mode/v1/chat/completions); other supported operations use the same workspace host with their documented endpoints"}, api_key: {type: string, writeOnly: true}}}
     ManualModel: {type: object, required: [model_id], properties: {model_id: {type: string}, name: {type: string}, capabilities: {type: array, items: {type: string, enum: [story, image, video]}}}}
+    DraftRevisionWrite: {type: object, required: [expected_version, body], properties: {expected_version: {type: integer, minimum: 0}, body: {type: string}, name: {type: string}}}
+    CreateCandidate: {type: object, required: [expected_version, idempotency_key, target], properties: {expected_version: {type: integer, minimum: 0}, idempotency_key: {type: string, minLength: 1}, target: {type: string, enum: [story, storyboard]}, mode: {type: string, enum: [create, revise]}, instruction: {type: string}, model_id: {type: string}}}
+    ApplyCandidate: {type: object, required: [expected_version, action], properties: {expected_version: {type: integer, minimum: 0}, action: {type: string, enum: [append, replace]}, reconfirm: {type: boolean}}}
+    RestoreDraft: {type: object, required: [expected_version, snapshot_id], properties: {expected_version: {type: integer, minimum: 0}, snapshot_id: {type: string}, reconfirm: {type: boolean}}}
+    SceneWrite: {type: object, required: [expected_version, action], properties: {expected_version: {type: integer, minimum: 0}, action: {type: string, enum: [create, update, copy, move]}, title: {type: string}, visual_prompt: {type: string}, narration: {type: string}, duration_seconds: {type: integer, minimum: 1}, order: {type: integer, minimum: 1}}}
+    BindingWrite: {type: object, required: [expected_version, bindings], properties: {expected_version: {type: integer, minimum: 0}, bindings: {type: array, items: {type: object, required: [material_id, usage], properties: {material_id: {type: string}, usage: {type: string, enum: [character_reference, scene_reference, prop_reference, first_frame, last_frame, driving_audio, voiceover]}, position: {type: integer, minimum: 0}}}}}}
+    CreateVideoTask: {type: object, required: [expected_version, idempotency_key, model_id], properties: {expected_version: {type: integer, minimum: 0}, idempotency_key: {type: string, minLength: 1}, model_id: {type: string}, resolution: {type: string, enum: [720P, 1080P]}}}
+    SelectVersion: {type: object, required: [expected_version, version_id], properties: {expected_version: {type: integer, minimum: 0}, version_id: {type: string}}}
+    CreateComposition: {type: object, required: [expected_version, idempotency_key, aspect_ratio, resolution], properties: {expected_version: {type: integer, minimum: 0}, idempotency_key: {type: string, minLength: 1}, music_material_id: {type: string}, music_volume: {type: number, minimum: 0, maximum: 1}, source_volume: {type: number, minimum: 0, maximum: 1}, voice_volume: {type: number, minimum: 0, maximum: 1}, aspect_ratio: {type: string, enum: ['16:9', '9:16']}, resolution: {type: string, enum: [720P, 1080P]}}}
+    ValidationIssue: {type: object, required: [scene_id, field, message], properties: {scene_id: {type: string}, field: {type: string}, message: {type: string}}}
+    VideoValidationResult: {type: object, required: [valid, issues], properties: {valid: {type: boolean}, issues: {type: array, items: {$ref: '#/components/schemas/ValidationIssue'}}}}
+    BatchVideoResult: {type: object, required: [created, failed], properties: {created: {type: array, items: {$ref: '#/components/schemas/Task'}}, failed: {type: array, items: {$ref: '#/components/schemas/ValidationIssue'}}}}
+    Scene: {type: object, required: [id, order, title, visual_prompt, narration, duration_seconds], properties: {id: {type: string}, order: {type: integer}, title: {type: string}, visual_prompt: {type: string}, narration: {type: string}, duration_seconds: {type: integer}}}
+    Candidate: {type: object, required: [id, task_id, target, source_version, status], properties: {id: {type: string}, task_id: {type: string}, target: {type: string, enum: [story, storyboard]}, source_version: {type: integer}, source_body: {type: string}, body: {type: string}, scenes: {type: array, items: {$ref: '#/components/schemas/Scene'}}, status: {type: string}, prompt_version: {type: string}}}
+    SceneBinding: {type: object, required: [scene_id, material_id, usage], properties: {scene_id: {type: string}, material_id: {type: string}, usage: {type: string, enum: [character_reference, scene_reference, prop_reference, first_frame, last_frame, driving_audio, voiceover]}, position: {type: integer}}}
+    VideoVersion: {type: object, required: [id, scene_id, task_id, local_media_path, duration_seconds, input_fingerprint], properties: {id: {type: string}, scene_id: {type: string}, task_id: {type: string}, local_media_path: {type: string}, duration_seconds: {type: number}, input_fingerprint: {type: string}, based_on_old_settings: {type: boolean}}}
+    Composition: {type: object, required: [id, task_id, clip_version_ids, local_media_path], properties: {id: {type: string}, task_id: {type: string}, clip_version_ids: {type: array, items: {type: string}}, music_material_id: {type: string}, music_volume: {type: number}, source_volume: {type: number}, voice_volume: {type: number}, aspect_ratio: {type: string}, resolution: {type: string}, local_media_path: {type: string}, input_fingerprint: {type: string}}}
+    Material: {type: object, required: [id, name, kind, url], properties: {id: {type: string}, name: {type: string}, kind: {type: string, enum: [scene, character, prop, voice, music, visual, frame]}, legacy_kind: {type: string}, tags: {type: array, items: {type: string}}, media: {type: object, properties: {format: {type: string}, size_bytes: {type: integer}, width: {type: integer}, height: {type: integer}, duration_seconds: {type: number}}}, url: {type: string}, created_at: {type: string, format: date-time}}}
+    Draft: {type: object, required: [id, name, version, story], properties: {id: {type: string}, name: {type: string}, version: {type: integer}, storyboard_source_body: {type: string}, story: {type: object, required: [body, scenes], properties: {body: {type: string}, summary: {type: string}, scenes: {type: array, items: {$ref: '#/components/schemas/Scene'}}}}, candidates: {type: array, items: {$ref: '#/components/schemas/Candidate'}}, bindings: {type: array, items: {$ref: '#/components/schemas/SceneBinding'}}, video_versions: {type: array, items: {$ref: '#/components/schemas/VideoVersion'}}, selected_versions: {type: object, additionalProperties: {type: string}}, compositions: {type: array, items: {$ref: '#/components/schemas/Composition'}}}}
+    Task: {type: object, required: [id, kind, status, input], properties: {id: {type: string}, project_id: {type: string}, draft_id: {type: string}, scene_id: {type: string}, kind: {type: string, enum: [story, image, video, composition]}, status: {type: string}, input_version: {type: integer}, input_hash: {type: string}, idempotency_key: {type: string}, model_id: {type: string}, input: {type: object}, result_url: {type: string}, result_duration_seconds: {type: number}}}

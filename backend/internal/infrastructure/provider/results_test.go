@@ -36,3 +36,22 @@ func TestResultStorePersistsRemoteAssetAndRejectsUntrustedHosts(t *testing.T) {
 		t.Fatal(string(data), err)
 	}
 }
+
+func TestVideoResultMustBeValidMP4BeforePersistence(t *testing.T) {
+	dir := t.TempDir()
+	body := "not a video"
+	store := ResultStore{Directory: dir, HTTP: &http.Client{Transport: resultTransport(func(*http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(body)), Header: make(http.Header)}, nil
+	})}}
+	if _, err := store.Save(context.Background(), "video-1", task.KindVideo, "https://results.aliyuncs.com/video.mp4"); err == nil {
+		t.Fatal("invalid MP4 accepted")
+	}
+	if _, err := os.Stat(filepath.Join(dir, "generated-video-1.mp4")); !os.IsNotExist(err) {
+		t.Fatal("invalid result persisted", err)
+	}
+	body = "\x00\x00\x00\x18ftypisom" + strings.Repeat("\x00", 16)
+	saved, err := store.Save(context.Background(), "video-1", task.KindVideo, "https://results.aliyuncs.com/video.mp4")
+	if err != nil || saved != "/media/generated-video-1.mp4" {
+		t.Fatal(saved, err)
+	}
+}

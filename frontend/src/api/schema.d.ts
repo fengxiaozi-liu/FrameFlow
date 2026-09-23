@@ -168,6 +168,829 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/projects/{id}/drafts/{draftId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: components["parameters"]["ID"];
+                    draftId: components["parameters"]["DraftPathID"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Scoped draft including revision and saved candidate state */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Draft"];
+                    };
+                };
+                /** @description Draft not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: components["parameters"]["ID"];
+                    draftId: components["parameters"]["DraftPathID"];
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["DraftRevisionWrite"];
+                };
+            };
+            responses: {
+                /** @description Saved draft with new revision */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Draft"];
+                    };
+                };
+                /** @description Revision conflict; current draft returned */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{id}/drafts/{draftId}/candidates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: components["parameters"]["ID"];
+                    draftId: components["parameters"]["DraftPathID"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Story and storyboard candidates for this draft */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            candidates?: components["schemas"]["Candidate"][];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: components["parameters"]["ID"];
+                    draftId: components["parameters"]["DraftPathID"];
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["CreateCandidate"];
+                };
+            };
+            responses: {
+                /** @description Generation task and candidate accepted */
+                202: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Draft revision conflict */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{id}/drafts/{draftId}/candidates/{candidateId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: components["parameters"]["ID"];
+                    draftId: components["parameters"]["DraftPathID"];
+                    candidateId: components["parameters"]["CandidateID"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Candidate preview */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Candidate"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{id}/drafts/{draftId}/candidates/{candidateId}/apply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: components["parameters"]["ID"];
+                    draftId: components["parameters"]["DraftPathID"];
+                    candidateId: components["parameters"]["CandidateID"];
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["ApplyCandidate"];
+                };
+            };
+            responses: {
+                /** @description Candidate applied with undo or restore point */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Draft changed; explicit reconfirmation required */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{id}/drafts/{draftId}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: components["parameters"]["ID"];
+                    draftId: components["parameters"]["DraftPathID"];
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["RestoreDraft"];
+                };
+            };
+            responses: {
+                /** @description Saved prior body or storyboard restored */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Draft revision conflict */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{id}/drafts/{draftId}/scenes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: components["parameters"]["ID"];
+                    draftId: components["parameters"]["DraftPathID"];
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["SceneWrite"];
+                };
+            };
+            responses: {
+                /** @description Scene created with stable ID */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Draft revision conflict */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{id}/drafts/{draftId}/scenes/{sceneId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: {
+            parameters: {
+                query: {
+                    expected_version: components["parameters"]["ExpectedVersion"];
+                };
+                header?: never;
+                path: {
+                    id: components["parameters"]["ID"];
+                    draftId: components["parameters"]["DraftPathID"];
+                    sceneId: components["parameters"]["SceneID"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Scene deleted with recovery snapshot */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Draft revision conflict */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: components["parameters"]["ID"];
+                    draftId: components["parameters"]["DraftPathID"];
+                    sceneId: components["parameters"]["SceneID"];
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["SceneWrite"];
+                };
+            };
+            responses: {
+                /** @description Scene updated copied or reordered */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Draft revision conflict */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        trace?: never;
+    };
+    "/api/projects/{id}/drafts/{draftId}/scenes/{sceneId}/bindings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: components["parameters"]["ID"];
+                    draftId: components["parameters"]["DraftPathID"];
+                    sceneId: components["parameters"]["SceneID"];
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["BindingWrite"];
+                };
+            };
+            responses: {
+                /** @description Confirmed bindings for this scene */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Draft revision conflict */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{id}/drafts/{draftId}/scenes/{sceneId}/video-validation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: components["parameters"]["ID"];
+                    draftId: components["parameters"]["DraftPathID"];
+                    sceneId: components["parameters"]["SceneID"];
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        model_id: string;
+                        /** @enum {string} */
+                        resolution: "720P" | "1080P";
+                    };
+                };
+            };
+            responses: {
+                /** @description Per-field video input validation result */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["VideoValidationResult"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{id}/drafts/{draftId}/scenes/{sceneId}/video-tasks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: components["parameters"]["ID"];
+                    draftId: components["parameters"]["DraftPathID"];
+                    sceneId: components["parameters"]["SceneID"];
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["CreateVideoTask"];
+                };
+            };
+            responses: {
+                /** @description Scoped immutable task created */
+                202: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Task"];
+                    };
+                };
+                /** @description Draft revision conflict */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Model input rejected with scene and field errors */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{id}/drafts/{draftId}/video-tasks/batch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: components["parameters"]["ID"];
+                    draftId: components["parameters"]["DraftPathID"];
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["CreateVideoTask"];
+                };
+            };
+            responses: {
+                /** @description Per-scene created and failed lists */
+                202: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["BatchVideoResult"];
+                    };
+                };
+                /** @description Invalid scenes listed */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{id}/drafts/{draftId}/scenes/{sceneId}/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: components["parameters"]["ID"];
+                    draftId: components["parameters"]["DraftPathID"];
+                    sceneId: components["parameters"]["SceneID"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Saved video versions and selected version */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            versions?: components["schemas"]["VideoVersion"][];
+                            selected_version_id?: string;
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{id}/drafts/{draftId}/scenes/{sceneId}/selected-version": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: components["parameters"]["ID"];
+                    draftId: components["parameters"]["DraftPathID"];
+                    sceneId: components["parameters"]["SceneID"];
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["SelectVersion"];
+                };
+            };
+            responses: {
+                /** @description Selected version updated */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Draft revision conflict */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{id}/drafts/{draftId}/compositions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: components["parameters"]["ID"];
+                    draftId: components["parameters"]["DraftPathID"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Saved compositions for this draft */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            compositions?: components["schemas"]["Composition"][];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: components["parameters"]["ID"];
+                    draftId: components["parameters"]["DraftPathID"];
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["CreateComposition"];
+                };
+            };
+            responses: {
+                /** @description Immutable composition task accepted */
+                202: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Task"];
+                    };
+                };
+                /** @description Draft revision conflict */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Missing or invalid scene clips listed */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{id}/drafts/{draftId}/compositions/{compositionId}/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: components["parameters"]["ID"];
+                    draftId: components["parameters"]["DraftPathID"];
+                    compositionId: components["parameters"]["CompositionID"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Saved MP4 attachment */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Composition not ready */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/tasks": {
         parameters: {
             query?: never;
@@ -218,6 +1041,12 @@ export interface paths {
                         model_id?: string;
                         aspect_ratio?: string;
                         source_image_url?: string;
+                        last_frame_url?: string;
+                        driving_audio_url?: string;
+                        duration?: number;
+                        /** @enum {string} */
+                        resolution?: "720P" | "1080P";
+                        expected_version?: number;
                     };
                 };
             };
@@ -922,7 +1751,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/materials": {
+    "/api/models/{model}/video-capability": {
         parameters: {
             query?: never;
             header?: never;
@@ -933,17 +1762,60 @@ export interface paths {
             parameters: {
                 query?: never;
                 header?: never;
-                path?: never;
+                path: {
+                    model: components["parameters"]["ModelID"];
+                };
                 cookie?: never;
             };
             requestBody?: never;
             responses: {
-                /** @description Material list */
+                /** @description Verified model input limits or unsupported reason */
                 200: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/materials": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: {
+                    kind?: "scene" | "character" | "prop" | "voice" | "music";
+                    q?: string;
+                    media_type?: "image" | "audio";
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Material list sorted newest first */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            materials?: components["schemas"]["Material"][];
+                        };
+                    };
                 };
             };
         };
@@ -955,7 +1827,11 @@ export interface paths {
                 path?: never;
                 cookie?: never;
             };
-            requestBody?: never;
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["Material"];
+                };
+            };
             responses: {
                 /** @description Material saved */
                 201: {
@@ -966,6 +1842,176 @@ export interface paths {
                 };
             };
         };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/materials/upload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "multipart/form-data": {
+                        /** Format: binary */
+                        file: string;
+                        /** @enum {string} */
+                        kind: "scene" | "character" | "prop" | "voice" | "music";
+                        name?: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Uploaded material with extracted metadata */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Material"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/materials/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: components["parameters"]["ID"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Material */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Material"];
+                    };
+                };
+            };
+        };
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: components["parameters"]["ID"];
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["Material"];
+                };
+            };
+            responses: {
+                /** @description Metadata updated */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        post?: never;
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: components["parameters"]["ID"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Unreferenced material deleted */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Material still referenced */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/materials/{id}/uses": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: components["parameters"]["ID"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Material usage locations */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            uses?: string[];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -996,6 +2042,188 @@ export interface components {
             name?: string;
             capabilities?: ("story" | "image" | "video")[];
         };
+        DraftRevisionWrite: {
+            expected_version: number;
+            body: string;
+            name?: string;
+        };
+        CreateCandidate: {
+            expected_version: number;
+            idempotency_key: string;
+            /** @enum {string} */
+            target: "story" | "storyboard";
+            /** @enum {string} */
+            mode?: "create" | "revise";
+            instruction?: string;
+            model_id?: string;
+        };
+        ApplyCandidate: {
+            expected_version: number;
+            /** @enum {string} */
+            action: "append" | "replace";
+            reconfirm?: boolean;
+        };
+        RestoreDraft: {
+            expected_version: number;
+            snapshot_id: string;
+            reconfirm?: boolean;
+        };
+        SceneWrite: {
+            expected_version: number;
+            /** @enum {string} */
+            action: "create" | "update" | "copy" | "move";
+            title?: string;
+            visual_prompt?: string;
+            narration?: string;
+            duration_seconds?: number;
+            order?: number;
+        };
+        BindingWrite: {
+            expected_version: number;
+            bindings: {
+                material_id: string;
+                /** @enum {string} */
+                usage: "character_reference" | "scene_reference" | "prop_reference" | "first_frame" | "last_frame" | "driving_audio" | "voiceover";
+                position?: number;
+            }[];
+        };
+        CreateVideoTask: {
+            expected_version: number;
+            idempotency_key: string;
+            model_id: string;
+            /** @enum {string} */
+            resolution?: "720P" | "1080P";
+        };
+        SelectVersion: {
+            expected_version: number;
+            version_id: string;
+        };
+        CreateComposition: {
+            expected_version: number;
+            idempotency_key: string;
+            music_material_id?: string;
+            music_volume?: number;
+            source_volume?: number;
+            voice_volume?: number;
+            /** @enum {string} */
+            aspect_ratio: "16:9" | "9:16";
+            /** @enum {string} */
+            resolution: "720P" | "1080P";
+        };
+        ValidationIssue: {
+            scene_id: string;
+            field: string;
+            message: string;
+        };
+        VideoValidationResult: {
+            valid: boolean;
+            issues: components["schemas"]["ValidationIssue"][];
+        };
+        BatchVideoResult: {
+            created: components["schemas"]["Task"][];
+            failed: components["schemas"]["ValidationIssue"][];
+        };
+        Scene: {
+            id: string;
+            order: number;
+            title: string;
+            visual_prompt: string;
+            narration: string;
+            duration_seconds: number;
+        };
+        Candidate: {
+            id: string;
+            task_id: string;
+            /** @enum {string} */
+            target: "story" | "storyboard";
+            source_version: number;
+            source_body?: string;
+            body?: string;
+            scenes?: components["schemas"]["Scene"][];
+            status: string;
+            prompt_version?: string;
+        };
+        SceneBinding: {
+            scene_id: string;
+            material_id: string;
+            /** @enum {string} */
+            usage: "character_reference" | "scene_reference" | "prop_reference" | "first_frame" | "last_frame" | "driving_audio" | "voiceover";
+            position?: number;
+        };
+        VideoVersion: {
+            id: string;
+            scene_id: string;
+            task_id: string;
+            local_media_path: string;
+            duration_seconds: number;
+            input_fingerprint: string;
+            based_on_old_settings?: boolean;
+        };
+        Composition: {
+            id: string;
+            task_id: string;
+            clip_version_ids: string[];
+            music_material_id?: string;
+            music_volume?: number;
+            source_volume?: number;
+            voice_volume?: number;
+            aspect_ratio?: string;
+            resolution?: string;
+            local_media_path: string;
+            input_fingerprint?: string;
+        };
+        Material: {
+            id: string;
+            name: string;
+            /** @enum {string} */
+            kind: "scene" | "character" | "prop" | "voice" | "music" | "visual" | "frame";
+            legacy_kind?: string;
+            tags?: string[];
+            media?: {
+                format?: string;
+                size_bytes?: number;
+                width?: number;
+                height?: number;
+                duration_seconds?: number;
+            };
+            url: string;
+            /** Format: date-time */
+            created_at?: string;
+        };
+        Draft: {
+            id: string;
+            name: string;
+            version: number;
+            storyboard_source_body?: string;
+            story: {
+                body: string;
+                summary?: string;
+                scenes: components["schemas"]["Scene"][];
+            };
+            candidates?: components["schemas"]["Candidate"][];
+            bindings?: components["schemas"]["SceneBinding"][];
+            video_versions?: components["schemas"]["VideoVersion"][];
+            selected_versions?: {
+                [key: string]: string;
+            };
+            compositions?: components["schemas"]["Composition"][];
+        };
+        Task: {
+            id: string;
+            project_id?: string;
+            draft_id?: string;
+            scene_id?: string;
+            /** @enum {string} */
+            kind: "story" | "image" | "video" | "composition";
+            status: string;
+            input_version?: number;
+            input_hash?: string;
+            idempotency_key?: string;
+            model_id?: string;
+            input: Record<string, never>;
+            result_url?: string;
+            result_duration_seconds?: number;
+        };
     };
     responses: never;
     parameters: {
@@ -1003,6 +2231,11 @@ export interface components {
         ProjectID: string;
         DraftID: string;
         ModelID: string;
+        DraftPathID: string;
+        SceneID: string;
+        CandidateID: string;
+        CompositionID: string;
+        ExpectedVersion: number;
         Limit: number;
         Offset: number;
     };

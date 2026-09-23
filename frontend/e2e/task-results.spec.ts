@@ -104,94 +104,28 @@ test("completed tasks preview media and download the real image", async ({
   });
 });
 
-test("studio submits a generated image as the video source", async ({
-  page,
-  request,
-}) => {
-  const connection = await request.post("/api/connections", {
-    data: {
-      id: "video-source",
-      name: "Video source",
-      vendor: "bailian",
-      base_url:
-        "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
-    },
-  });
-  expect(connection.ok()).toBeTruthy();
-  const model = await request.post("/api/connections/video-source/models", {
-    data: { model_id: "wan2.7-i2v", capabilities: ["video"] },
-  });
-  expect(model.ok()).toBeTruthy();
-  const draft = {
-    id: "draft-video",
-    project_id: "project-video",
-    name: "Video",
-    story: {
-      summary: "",
-      body: "A red circle",
-      scenes: [
-        {
-          id: "scene",
-          order: 1,
-          title: "Scene",
-          visual_prompt: "",
-          narration: "",
-          duration_seconds: 10,
-        },
-      ],
-      updated_at: "2026-09-17T00:00:00Z",
-    },
-    outputs: [],
-  };
-  const project = {
-    id: "project-video",
-    name: "Video",
-    drafts: [draft],
-    created_at: "2026-09-17T00:00:00Z",
-  };
-  const image = {
-    id: "generated-1",
-    project_id: project.id,
-    draft_id: draft.id,
-    kind: "image",
-    status: "succeeded",
-    progress: 100,
-    stage: "completed",
-    input: { prompt: "A red circle" },
-    result_url: "/media/generated-generated-1.png",
-    created_at: "2026-09-17T00:00:00Z",
-    updated_at: "2026-09-17T00:00:00Z",
-  };
+test("failed video task shows field error and can retry", async ({ page }) => {
+  const now = "2026-09-23T00:00:00Z";
+  let status = "failed";
+  let retried = false;
   await page.route("**/api/tasks?limit=100", (route) =>
-    route.fulfill({ json: { tasks: [image], total: 1 } }),
+    route.fulfill({ json: { tasks: [{
+      id: "failed-video", kind: "video", scene_id: "scene-1", status,
+      progress: status === "failed" ? 0 : 1, stage: status,
+      error: status === "failed" ? "scene-1 / first_frame: invalid image" : "",
+      input: { prompt: "scene" }, retry_count: retried ? 1 : 0,
+      created_at: now, updated_at: now,
+    }], total: 1 } }),
   );
-  await page.route("**/api/projects/project-video", (route) =>
-    route.fulfill({ json: project }),
-  );
-  await page.route("**/api/projects/project-video/drafts", (route) =>
-    route.fulfill({ json: project }),
-  );
-  let submittedSource = "";
-  await page.route("**/api/tasks", (route) => {
-    if (route.request().method() !== "POST") return route.continue();
-    submittedSource = route.request().postDataJSON().source_image_url;
-    return route.fulfill({
-      status: 202,
-      json: {
-        id: "video-new",
-        kind: "video",
-        status: "queued",
-        progress: 0,
-        stage: "queued",
-        input: { prompt: "A red circle" },
-      },
-    });
+  await page.route("**/api/tasks/failed-video/retry", (route) => {
+    retried = true;
+    status = "queued";
+    return route.fulfill({ status: 202, json: { id: "failed-video", kind: "video", status, progress: 1, stage: status, input: { prompt: "scene" }, retry_count: 1, created_at: now, updated_at: now } });
   });
-  await page.goto("/studio/project-video/draft-video");
-  await page.getByLabel("已生成的首帧图片").selectOption(image.result_url);
-  await page
-    .getByLabel("视频生成 AI 接口")
-    .selectOption("video-source:wan2.7-i2v");
-  await page.getByRole("button", { name: "检查并生成视频" }).click();
-  await expect.poll(() => submittedSource).toBe(image.result_url);
+  await page.goto("/tasks");
+  const card = page.locator(".task-detail").filter({ hasText: "failed-video" });
+  await expect(card).toContainText("scene-1 / first_frame: invalid image");
+  await card.getByRole("button", { name: /重新执行/ }).click();
+  await expect.poll(() => retried).toBeTruthy();
+  await expect(card).toContainText("queued");
 });

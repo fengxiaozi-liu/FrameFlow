@@ -9,6 +9,7 @@ data/
 !backend/internal/web/dist/
 !backend/internal/web/dist/index.html
 backend/internal/web/dist/assets/
+backend/internal/web/dist/favicon.png
 coverage/
 playwright-report/
 test-results/

@@ -62,4 +62,18 @@ func (r *Registry) PollVideo(ctx context.Context, connection domain.Connection, 
 	return client.PollVideo(ctx, connection, model, id)
 }
 
+func (r *Registry) UploadAudio(ctx context.Context, connection domain.Connection, model domain.Model, localPath string) (string, error) {
+	client, err := r.client(connection)
+	if err != nil {
+		return "", err
+	}
+	uploader, ok := client.(interface {
+		UploadAudio(context.Context, domain.Connection, domain.Model, string) (string, error)
+	})
+	if !ok {
+		return "", fmt.Errorf("provider vendor %q does not support audio delivery", connection.Vendor)
+	}
+	return uploader.UploadAudio(ctx, connection, model, localPath)
+}
+
 func NewDiscovery() domain.Discovery { return bailian.Client{} }

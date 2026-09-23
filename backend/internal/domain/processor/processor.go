@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/provider"
+	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/story"
 	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/task"
 )
 
@@ -28,6 +29,7 @@ type Processor struct {
 	ProviderConnections provider.ConnectionRepository
 	ModelClient         provider.ModelClient
 	SaveResult          func(context.Context, string, task.Kind, string) (string, error)
+	Compose             func(context.Context, string, task.CompositionInput, func(int, task.Stage)) (string, float64, error)
 	MediaDir            string
 	Worker              Worker
 	Task                task.Repository
@@ -70,7 +72,21 @@ func (p *Processor) Start(ctx context.Context) {
 }
 
 func (p *Processor) processModel(ctx context.Context, item *task.Task, progress func(int, task.Stage)) error {
-	if item.Kind == task.KindStory && item.ResultText != "" || item.ResultURL != "" && (item.Kind == task.KindImage || item.Kind == task.KindVideo) && strings.HasPrefix(item.ResultURL, "/media/") {
+	if item.Kind == task.KindComposition {
+		if item.ResultURL != "" && strings.HasPrefix(item.ResultURL, "/media/") {
+			return nil
+		}
+		if item.Composition == nil || p.Compose == nil {
+			return errors.New("composition engine is not configured")
+		}
+		result, duration, err := p.Compose(ctx, item.ID, *item.Composition, progress)
+		if err != nil {
+			return err
+		}
+		item.ResultURL, item.ResultDurationSeconds = result, duration
+		return p.Task.Save(ctx, *item)
+	}
+	if item.Kind == task.KindStory && (item.ResultText != "" || item.ResultCandidate != nil) || item.ResultURL != "" && (item.Kind == task.KindImage || item.Kind == task.KindVideo) && strings.HasPrefix(item.ResultURL, "/media/") {
 		return nil
 	}
 	if p.Models == nil || p.ProviderConnections == nil || p.ModelClient == nil {
@@ -99,11 +115,36 @@ func (p *Processor) processModel(ctx context.Context, item *task.Task, progress 
 	switch item.Kind {
 	case task.KindStory:
 		progress(55, task.StageGeneratingStory)
-		result, err := p.ModelClient.GenerateText(ctx, connection, model, provider.StoryRequest{Prompt: item.Input.Prompt, Model: model.RemoteID}, options)
+		request := provider.StoryRequest{Prompt: item.Input.Prompt, Model: model.RemoteID}
+		if item.Target != "" {
+			version, systemPrompt, userPrompt, buildErr := story.BuildGenerationPrompt(story.CandidateTarget(item.Target), item.Input.Prompt, item.Input.SourceBody)
+			if buildErr != nil {
+				return buildErr
+			}
+			request.SystemPrompt, request.Prompt = systemPrompt, userPrompt
+			item.CapabilityVersion = version
+		}
+		result, err := p.ModelClient.GenerateText(ctx, connection, model, request, options)
 		if err != nil {
 			return err
 		}
-		item.ResultText = result.Document
+		if item.Target == "" {
+			item.ResultText = result.Document // Legacy task compatibility.
+		} else {
+			candidate, parseErr := story.ParseCandidateResult(story.CandidateTarget(item.Target), result.Document)
+			if parseErr != nil {
+				return parseErr
+			}
+			candidate.ID = item.ID
+			candidate.TaskID = item.ID
+			candidate.SourceVersion = item.InputVersion
+			candidate.SourceBody = item.Input.SourceBody
+			candidate.Mode = item.Input.Mode
+			candidate.Instruction = item.Input.Prompt
+			candidate.PromptVersion = item.CapabilityVersion
+			candidate.CreatedAt = item.CreatedAt
+			item.ResultCandidate = &candidate
+		}
 	case task.KindImage:
 		progress(55, task.StageGeneratingImage)
 		result, err := p.ModelClient.GenerateImage(ctx, connection, model, provider.ImageRequest{Prompt: item.Input.Prompt, Model: model.RemoteID, AspectRatio: item.Input.AspectRatio}, options)
@@ -120,7 +161,34 @@ func (p *Processor) processModel(ctx context.Context, item *task.Task, progress 
 			if err != nil {
 				return err
 			}
-			result, err := p.ModelClient.GenerateVideo(ctx, connection, model, provider.VideoRequest{Prompt: item.Input.Prompt, Model: model.RemoteID, SourceImageURL: source, AspectRatio: item.Input.AspectRatio}, options)
+			lastFrame := item.Input.LastFrameURL
+			if lastFrame != "" {
+				lastFrame, err = p.videoSource(lastFrame)
+				if err != nil {
+					return err
+				}
+			}
+			audio := item.Input.DrivingAudioURL
+			if strings.HasPrefix(audio, "/media/") {
+				if p.MediaDir == "" {
+					return errors.New("local audio delivery is not configured")
+				}
+				name := strings.TrimPrefix(audio, "/media/")
+				if name == "" || filepath.Base(name) != name {
+					return errors.New("invalid local driving audio")
+				}
+				upload, ok := p.ModelClient.(interface {
+					UploadAudio(context.Context, provider.Connection, provider.Model, string) (string, error)
+				})
+				if !ok {
+					return errors.New("object storage audio delivery is not configured")
+				}
+				audio, err = upload.UploadAudio(ctx, connection, model, filepath.Join(p.MediaDir, name))
+				if err != nil {
+					return err
+				}
+			}
+			result, err := p.ModelClient.GenerateVideo(ctx, connection, model, provider.VideoRequest{Prompt: item.Input.Prompt, Model: model.RemoteID, SourceImageURL: source, LastFrameURL: lastFrame, DrivingAudioURL: audio, Duration: item.Input.Duration, Resolution: item.Input.Resolution, AspectRatio: item.Input.AspectRatio}, options)
 			if err != nil {
 				return err
 			}

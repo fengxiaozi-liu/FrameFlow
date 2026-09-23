@@ -1,0 +1,7 @@
+[
+  {"id":"m-visual","name":"旧画面","kind":"visual","url":"/media/m-visual.png","created_at":"2026-01-01T00:00:00Z"},
+  {"id":"m-character","name":"旧角色","kind":"character","url":"/media/m-character.png","created_at":"2026-01-01T00:00:01Z"},
+  {"id":"m-frame","name":"旧首尾帧","kind":"frame","url":"/media/m-frame.png","created_at":"2026-01-01T00:00:02Z"},
+  {"id":"m-voice","name":"旧配音","kind":"voice","url":"/media/m-voice.wav","created_at":"2026-01-01T00:00:03Z"},
+  {"id":"m-music","name":"旧音乐","kind":"music","url":"/media/m-music.mp3","created_at":"2026-01-01T00:00:04Z"}
+]

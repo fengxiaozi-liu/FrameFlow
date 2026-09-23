@@ -2,6 +2,7 @@ package task
 
 import (
 	"errors"
+	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/story"
 	"strings"
 	"time"
 )
@@ -19,9 +20,10 @@ const (
 type Kind string
 
 const (
-	KindStory Kind = "story"
-	KindImage Kind = "image"
-	KindVideo Kind = "video"
+	KindStory       Kind = "story"
+	KindImage       Kind = "image"
+	KindVideo       Kind = "video"
+	KindComposition Kind = "composition"
 )
 
 type Stage string
@@ -41,7 +43,7 @@ const (
 
 func ParseKind(value string) (Kind, error) {
 	switch Kind(value) {
-	case KindStory, KindImage, KindVideo:
+	case KindStory, KindImage, KindVideo, KindComposition:
 		return Kind(value), nil
 	default:
 		return "", errors.New("unsupported task kind")
@@ -49,9 +51,41 @@ func ParseKind(value string) (Kind, error) {
 }
 
 type Input struct {
-	Prompt         string `json:"prompt"`
-	AspectRatio    string `json:"aspect_ratio,omitempty"`
-	SourceImageURL string `json:"source_image_url,omitempty"`
+	Prompt          string `json:"prompt"`
+	SourceBody      string `json:"source_body,omitempty"`
+	Mode            string `json:"mode,omitempty"`
+	AspectRatio     string `json:"aspect_ratio,omitempty"`
+	SourceImageURL  string `json:"source_image_url,omitempty"`
+	LastFrameURL    string `json:"last_frame_url,omitempty"`
+	DrivingAudioURL string `json:"driving_audio_url,omitempty"`
+	Duration        int    `json:"duration,omitempty"`
+	Resolution      string `json:"resolution,omitempty"`
+}
+
+type CompositionClip struct {
+	SceneID         string  `json:"scene_id"`
+	VersionID       string  `json:"version_id"`
+	MediaPath       string  `json:"media_path"`
+	VoicePath       string  `json:"voice_path,omitempty"`
+	DurationSeconds float64 `json:"duration_seconds"`
+}
+
+type CompositionInput struct {
+	Clips           []CompositionClip `json:"clips"`
+	MusicMaterialID string            `json:"music_material_id,omitempty"`
+	MusicPath       string            `json:"music_path,omitempty"`
+	MusicVolume     float64           `json:"music_volume"`
+	SourceVolume    float64           `json:"source_volume"`
+	VoiceVolume     float64           `json:"voice_volume"`
+	AspectRatio     string            `json:"aspect_ratio"`
+	Resolution      string            `json:"resolution"`
+}
+
+type MediaProbeResult struct {
+	Duration float64
+	Width    int
+	Height   int
+	HasAudio bool
 }
 
 func (i Input) Validate() error {
@@ -62,23 +96,32 @@ func (i Input) Validate() error {
 }
 
 type Task struct {
-	ID           string    `json:"id"`
-	ProjectID    string    `json:"project_id,omitempty"`
-	DraftID      string    `json:"draft_id,omitempty"`
-	Kind         Kind      `json:"kind"`
-	Status       Status    `json:"status"`
-	Progress     int       `json:"progress"`
-	Stage        Stage     `json:"stage"`
-	Error        string    `json:"error,omitempty"`
-	ProviderCode string    `json:"provider_code,omitempty"`
-	ModelID      string    `json:"model_id,omitempty"`
-	RemoteTaskID string    `json:"remote_task_id,omitempty"`
-	ResultText   string    `json:"result_text,omitempty"`
-	Input        Input     `json:"input"`
-	ResultURL    string    `json:"result_url,omitempty"`
-	RetryCount   int       `json:"retry_count"`
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
+	ID                    string            `json:"id"`
+	ProjectID             string            `json:"project_id,omitempty"`
+	DraftID               string            `json:"draft_id,omitempty"`
+	SceneID               string            `json:"scene_id,omitempty"`
+	Target                string            `json:"target,omitempty"`
+	InputVersion          int64             `json:"input_version,omitempty"`
+	InputHash             string            `json:"input_hash,omitempty"`
+	IdempotencyKey        string            `json:"idempotency_key,omitempty"`
+	CapabilityVersion     string            `json:"capability_version,omitempty"`
+	Kind                  Kind              `json:"kind"`
+	Status                Status            `json:"status"`
+	Progress              int               `json:"progress"`
+	Stage                 Stage             `json:"stage"`
+	Error                 string            `json:"error,omitempty"`
+	ProviderCode          string            `json:"provider_code,omitempty"`
+	ModelID               string            `json:"model_id,omitempty"`
+	RemoteTaskID          string            `json:"remote_task_id,omitempty"`
+	ResultText            string            `json:"result_text,omitempty"`
+	ResultCandidate       *story.Candidate  `json:"result_candidate,omitempty"`
+	Composition           *CompositionInput `json:"composition,omitempty"`
+	Input                 Input             `json:"input"`
+	ResultURL             string            `json:"result_url,omitempty"`
+	ResultDurationSeconds float64           `json:"result_duration_seconds,omitempty"`
+	RetryCount            int               `json:"retry_count"`
+	CreatedAt             time.Time         `json:"created_at"`
+	UpdatedAt             time.Time         `json:"updated_at"`
 }
 
 func (t Task) ValidateScope() error {

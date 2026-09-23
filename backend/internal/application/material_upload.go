@@ -62,11 +62,11 @@ func (s MaterialService) Upload(g *gin.Context) {
 		return
 	}
 	contentType := http.DetectContentType(sample[:n])
-	if !strings.HasPrefix(contentType, "image/") && !strings.HasPrefix(contentType, "audio/") && !strings.HasPrefix(contentType, "video/") {
+	if !strings.HasPrefix(contentType, "image/") && !strings.HasPrefix(contentType, "audio/") {
 		writeError(g, &Error{
 			Kind:  "unsupported_media",
 			Code:  "unsupported_media_type",
-			Cause: errors.New("upload must be an image, audio, or video file"),
+			Cause: errors.New("upload must be an image or audio file"),
 		})
 		return
 	}
@@ -83,6 +83,11 @@ func (s MaterialService) Upload(g *gin.Context) {
 	asset, err := material.New(id, g.PostForm("name"), material.Kind(g.PostForm("kind")), time.Now().UTC())
 	if err != nil {
 		writeError(g, Invalid("invalid_material", err))
+		return
+	}
+	asset.NormalizeLegacyKind()
+	if !validMaterialKind(asset.Kind) || strings.HasPrefix(contentType, "image/") && asset.Kind != material.Scene && asset.Kind != material.Character && asset.Kind != material.Prop || strings.HasPrefix(contentType, "audio/") && asset.Kind != material.Voice && asset.Kind != material.Music {
+		writeError(g, Invalid("invalid_material_kind", errors.New("category does not match media type")))
 		return
 	}
 	if err := ctx.Err(); err != nil {
@@ -117,6 +122,11 @@ func (s MaterialService) Upload(g *gin.Context) {
 	}
 	if closeErr != nil {
 		writeError(g, closeErr)
+		return
+	}
+	asset.Media, err = inspectUploadedMedia(ctx, path, contentType)
+	if err != nil {
+		writeError(g, Invalid("invalid_media", err))
 		return
 	}
 	asset.URL = "/media/" + stored

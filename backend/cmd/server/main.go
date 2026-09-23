@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/fengxiaozi-liu/FrameFlow/internal/application"
+	"github.com/fengxiaozi-liu/FrameFlow/internal/infrastructure/media"
 	providerinfra "github.com/fengxiaozi-liu/FrameFlow/internal/infrastructure/provider"
 	securityinfra "github.com/fengxiaozi-liu/FrameFlow/internal/infrastructure/security"
 	httpapi "github.com/fengxiaozi-liu/FrameFlow/internal/interfaces/http"
@@ -14,12 +15,14 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"runtime"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 )
@@ -61,6 +64,14 @@ func main() {
 	if configured := os.Getenv("FRAMEFLOW_UPLOAD_DIR"); configured != "" {
 		uploadDir = configured
 	}
+	mediaStatus := checkMediaRuntime(baseDir)
+	if mediaStatus.FFmpegPath != "" {
+		_ = os.Setenv("FRAMEFLOW_FFMPEG_PATH", mediaStatus.FFmpegPath)
+	}
+	if mediaStatus.FFprobePath != "" {
+		_ = os.Setenv("FRAMEFLOW_FFPROBE_PATH", mediaStatus.FFprobePath)
+	}
+	log.Printf("media runtime: composition=%t (%s), generation audio delivery=%t (%s)", mediaStatus.CompositionAvailable, mediaStatus.CompositionReason, mediaStatus.AudioDeliveryAvailable, mediaStatus.AudioDeliveryReason)
 	vaultDir := os.Getenv("FRAMEFLOW_VAULT_DIR")
 	if vaultDir == "" {
 		vaultDir = filepath.Join(baseDir, "data", "secrets")
@@ -78,6 +89,8 @@ func main() {
 	}
 	tasks, projects, providers, materials := InitService(store, vault, uploadDir, ws.Connections)
 	worker, processor := InitProcessor(store, ws.Connections)
+	composer := media.Composer{UploadDir: uploadDir, WorkDir: mediaStatus.WorkDir}
+	processor.Compose = composer.Compose
 	processor.Models = store
 	processor.ProviderConnections = store
 	processor.ModelClient = providerinfra.NewRegistry(vault)
@@ -130,7 +143,7 @@ func main() {
 		}
 		go func() { serveError <- http.Serve(listener, router) }()
 	}
-	if openOnStart == "1" && listenErr == nil {
+	if openOnStart == "1" && listenErr == nil && os.Getenv("FRAMEFLOW_OPEN_BROWSER")!="0" {
 		go func() {
 			time.Sleep(500 * time.Millisecond)
 			var command string
@@ -163,6 +176,78 @@ func main() {
 		log.Printf("worker shutdown: %v", shutdownCtx.Err())
 	}
 	ws.CloseAll()
+}
+
+// Media capabilities are independent of editing. Missing optional binaries or
+// object-storage settings must never prevent users from opening their drafts.
+type mediaRuntimeStatus struct {
+	FFmpegPath             string
+	FFprobePath            string
+	WorkDir                string
+	CompositionAvailable   bool
+	CompositionReason      string
+	AudioDeliveryAvailable bool
+	AudioDeliveryReason    string
+}
+
+func checkMediaRuntime(baseDir string) mediaRuntimeStatus {
+	status := mediaRuntimeStatus{CompositionReason: "ffmpeg and ffprobe are required", AudioDeliveryReason: "object storage is not configured"}
+	status.WorkDir = os.Getenv("FRAMEFLOW_MEDIA_WORK_DIR")
+	if status.WorkDir == "" {
+		status.WorkDir = filepath.Join(baseDir, "data", "media-work")
+	}
+	workErr := os.MkdirAll(status.WorkDir, 0750)
+	if workErr == nil {
+		var probe *os.File
+		probe, workErr = os.CreateTemp(status.WorkDir, ".write-check-*")
+		if workErr == nil {
+			_ = probe.Close()
+			_ = os.Remove(probe.Name())
+		}
+	}
+	if workErr != nil {
+		status.CompositionReason = "media work directory is not writable"
+	}
+	resolveBinary := func(envName, fallback string) string {
+		name := os.Getenv(envName)
+		if name == "" {
+			bundled := filepath.Join(baseDir, "bin", fallback)
+			if runtime.GOOS == "windows" {
+				bundled += ".exe"
+			}
+			if _, err := os.Stat(bundled); err == nil {
+				name = bundled
+			} else {
+				name = fallback
+			}
+		}
+		path, err := exec.LookPath(name)
+		if err != nil {
+			return ""
+		}
+		probeCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		if err := exec.CommandContext(probeCtx, path, "-version").Run(); err != nil {
+			return ""
+		}
+		return path
+	}
+	status.FFmpegPath = resolveBinary("FRAMEFLOW_FFMPEG_PATH", "ffmpeg")
+	status.FFprobePath = resolveBinary("FRAMEFLOW_FFPROBE_PATH", "ffprobe")
+	if workErr == nil && status.FFmpegPath != "" && status.FFprobePath != "" {
+		status.CompositionAvailable = true
+		status.CompositionReason = "ready"
+	}
+	baseURL := os.Getenv("FRAMEFLOW_AUDIO_OBJECT_BASE_URL")
+	parsed, parseErr := url.Parse(baseURL)
+	if baseURL != "" && parseErr == nil && parsed.Scheme == "https" && parsed.Host != "" &&
+		strings.TrimSpace(os.Getenv("FRAMEFLOW_AUDIO_OBJECT_BUCKET")) != "" &&
+		strings.TrimSpace(os.Getenv("FRAMEFLOW_AUDIO_OBJECT_ACCESS_KEY_ID")) != "" &&
+		strings.TrimSpace(os.Getenv("FRAMEFLOW_AUDIO_OBJECT_ACCESS_KEY_SECRET")) != "" {
+		status.AudioDeliveryAvailable = true
+		status.AudioDeliveryReason = "ready"
+	}
+	return status
 }
 
 func startupError(err error, logPath string) {

@@ -19,6 +19,35 @@ type roundTrip func(*http.Request) (*http.Response, error)
 
 func (f roundTrip) RoundTrip(req *http.Request) (*http.Response, error) { return f(req) }
 
+func TestWan27FirstLastAudioRequest(t *testing.T) {
+	client := Client{Credentials: credential("secret"), HTTP: &http.Client{Transport: roundTrip(func(req *http.Request) (*http.Response, error) {
+		var payload struct {
+			Input struct {
+				Media []struct {
+					Type string `json:"type"`
+					URL  string `json:"url"`
+				} `json:"media"`
+			} `json:"input"`
+			Parameters struct {
+				Resolution string `json:"resolution"`
+				Duration   int    `json:"duration"`
+			} `json:"parameters"`
+		}
+		if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
+			t.Fatal(err)
+		}
+		if len(payload.Input.Media) != 3 || payload.Input.Media[0].Type != "first_frame" || payload.Input.Media[1].Type != "last_frame" || payload.Input.Media[2].Type != "driving_audio" || payload.Parameters.Resolution != "720P" || payload.Parameters.Duration != 10 {
+			t.Fatalf("wrong Wan 2.7 request: %+v", payload)
+		}
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"output":{"task_id":"remote"}}`)), Header: make(http.Header)}, nil
+	})}}
+	model := provider.Model{RemoteID: "wan2.7-i2v-2026-04-25", Enabled: true, Supported: true, Capabilities: []provider.Capability{provider.Video}}
+	_, err := client.GenerateVideo(context.Background(), provider.Connection{ID: "c", Name: "Test", Vendor: "bailian", BaseURL: "https://example.com/api/v1"}, model, provider.VideoRequest{Prompt: "motion", SourceImageURL: "https://example.com/first.png", LastFrameURL: "https://example.com/last.png", DrivingAudioURL: "https://example.com/voice.mp3", Resolution: "720P", Duration: 10}, provider.RequestOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestDiscoveryAndClientProtocolSelection(t *testing.T) {
 	var paths []string
 	client := Client{Credentials: credential("secret"), HTTP: &http.Client{Transport: roundTrip(func(req *http.Request) (*http.Response, error) {

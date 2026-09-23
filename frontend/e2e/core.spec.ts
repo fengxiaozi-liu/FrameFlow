@@ -59,7 +59,28 @@ async function createDraft(request: APIRequestContext) {
 
 test.beforeEach(async ({ request }) => seedProviders(request));
 
-test("home, studio and WebSocket asynchronous task flow", async ({ page }) => {
+test("story drawer restores keyboard focus and mobile material picker keeps a retry path", async ({ page }) => {
+  await page.goto("/studio");
+  const opener = page.getByRole("button", { name: "故事联想" });
+  await opener.focus();
+  await opener.press("Enter");
+  const dialog = page.getByRole("dialog", { name: "故事联想" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "关闭故事联想" })).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+  await expect(opener).toBeFocused();
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/materials");
+  await page.route("**/api/materials/upload", (route) => route.fulfill({ status: 500, json: { error: { message: "上传失败，请重试" } } }));
+  await page.getByLabel("选择素材文件").setInputFiles({ name: "sample.png", mimeType: "image/png", buffer: Buffer.from("invalid") });
+  await expect(page.getByRole("alert")).toContainText("上传失败，请重试");
+  await expect(page.getByRole("button", { name: "上传素材" })).toBeEnabled();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
+});
+
+test("home, studio scene editing and WebSocket connection", async ({ page }) => {
   let upgraded = false;
   page.on("websocket", (socket) => {
     if (socket.url().includes("/ws")) upgraded = true;
@@ -71,18 +92,30 @@ test("home, studio and WebSocket asynchronous task flow", async ({ page }) => {
   await page.getByPlaceholder(/例如：用 30 秒/).fill("记录城市的一天");
   await page.getByRole("button", { name: "开始创作" }).click();
   await expect(page).toHaveURL(/studio/);
+  await page.getByRole("button", { name: /分镜/ }).first().click();
   await page.getByRole("button", { name: "新增分镜" }).click();
-  await page.getByLabel("首帧图片 URL").fill("https://example.com/first.png");
-  await page.getByRole("button", { name: "检查并生成视频" }).click();
-  await expect(
-    page.getByText("任务已进入后台队列，可以继续编辑。"),
-  ).toBeVisible();
+  await expect(page.locator(".scene-inspector")).toBeVisible();
+  await page.locator(".scene-inspector").getByLabel("标题").fill("城市清晨");
+  await page.locator(".scene-inspector").getByLabel("画面描述").fill("清晨街道与行人");
+  await page.getByRole("button", { name: "保存镜头" }).click();
+  await expect(page.locator(".scene-row").filter({ hasText: "城市清晨" })).toBeVisible();
+  await page.getByRole("button", { name: "新增分镜" }).click();
+  await expect(page.locator(".scene-inspector").getByRole("heading", { name: "镜头 2" })).toBeVisible();
+  await page.locator(".scene-inspector").getByLabel("标题").fill("城市傍晚");
+  await page.locator(".scene-inspector").getByLabel("画面描述").fill("傍晚街道与车流");
+  await page.getByRole("button", { name: "保存镜头" }).click();
+  await expect(page.locator(".scene-list .scene-row").nth(1)).toContainText("城市傍晚");
+  const moveUp = page.locator(".scene-inspector").getByRole("button", { name: "上移" });
+  await moveUp.focus();
+  await moveUp.press("Enter");
+  await expect(page.locator(".scene-list .scene-row").first()).toContainText("城市傍晚");
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.locator(".scene-list")).toBeHidden();
+  await page.getByRole("button", { name: "返回镜头列表" }).click();
+  await expect(page.locator(".scene-list")).toBeVisible();
   await expect.poll(() => upgraded).toBeTruthy();
-  await page.getByRole("link", { name: /后台任务/ }).click();
+  await page.locator(".studio-head").getByRole("link", { name: "任务中心" }).click();
   await expect(page.getByRole("heading", { name: "任务中心" })).toBeVisible();
-  await expect(page.locator(".task-detail").first()).toContainText("失败", {
-    timeout: 5000,
-  });
 });
 
 test("provider switching and responsive layout", async ({ page }) => {
@@ -93,16 +126,9 @@ test("provider switching and responsive layout", async ({ page }) => {
     page.locator(".catalog-table tbody tr").filter({ hasText: "qwen-plus" }),
   ).toBeVisible();
   await page.goto("/studio");
-  await page.getByLabel("故事 AI 接口").selectOption("e2e-bailian:qwen-plus");
-  await page
-    .getByLabel("生图 AI 接口")
-    .selectOption("e2e-bailian:qwen-image-2.0");
-  await page
-    .getByLabel("视频生成 AI 接口")
-    .selectOption("e2e-bailian:wan2.7-i2v");
-  await expect(page.getByLabel("故事 AI 接口")).toHaveValue(
-    "e2e-bailian:qwen-plus",
-  );
+  await page.getByRole("button", { name: "故事联想" }).click();
+  await expect(page.getByRole("dialog", { name: "故事联想" }).getByLabel("故事模型")).toHaveValue("e2e-bailian:qwen-plus");
+  await page.getByRole("button", { name: "关闭故事联想" }).click();
   for (const width of [1280, 390]) {
     await page.setViewportSize({ width, height: 844 });
     for (const path of ["/", "/studio", "/tasks", "/materials", "/config"]) {
@@ -200,11 +226,8 @@ test("empty material library opens the picker and uploads a local file", async (
 }) => {
   await page.goto("/materials");
   await page.getByRole("button", { name: "角色", exact: true }).click();
-  const fileChooser = page.waitForEvent("filechooser");
-  await page.getByRole("button", { name: /当前素材库为空/ }).click();
-  await (
-    await fileChooser
-  ).setFiles({
+  await page.getByLabel("上传素材类别").selectOption("character");
+  await page.getByLabel("选择素材文件").setInputFiles({
     name: "character.png",
     mimeType: "image/png",
     buffer: Buffer.from(
@@ -214,7 +237,7 @@ test("empty material library opens the picker and uploads a local file", async (
   });
 
   await expect(
-    page.getByText("素材“character.png”已上传并选中。"),
+    page.getByText("已上传“character.png”。"),
   ).toBeVisible();
   const material = page
     .locator(".material-card")
@@ -229,7 +252,7 @@ test("empty material library opens the picker and uploads a local file", async (
   expect(uploaded?.url).toMatch(/^\/media\//);
   expect((await request.get(uploaded.url)).ok()).toBeTruthy();
   page.once("dialog", (dialog) => dialog.accept());
-  await material.getByRole("button", { name: "删除 character.png" }).click();
+  await page.getByRole("button", { name: "删除", exact: true }).click();
   await expect(page.getByText("素材已删除。")).toBeVisible();
   await expect(material).toHaveCount(0);
 });
@@ -265,14 +288,12 @@ test("WebSocket disconnect falls back to HTTP task refresh", async ({
   page,
 }) => {
   await page.routeWebSocket(/\/ws(?:\?|$)/, (socket) => socket.close());
-  const fallback = page.waitForRequest((request) =>
-    request.url().includes("/api/tasks?limit=100"),
-  );
-  await page.goto("/studio");
-  await page.getByRole("button", { name: "新增分镜" }).click();
-  await page.getByLabel("首帧图片 URL").fill("https://example.com/first.png");
-  await page.getByRole("button", { name: "检查并生成视频" }).click();
-  await fallback;
+  let refreshes = 0;
+  page.on("request", (request) => {
+    if (request.url().includes("/api/tasks?limit=100")) refreshes++;
+  });
+  await page.goto("/tasks");
+  await expect.poll(() => refreshes, { timeout: 10000 }).toBeGreaterThan(1);
 });
 
 test("core pages have no serious accessibility violations", async ({
@@ -293,99 +314,18 @@ test("core pages have no serious accessibility violations", async ({
   }
 });
 
-test("completed story task fills the scoped planning body", async ({
-  page,
-}) => {
-  const now = "2026-09-22T00:00:00Z";
-  let savedDraft: Record<string, unknown> | undefined;
-  let taskCreated = false;
-  await page.route("**/api/projects", async (route) => {
-    if (route.request().method() === "POST") {
-      await route.fulfill({
-        status: 201,
-        json: {
-          id: "project-story",
-          name: "Story",
-          drafts: [],
-          created_at: now,
-        },
-      });
-    } else await route.continue();
-  });
-  await page.route("**/api/projects/project-story/drafts", async (route) => {
-    savedDraft = route.request().postDataJSON();
-    await route.fulfill({
-      json: {
-        id: "project-story",
-        name: "Story",
-        created_at: now,
-        drafts: [savedDraft],
-      },
-    });
-  });
-  await page.route("**/api/projects/project-story", async (route) => {
-    const generated = structuredClone(savedDraft) as Record<string, any>;
-    generated.story.body = "生成后的策划正文";
-    generated.outputs = [
-      {
-        task_id: "story-task",
-        kind: "story",
-        text: "生成后的策划正文",
-        created_at: now,
-      },
-    ];
-    await route.fulfill({
-      json: {
-        id: "project-story",
-        name: "Story",
-        created_at: now,
-        drafts: [generated],
-      },
-    });
-  });
-  await page.route("**/api/tasks**", async (route) => {
-    if (route.request().method() !== "POST") {
-      const items = taskCreated
-        ? [
-            {
-              id: "story-task",
-              project_id: "project-story",
-              draft_id: (savedDraft as any).id,
-              kind: "story",
-              status: "succeeded",
-              progress: 100,
-              stage: "completed",
-              input: { prompt: "一个故事" },
-              result_text: "生成后的策划正文",
-              created_at: now,
-              updated_at: now,
-            },
-          ]
-        : [];
-      return route.fulfill({ json: { tasks: items, total: items.length } });
-    }
-    const body = route.request().postDataJSON();
-    taskCreated = true;
-    await route.fulfill({
-      status: 202,
-      json: {
-        id: "story-task",
-        project_id: body.project_id,
-        draft_id: body.draft_id,
-        kind: "story",
-        status: "queued",
-        progress: 0,
-        stage: "queued",
-        input: { prompt: body.prompt },
-        created_at: now,
-        updated_at: now,
-      },
-    });
-  });
+test("failed story generation preserves the saved body and retry control", async ({ page }) => {
+  await page.route("**/api/projects/*/drafts/*/candidates", (route) =>
+    route.fulfill({ status: 503, json: { message: "生成服务暂不可用" } }),
+  );
   await page.goto("/studio");
-  await page.getByLabel("故事 AI 接口").selectOption({ index: 1 });
-  await page.getByLabel("视频想法 / 修改要求").fill("一个故事");
-  await page.getByRole("button", { name: "生成故事与分镜" }).click();
-  await expect(page.getByLabel("策划正文")).toHaveValue("生成后的策划正文");
-  await expect(page.getByText("生成结果已填充到策划正文。")).toBeVisible();
+  await page.getByLabel("故事正文").fill("用户已写的正文");
+  await expect(page.locator(".editor-footer")).toContainText("已保存");
+  await page.getByRole("button", { name: "故事联想" }).click();
+  const dialog = page.getByRole("dialog", { name: "故事联想" });
+  await dialog.getByLabel("你的想法或修改要求").fill("继续写作");
+  await dialog.getByRole("button", { name: "生成正文" }).click();
+  await expect(page.getByRole("status")).toContainText("生成服务暂不可用");
+  await expect(dialog.getByRole("button", { name: "生成正文" })).toBeEnabled();
+  await expect(page.getByLabel("故事正文")).toHaveValue("用户已写的正文");
 });

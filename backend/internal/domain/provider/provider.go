@@ -45,11 +45,15 @@ type RequestOptions struct {
 	Retry   RetryPolicy
 }
 
-type StoryRequest struct{ Prompt, Model string }
+type StoryRequest struct{ Prompt, Model, SystemPrompt string }
 type StoryResult struct{ Document string }
 type ImageRequest struct{ Prompt, Model, AspectRatio string }
 type ImageResult struct{ URL string }
-type VideoRequest struct{ Prompt, Model, AspectRatio, SourceImageURL string }
+type VideoRequest struct {
+	Prompt, Model, AspectRatio, SourceImageURL string
+	LastFrameURL, DrivingAudioURL, Resolution  string
+	Duration                                   int
+}
 type VideoResult struct{ JobReference, URL string }
 
 // WithTimeout 是所有 provider 共用的取消和超时处理方式。

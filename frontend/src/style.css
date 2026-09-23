@@ -834,6 +834,58 @@ textarea {
   margin-top: 16px;
   font-size: 12px;
 }
+.workspace-tabs { display: flex; gap: 8px; border-bottom: 1px solid var(--line); margin-bottom: 20px; }
+.workspace-tabs button { border: 0; border-radius: 0; background: transparent; padding: 12px 20px; }
+.workspace-tabs button.active { color: var(--accent); border-bottom: 3px solid var(--accent); }
+.workspace-tabs span { color: var(--muted); margin-left: 5px; }
+.workspace-body, .workspace-scenes, .workspace-video { max-width: 1040px; margin: 0 auto; }
+.body-editor { min-height: 54vh; line-height: 1.8; font-size: 15px; }
+.editor-footer { text-align: right; color: var(--muted); font-size: 12px; }
+.title-input { max-width: 430px; font-size: 20px; font-weight: 700; border: 0; background: transparent; padding-left: 0; }
+.story-drawer { position: fixed; z-index: 20; right: 0; top: 0; bottom: 0; width: min(420px, 100vw); background: var(--paper); border-left: 1px solid var(--line); padding: 24px; box-shadow: -6px 0 28px #202c3926; overflow-y: auto; }
+.story-drawer label { margin: 16px 0; }
+.candidate-card, .history-strip { margin: 20px 0; padding: 18px; border: 1px solid var(--line); border-radius: 9px; background: var(--paper); }
+.candidate-card p { white-space: pre-wrap; }
+.candidate-card video { width: 100%; max-height: 250px; background: #17232a; margin: 10px 0; }
+.history-strip button { margin: 8px 8px 0 0; }
+.scene-layout { display: grid; grid-template-columns: minmax(220px, 1fr) minmax(300px, 1.3fr); gap: 16px; }
+.scene-list { display: grid; align-content: start; gap: 8px; }
+.scene-row { display: grid; text-align: left; gap: 4px; }
+.scene-row.active { border-color: var(--accent); background: var(--tint); }
+.scene-row small { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.scene-inspector { padding: 20px; }
+.scene-inspector label { margin: 14px 0; }
+.scene-inspector .actions { flex-wrap: wrap; margin: 16px 0; justify-content: flex-start; }
+.binding-row { display: flex; align-items: center; gap: 7px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.binding-row span { min-width: 75px; }
+.binding-row strong { flex: 1; font-size: 12px; overflow-wrap: anywhere; }
+.binding-row button { padding: 5px 8px; font-size: 12px; }
+.material-tools { display: flex; gap: 12px; margin-bottom: 18px; }
+.material-tools label { flex: 1; max-width: 300px; }
+.material-workspace { display: grid; grid-template-columns: minmax(0, 1fr) 310px; gap: 18px; align-items: start; }
+.material-workspace:has(.materials-grid:only-child) { grid-template-columns: 1fr; }
+.material-card { width: 100%; text-align: left; min-width: 0; }
+.material-card strong { overflow-wrap: anywhere; }
+.audio-tile { min-height: 120px; background: var(--tint); color: var(--accent); display: grid; place-items: center; font-size: 42px; }
+.material-detail { padding: 18px; }
+.material-detail > img { width: 100%; max-height: 220px; object-fit: contain; margin: 14px 0; }
+.material-detail > audio { width: 100%; margin: 14px 0; }
+.material-detail label { margin: 14px 0; }
+.material-detail ul { padding-left: 18px; overflow-wrap: anywhere; }
+.composition-player { width: 100%; max-height: 55vh; background: #17232a; border-radius: 9px; }
+.video-sequence { display: flex; gap: 10px; overflow-x: auto; margin: 14px 0 22px; }
+.video-sequence .scene-row { min-width: 185px; max-width: 230px; border: 1px solid var(--line); border-radius: 8px; padding: 12px; background: var(--paper); }
+.composition-settings { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 14px; padding: 18px; margin: 20px 0; }
+.composition-settings h3, .composition-settings > button, .composition-settings > p { grid-column: 1/-1; }
+@media (max-width: 720px) {
+  .scene-layout, .material-workspace { grid-template-columns: 1fr; }
+  .scene-layout.has-selection .scene-list, .material-workspace.has-selection .materials-grid { display: none; }
+  .composition-settings { grid-template-columns: 1fr; }
+  .material-tools { flex-direction: column; }
+  .story-drawer { width: 100vw; }
+}
+.mobile-panel-back { display: none; }
+@media (max-width: 720px) { .mobile-panel-back { display: inline-flex; margin-bottom: 12px; } }
 @media (max-width: 1100px) {
   .catalog-layout {
     grid-template-columns: 185px minmax(0, 1fr);
