@@ -104,7 +104,7 @@ func (d *Draft) CaptureStoryboardSnapshot(id string, now time.Time) error {
 		selected[sceneID] = versionID
 	}
 	d.StoryboardSnapshots = append(d.StoryboardSnapshots, StoryboardSnapshot{
-		ID: id, SourceBody: d.StoryboardSourceBody, Scenes: append([]story.Scene(nil), d.Story.Scenes...),
+		ID: id, SourceBody: d.StoryboardSourceBody, Scenes: append([]story.Scene{}, d.Story.Scenes...),
 		Bindings:         append([]SceneBinding(nil), d.Bindings...),
 		VideoVersions:    append([]VideoVersion(nil), d.VideoVersions...),
 		SelectedVersions: selected, CreatedAt: now,

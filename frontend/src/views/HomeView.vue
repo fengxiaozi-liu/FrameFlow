@@ -95,7 +95,7 @@ function start() {
             "
           />
         </div>
-        <RouterLink class="text-link" to="/config">管理接口配置</RouterLink>
+        <RouterLink class="text-link" to="/config">管理模型与连接</RouterLink>
       </aside>
     </div>
     <section>

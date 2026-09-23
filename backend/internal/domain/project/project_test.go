@@ -1,11 +1,32 @@
 package project
 
 import (
+	"encoding/json"
 	"errors"
 	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/story"
 	"testing"
 	"time"
 )
+
+func TestEmptyStoryboardSnapshotSerializesScenesAsArray(t *testing.T) {
+	d := Draft{ID: "d"}
+	if err := d.CaptureStoryboardSnapshot("before-first-storyboard", time.Now().UTC()); err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := json.Marshal(d.StoryboardSnapshots[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	var snapshot struct {
+		Scenes []story.Scene `json:"scenes"`
+	}
+	if err := json.Unmarshal(encoded, &snapshot); err != nil {
+		t.Fatal(err)
+	}
+	if snapshot.Scenes == nil {
+		t.Fatalf("empty snapshot scenes must be a JSON array: %s", encoded)
+	}
+}
 
 func TestDraftCandidatesSnapshotsAndSceneScopedMedia(t *testing.T) {
 	now := time.Now().UTC()

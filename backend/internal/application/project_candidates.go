@@ -183,7 +183,7 @@ func (s ProjectService) RestoreDraft(ctx *gin.Context) {
 		}
 		for _, snapshot := range d.StoryboardSnapshots {
 			if snapshot.ID == input.SnapshotID {
-				d.Story.Scenes = append([]story.Scene(nil), snapshot.Scenes...)
+				d.Story.Scenes = append([]story.Scene{}, snapshot.Scenes...)
 				d.StoryboardSourceBody = snapshot.SourceBody
 				d.Bindings = append([]project.SceneBinding(nil), snapshot.Bindings...)
 				d.VideoVersions = append([]project.VideoVersion(nil), snapshot.VideoVersions...)

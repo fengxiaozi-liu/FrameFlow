@@ -59,7 +59,87 @@ async function createDraft(request: APIRequestContext) {
 
 test.beforeEach(async ({ request }) => seedProviders(request));
 
-test("story drawer restores keyboard focus and mobile material picker keeps a retry path", async ({ page }) => {
+test("storyboard tab renders an existing draft with an empty history snapshot", async ({ page, request }, testInfo) => {
+  const { projectId, draftId } = await createDraft(request);
+  await page.route(`**/api/projects/${projectId}`, async (route) => {
+    const response = await route.fetch();
+    const project = await response.json();
+    const draft = project.drafts.find((item: { id: string }) => item.id === draftId);
+    draft.story.body = "A short story";
+    draft.story.scenes = Array.from({ length: 6 }, (_, index) => ({
+      id: `scene-${index + 1}`,
+      order: index + 1,
+      title: `Scene ${index + 1}`,
+      visual_prompt: "A quiet street",
+      narration: "",
+      duration_seconds: 10,
+    }));
+    draft.storyboard_snapshots = [{ id: "before-first-storyboard", scenes: null }];
+    await route.fulfill({ response, json: project });
+  });
+  const pageErrors: Error[] = [];
+  page.on("pageerror", (error) => pageErrors.push(error));
+  await page.goto(`/studio/${projectId}/${draftId}`);
+  await page.getByRole("button", { name: /分镜 6/ }).click();
+  await expect(page.locator(".scene-list .scene-row")).toHaveCount(6);
+  await expect(page.locator(".history-strip")).toContainText("0 个镜头 · 恢复");
+  await expect(page.locator(".scene-board")).toBeVisible();
+  await expect(page.locator(".scene-inspector")).toBeVisible();
+  const board = await page.locator(".scene-board").boundingBox();
+  const inspector = await page.locator(".scene-inspector").boundingBox();
+  expect(board!.x + board!.width).toBeLessThan(inspector!.x);
+  await page.screenshot({ path: testInfo.outputPath("storyboard-desktop.png"), fullPage: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.locator(".scene-inspector")).toBeVisible();
+  await expect(page.locator(".scene-board")).toBeHidden();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
+  await page.screenshot({ path: testInfo.outputPath("storyboard-mobile.png"), fullPage: true });
+  expect(pageErrors).toEqual([]);
+});
+
+test("a storyboard card can delete its own scene after the settings panel is closed", async ({ page }) => {
+  await page.goto("/studio");
+  await page.getByRole("button", { name: /分镜/ }).first().click();
+  await page.getByRole("button", { name: "新增分镜" }).click();
+  await page.getByRole("button", { name: "新增分镜" }).click();
+  await page.getByRole("button", { name: "关闭镜头设置" }).click();
+  const cards = page.locator(".scene-list .scene-row-wrap");
+  await expect(cards).toHaveCount(2);
+  const deleteButton = cards.nth(1).getByRole("button", { name: /删除镜头/ });
+  page.once("dialog", (dialog) => dialog.dismiss());
+  await deleteButton.click();
+  await expect(cards).toHaveCount(2);
+  page.once("dialog", (dialog) => {
+    expect(dialog.message()).toContain("镜头 2");
+    return dialog.accept();
+  });
+  await deleteButton.click();
+  await expect(cards).toHaveCount(1);
+  await expect(cards.first().getByRole("button", { name: /删除镜头/ })).toHaveAttribute("aria-label", /镜头 1/);
+  await page.reload();
+  await page.getByRole("button", { name: /分镜/ }).first().click();
+  await expect(cards).toHaveCount(1);
+});
+
+test("story editor follows the wide card layout and stays usable on mobile", async ({ page }, testInfo) => {
+  await page.goto("/studio");
+  const card = page.locator(".editor-card");
+  await expect(card).toBeVisible();
+  const desktop = await card.boundingBox();
+  expect(desktop?.width).toBeGreaterThan(1200);
+  const projectBar = await page.locator(".studio-project-bar").boundingBox();
+  const tabs = await page.locator(".workspace-tabs").boundingBox();
+  expect(Math.abs(tabs!.x + tabs!.width / 2 - (projectBar!.x + projectBar!.width / 2))).toBeLessThan(2);
+  await expect(page.locator(".workspace-tabs button").first()).toHaveCSS("font-size", "18px");
+  await expect(page.locator(".body-editor")).toHaveCSS("border-top-width", "0px");
+  await page.screenshot({ path: testInfo.outputPath("studio-desktop.png"), fullPage: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
+  await expect(card).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath("studio-mobile.png"), fullPage: true });
+});
+
+test("story drawer restores keyboard focus and mobile material picker keeps a retry path", async ({ page }, testInfo) => {
   await page.goto("/studio");
   const opener = page.getByRole("button", { name: "故事联想" });
   await opener.focus();
@@ -67,11 +147,36 @@ test("story drawer restores keyboard focus and mobile material picker keeps a re
   const dialog = page.getByRole("dialog", { name: "故事联想" });
   await expect(dialog).toBeVisible();
   await expect(dialog.getByRole("button", { name: "关闭故事联想" })).toBeFocused();
+  const resizeHandle = dialog.getByRole("separator", { name: "调整故事联想宽度" });
+  const initialWidth = (await dialog.boundingBox())!.width;
+  const grip = (await resizeHandle.boundingBox())!;
+  const gripX = grip.x + grip.width / 2;
+  const gripY = grip.y + grip.height / 2;
+  await page.mouse.move(gripX, gripY);
+  await page.mouse.down();
+  await page.mouse.move(gripX - 130, gripY, { steps: 8 });
+  await page.mouse.up();
+  await expect.poll(async () => (await dialog.boundingBox())!.width).toBeGreaterThan(initialWidth + 100);
+  const draggedWidth = (await dialog.boundingBox())!.width;
+  await resizeHandle.focus();
+  await resizeHandle.press("ArrowRight");
+  await expect.poll(async () => (await dialog.boundingBox())!.width).toBeLessThan(draggedWidth);
+  await page.screenshot({ path: testInfo.outputPath("story-drawer-resized.png"), fullPage: true });
   await page.keyboard.press("Escape");
   await expect(dialog).toHaveCount(0);
   await expect(opener).toBeFocused();
 
+  await opener.click();
+  await expect.poll(async () => (await dialog.boundingBox())!.width).toBeGreaterThan(initialWidth + 60);
+  await page.keyboard.press("Escape");
   await page.setViewportSize({ width: 390, height: 844 });
+  await opener.click();
+  await expect(dialog).toHaveCSS("width", "390px");
+  await expect(resizeHandle).toBeHidden();
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await expect.poll(async () => (await dialog.boundingBox())!.width).toBeGreaterThan(initialWidth + 60);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.keyboard.press("Escape");
   await page.goto("/materials");
   await page.route("**/api/materials/upload", (route) => route.fulfill({ status: 500, json: { error: { message: "上传失败，请重试" } } }));
   await page.getByLabel("选择素材文件").setInputFiles({ name: "sample.png", mimeType: "image/png", buffer: Buffer.from("invalid") });
@@ -100,7 +205,7 @@ test("home, studio scene editing and WebSocket connection", async ({ page }) => 
   await page.getByRole("button", { name: "保存镜头" }).click();
   await expect(page.locator(".scene-row").filter({ hasText: "城市清晨" })).toBeVisible();
   await page.getByRole("button", { name: "新增分镜" }).click();
-  await expect(page.locator(".scene-inspector").getByRole("heading", { name: "镜头 2" })).toBeVisible();
+  await expect(page.locator(".scene-inspector").getByRole("heading", { name: "镜头 02" })).toBeVisible();
   await page.locator(".scene-inspector").getByLabel("标题").fill("城市傍晚");
   await page.locator(".scene-inspector").getByLabel("画面描述").fill("傍晚街道与车流");
   await page.getByRole("button", { name: "保存镜头" }).click();
@@ -114,13 +219,13 @@ test("home, studio scene editing and WebSocket connection", async ({ page }) => 
   await page.getByRole("button", { name: "返回镜头列表" }).click();
   await expect(page.locator(".scene-list")).toBeVisible();
   await expect.poll(() => upgraded).toBeTruthy();
-  await page.locator(".studio-head").getByRole("link", { name: "任务中心" }).click();
+  await page.locator(".app-header").getByRole("link", { name: "任务中心" }).click();
   await expect(page.getByRole("heading", { name: "任务中心" })).toBeVisible();
 });
 
 test("provider switching and responsive layout", async ({ page }) => {
   await page.goto("/config");
-  await expect(page.getByRole("heading", { name: "配置中心" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "模型管理" })).toBeVisible();
   await page.getByRole("button", { name: /百炼测试/ }).click();
   await expect(
     page.locator(".catalog-table tbody tr").filter({ hasText: "qwen-plus" }),
@@ -223,8 +328,15 @@ test("Bailian connection saves a complete HTTPS endpoint", async ({
 test("empty material library opens the picker and uploads a local file", async ({
   page,
   request,
-}) => {
+}, testInfo) => {
+  await page.route("**/api/materials?*", (route) =>
+    route.fulfill({ status: 200, json: { materials: [] } }),
+  );
   await page.goto("/materials");
+  await expect(page.locator(".material-empty")).toBeVisible();
+  expect((await page.locator(".material-empty").boundingBox())!.width).toBeGreaterThan(900);
+  await page.screenshot({ path: testInfo.outputPath("materials-empty-desktop.png"), fullPage: true });
+  await page.unroute("**/api/materials?*");
   await page.getByRole("button", { name: "角色", exact: true }).click();
   await page.getByLabel("上传素材类别").selectOption("character");
   await page.getByLabel("选择素材文件").setInputFiles({
@@ -244,6 +356,13 @@ test("empty material library opens the picker and uploads a local file", async (
     .filter({ hasText: "character.png" });
   await expect(material).toBeVisible();
   await expect(material).toHaveClass(/selected/);
+  await expect(page.locator(".material-detail")).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath("materials-selected-desktop.png"), fullPage: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.locator(".material-detail")).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
+  await page.screenshot({ path: testInfo.outputPath("materials-selected-mobile.png"), fullPage: true });
+  await page.setViewportSize({ width: 1440, height: 1000 });
 
   const saved = await request.get("/api/materials?kind=character");
   const uploaded = (await saved.json()).materials.find(

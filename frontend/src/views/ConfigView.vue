@@ -147,7 +147,7 @@ onMounted(() => { void loadConnections().catch(showError); });
 <template>
   <main class="config-page catalog-page">
     <header class="page-intro">
-      <div><span class="eyebrow">WORKSPACE SETTINGS</span><h1>配置中心</h1></div>
+      <div><span class="eyebrow">MODEL MANAGEMENT</span><h1>模型管理</h1></div>
       <button class="primary" @click="newConnection">添加厂商连接</button>
     </header>
     <p v-if="message" :class="['notice', { error: messageIsError }]" :role="messageIsError ? 'alert' : 'status'">{{ message }}</p>
@@ -166,7 +166,7 @@ onMounted(() => { void loadConnections().catch(showError); });
       <section class="catalog-main">
         <template v-if="active && !creating">
           <header class="catalog-toolbar">
-            <div><h2>{{ active.name }}</h2><small>模型管理</small></div>
+            <div><h2>{{ active.name }}</h2><small>模型列表</small></div>
             <div class="actions">
               <button :disabled="busy || !active.credential_set" @click="testConnection">测试连接</button>
               <button :disabled="busy || !active.credential_set" @click="sync">同步模型</button>

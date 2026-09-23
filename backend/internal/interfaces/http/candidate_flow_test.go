@@ -81,6 +81,38 @@ func TestCandidateApplyConflictAndStoryboardRestore(t *testing.T) {
 	}
 }
 
+func TestRestoreLegacyEmptyStoryboardSnapshotReturnsSceneArray(t *testing.T) {
+	services, done := testServer(t)
+	defer done()
+	repo := services.Projects.Repo.(project.AtomicRepository)
+	_, err := repo.Update(context.Background(), "test-project", func(p *project.Project) error {
+		d := &p.Drafts[0]
+		if err := d.Story.AddScene(story.Scene{Title: "generated", VisualPrompt: "frame", DurationSeconds: 5}); err != nil {
+			return err
+		}
+		d.StoryboardSnapshots = []project.StoryboardSnapshot{{ID: "legacy-empty", Scenes: nil}}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	response := request(t, testRouter(services), http.MethodPost, "/api/projects/test-project/drafts/test-draft/restore", `{"expected_version":0,"snapshot_id":"legacy-empty"}`)
+	if response.Code != http.StatusOK {
+		t.Fatal(response.Code, response.Body.String())
+	}
+	var restored struct {
+		Story struct {
+			Scenes json.RawMessage `json:"scenes"`
+		} `json:"story"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &restored); err != nil {
+		t.Fatal(err)
+	}
+	if string(restored.Story.Scenes) != "[]" {
+		t.Fatalf("restored scenes must be a JSON array: %s", response.Body.String())
+	}
+}
+
 func TestSceneBindingRequiresConfirmedMaterialAndVersion(t *testing.T) {
 	services, done := testServer(t)
 	defer done()

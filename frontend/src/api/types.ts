@@ -115,7 +115,7 @@ export interface Candidate {
 }
 export interface StoryboardSnapshot {
   id: string;
-  scenes: Scene[];
+  scenes: Scene[] | null;
 }
 export interface BodySnapshot {
   id: string;
