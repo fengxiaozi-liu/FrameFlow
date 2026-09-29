@@ -65,7 +65,16 @@ func (s ProjectService) ListSceneVersions(g *gin.Context) {
 						current.DrivingAudioURL = asset.URL
 					}
 				}
-				if videoFingerprint(original.ModelID, current) != version.InputFingerprint {
+				if original.Snapshot != nil {
+					for _, scene := range d.Story.Scenes {
+						if scene.ID == sceneID {
+							view.BasedOnOldSettings = dependencyHash(p.EntityCatalog, scene, original.Snapshot.Path, "") != original.Snapshot.DependencyHash
+						}
+					}
+					if len(original.Snapshot.Entities) > 0 && len(original.Snapshot.Entities[0].References) > 0 {
+						view.BasedOnOldSettings = view.BasedOnOldSettings || current.SourceImageURL != original.Snapshot.Entities[0].References[0].URL
+					}
+				} else if videoFingerprint(original.ModelID, current) != version.InputFingerprint {
 					view.BasedOnOldSettings = true
 				}
 			}

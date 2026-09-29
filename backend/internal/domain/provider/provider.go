@@ -47,7 +47,10 @@ type RequestOptions struct {
 
 type StoryRequest struct{ Prompt, Model, SystemPrompt string }
 type StoryResult struct{ Document string }
-type ImageRequest struct{ Prompt, Model, AspectRatio string }
+type ImageRequest struct {
+	Prompt, Model, AspectRatio string
+	References                 []ImageReference
+}
 type ImageResult struct{ URL string }
 type VideoRequest struct {
 	Prompt, Model, AspectRatio, SourceImageURL string
@@ -68,7 +71,7 @@ func (c Config) Validate() error {
 	if c.Code == "" || c.Name == "" {
 		return errors.New("provider code and name are required")
 	}
-	if c.Capability != Story && c.Capability != Image && c.Capability != Video {
+	if c.Capability != Story && c.Capability != Image && c.Capability != Video && c.Capability != Speech {
 		return errors.New("invalid provider capability")
 	}
 	if c.Enabled && (c.BaseURL == "" || c.Model == "") {

@@ -15,6 +15,8 @@ export interface TaskInput {
   resolution?: string;
 }
 export interface Task {
+  run_id?:string;
+  depends_on?:string[];
   id: string;
   project_id?: string;
   draft_id?: string;
@@ -47,6 +49,9 @@ export interface TaskEvent {
   at: string;
 }
 export interface Scene {
+	entity_bindings?: Schema["ShotEntityBinding"][];
+	prompt_document?: Schema["PromptDocument"];
+	utterances?: Schema["Utterance"][];
   id: string;
   order: number;
   title: string;
@@ -55,6 +60,9 @@ export interface Scene {
   duration_seconds: number;
 }
 export interface Draft {
+	media_takes?: Schema["MediaTake"][];
+	selected_media?: Record<string,string>;
+	generation_runs?: Schema["GenerationRun"][];
   id: string;
   project_id?: string;
   name: string;
@@ -103,6 +111,7 @@ export interface SceneBinding {
   position?: number;
 }
 export interface Candidate {
+  entities?: {id:string;key:string;kind:'location'|'character';name:string;description:string}[];
   id: string;
   task_id: string;
   target: Schema["Candidate"]["target"];
@@ -128,7 +137,7 @@ export interface Project {
   drafts: Draft[];
   created_at: string;
 }
-export type Capability = "story" | "image" | "video";
+export type Capability = "story" | "image" | "video" | "speech";
 export interface Provider {
   code: string;
   name: string;

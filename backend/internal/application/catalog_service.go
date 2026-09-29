@@ -374,7 +374,7 @@ func (s CatalogService) UpdateModel(g *gin.Context) {
 func validCapabilities(items []provider.Capability) ([]provider.Capability, error) {
 	result := make([]provider.Capability, 0, len(items))
 	for _, cap := range items {
-		if cap != provider.Story && cap != provider.Image && cap != provider.Video {
+		if cap != provider.Story && cap != provider.Image && cap != provider.Video && cap != provider.Speech {
 			return nil, fmt.Errorf("unknown capability %q", cap)
 		}
 		found := false

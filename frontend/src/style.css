@@ -9,7 +9,10 @@
   --paper: #fff;
   --muted: #596979;
   --line: #dde5ea;
-  --accent: #067067;
+  --teal-400: #2dd4bf;
+  --teal-500: #14b8a6;
+  --teal-600: #0d9488;
+  --accent: #0f766e;
   --tint: #e8f5f1;
   --danger: #b33b3b;
 }

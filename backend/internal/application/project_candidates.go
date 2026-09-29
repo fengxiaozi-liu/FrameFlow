@@ -37,31 +37,49 @@ func (s ProjectService) GetDraft(ctx *gin.Context) {
 }
 
 func (s ProjectService) ListCandidates(ctx *gin.Context) {
- p,err:=s.Repo.Get(ctx.Request.Context(),ctx.Param("id"))
- if err!=nil {writeError(ctx,err);return}
- d,err:=draftByID(&p,ctx.Param("draftId"))
- if err!=nil {writeError(ctx,err);return}
- values:=d.Candidates
- if values==nil {values=[]story.Candidate{}}
- ctx.JSON(http.StatusOK,gin.H{"candidates":values})
+	p, err := s.Repo.Get(ctx.Request.Context(), ctx.Param("id"))
+	if err != nil {
+		writeError(ctx, err)
+		return
+	}
+	d, err := draftByID(&p, ctx.Param("draftId"))
+	if err != nil {
+		writeError(ctx, err)
+		return
+	}
+	values := d.Candidates
+	if values == nil {
+		values = []story.Candidate{}
+	}
+	ctx.JSON(http.StatusOK, gin.H{"candidates": values})
 }
 
 func (s ProjectService) GetCandidate(ctx *gin.Context) {
- p,err:=s.Repo.Get(ctx.Request.Context(),ctx.Param("id"))
- if err!=nil {writeError(ctx,err);return}
- d,err:=draftByID(&p,ctx.Param("draftId"))
- if err!=nil {writeError(ctx,err);return}
- for _,candidate:=range d.Candidates {
-  if candidate.ID==ctx.Param("candidateId") {ctx.JSON(http.StatusOK,candidate);return}
- }
- writeError(ctx,Invalid("candidate_not_found",errors.New("candidate not found")))
+	p, err := s.Repo.Get(ctx.Request.Context(), ctx.Param("id"))
+	if err != nil {
+		writeError(ctx, err)
+		return
+	}
+	d, err := draftByID(&p, ctx.Param("draftId"))
+	if err != nil {
+		writeError(ctx, err)
+		return
+	}
+	for _, candidate := range d.Candidates {
+		if candidate.ID == ctx.Param("candidateId") {
+			ctx.JSON(http.StatusOK, candidate)
+			return
+		}
+	}
+	writeError(ctx, Invalid("candidate_not_found", errors.New("candidate not found")))
 }
 
 func (s ProjectService) ApplyCandidate(ctx *gin.Context) {
 	var input struct {
-		ExpectedVersion *int64 `json:"expected_version"`
-		Action          string `json:"action"`
-		Reconfirm       bool   `json:"reconfirm"`
+		ExpectedVersion *int64                  `json:"expected_version"`
+		Action          string                  `json:"action"`
+		Reconfirm       bool                    `json:"reconfirm"`
+		Entities        []story.CandidateEntity `json:"entities,omitempty"`
 	}
 	if err := ctx.ShouldBindJSON(&input); err != nil || input.ExpectedVersion == nil || *input.ExpectedVersion < 0 {
 		writeError(ctx, Invalid("invalid_candidate_apply", errors.New("expected_version is required")))
@@ -92,6 +110,30 @@ func (s ProjectService) ApplyCandidate(ctx *gin.Context) {
 		if candidate == nil || candidate.Status != "preview" {
 			return errors.New("candidate preview not found")
 		}
+		if input.Entities != nil {
+			if len(input.Entities) != len(candidate.Entities) {
+				return errors.New("candidate entity count changed")
+			}
+			seen := map[string]bool{}
+			for _, edit := range input.Entities {
+				found := false
+				for i := range candidate.Entities {
+					e := &candidate.Entities[i]
+					if e.ID == edit.ID && e.Key == edit.Key && e.Kind == edit.Kind && !seen[e.ID] {
+						if strings.TrimSpace(edit.Name) == "" {
+							return errors.New("candidate entity name required")
+						}
+						e.Name, e.Description = edit.Name, edit.Description
+						seen[e.ID] = true
+						found = true
+						break
+					}
+				}
+				if !found {
+					return errors.New("candidate entity identity mismatch")
+				}
+			}
+		}
 		if (candidate.SourceVersion != d.Version || candidate.Target == story.CandidateStoryboard && candidate.SourceBody != d.Story.Body) && !input.Reconfirm {
 			return errCandidateNeedsReview
 		}
@@ -115,6 +157,18 @@ func (s ProjectService) ApplyCandidate(ctx *gin.Context) {
 			if err := d.CaptureStoryboardSnapshot("board-"+candidate.ID, now); err != nil {
 				return err
 			}
+			for _, e := range candidate.Entities {
+				if _, err := p.Entity(e.ID, 1); err != nil {
+					if err = p.AddEntity(project.EntityVersion{ID: e.ID, Kind: e.Kind, Name: e.Name, Description: e.Description, Revision: 1, References: []project.ReferenceImage{}}, p.EntityCatalog.Version); err != nil {
+						return err
+					}
+				}
+			}
+			for _, scene := range candidate.Scenes {
+				if _, err := ResolveBindings(p.EntityCatalog, scene, false); err != nil {
+					return err
+				}
+			}
 			d.Story.Scenes = nil
 			for _, generated := range candidate.Scenes {
 				generated.ID = ""
@@ -123,6 +177,12 @@ func (s ProjectService) ApplyCandidate(ctx *gin.Context) {
 				}
 			}
 			d.Bindings, d.VideoVersions, d.SelectedVersions = nil, nil, nil
+			d.MediaTakes, d.SelectedMedia = nil, nil
+			for i := range d.GenerationRuns {
+				if d.GenerationRuns[i].State != "completed" {
+					d.GenerationRuns[i].State = "cancelled"
+				}
+			}
 			d.StoryboardSourceBody = d.Story.Body
 		default:
 			return errors.New("unsupported candidate target")
@@ -187,6 +247,11 @@ func (s ProjectService) RestoreDraft(ctx *gin.Context) {
 				d.StoryboardSourceBody = snapshot.SourceBody
 				d.Bindings = append([]project.SceneBinding(nil), snapshot.Bindings...)
 				d.VideoVersions = append([]project.VideoVersion(nil), snapshot.VideoVersions...)
+				d.MediaTakes = append([]project.MediaTake(nil), snapshot.MediaTakes...)
+				d.SelectedMedia = map[string]string{}
+				for k, v := range snapshot.SelectedMedia {
+					d.SelectedMedia[k] = v
+				}
 				d.SelectedVersions = make(map[string]string, len(snapshot.SelectedVersions))
 				for sceneID, versionID := range snapshot.SelectedVersions {
 					d.SelectedVersions[sceneID] = versionID

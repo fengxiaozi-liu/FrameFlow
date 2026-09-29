@@ -19,7 +19,7 @@ import type {
 const base = import.meta.env.VITE_API_BASE_URL || "";
 const endpoint = base || location.origin;
 const token = import.meta.env.VITE_API_TOKEN || "";
-async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+export async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
   if (!(init.body instanceof FormData))
     headers.set("Content-Type", "application/json");
@@ -33,6 +33,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   return response.json();
 }
 export const api = {
+  material: (id:string)=>request<Material>(`/api/materials/${encodeURIComponent(id)}`),
   overview: () => request<Overview>("/api/overview"),
   shutdown: () =>
     request<{ status: string }>("/api/system/shutdown", { method: "POST" }),
@@ -55,8 +56,8 @@ export const api = {
     request<Draft>(`/api/projects/${encodeURIComponent(projectId)}/drafts/${encodeURIComponent(draftId)}`, { method: "PUT", body: JSON.stringify({ body, expected_version, name }) }),
   createCandidate: (projectId: string, draftId: string, input: { expected_version: number; target: "story" | "storyboard"; mode?: string; instruction?: string; model_id: string; idempotency_key: string }) =>
     request<Task>(`/api/projects/${encodeURIComponent(projectId)}/drafts/${encodeURIComponent(draftId)}/candidates`, { method: "POST", body: JSON.stringify(input) }),
-  applyCandidate: (projectId: string, draftId: string, candidateId: string, expected_version: number, action: "append" | "replace", reconfirm = false) =>
-    request<Draft>(`/api/projects/${encodeURIComponent(projectId)}/drafts/${encodeURIComponent(draftId)}/candidates/${encodeURIComponent(candidateId)}/apply`, { method: "POST", body: JSON.stringify({ expected_version, action, reconfirm }) }),
+  applyCandidate: (projectId: string, draftId: string, candidateId: string, expected_version: number, action: "append" | "replace", reconfirm = false,entities?:import('./types').Candidate['entities']) =>
+    request<Draft>(`/api/projects/${encodeURIComponent(projectId)}/drafts/${encodeURIComponent(draftId)}/candidates/${encodeURIComponent(candidateId)}/apply`, { method: "POST", body: JSON.stringify({ expected_version, action, reconfirm,entities }) }),
   restoreDraft: (projectId: string, draftId: string, snapshot_id: string, expected_version: number, reconfirm = false) =>
     request<Draft>(`/api/projects/${encodeURIComponent(projectId)}/drafts/${encodeURIComponent(draftId)}/restore`, { method: "POST", body: JSON.stringify({ snapshot_id, expected_version, reconfirm }) }),
   writeScene: (projectId: string, draftId: string, sceneId: string | null, input: { expected_version: number; action: "create" | "update" | "copy" | "move"; title?: string; visual_prompt?: string; narration?: string; duration_seconds?: number; order?: number }) =>
@@ -113,12 +114,12 @@ export const api = {
     `${endpoint}/api/tasks/${encodeURIComponent(id)}/download`,
   mediaUrl: (url: string) =>
     url.startsWith("/media/") ? `${endpoint}${url}` : url,
-  downloadTask: async (id: string, kind: "image" | "video" | "composition") => {
+  downloadTask: async (id: string, kind: "image" | "video" | "composition" | "speech") => {
     const destination = `${endpoint}/api/tasks/${encodeURIComponent(id)}/download`;
     if (!token) {
       const link = document.createElement("a");
       link.href = destination;
-      link.download = `frameflow-${id}.${kind === "image" ? "png" : "mp4"}`;
+      link.download = `frameflow-${id}.${kind === "image" ? "png" : kind === "speech" ? "wav" : "mp4"}`;
       document.body.append(link);
       link.click();
       link.remove();
@@ -136,7 +137,7 @@ export const api = {
     const url = URL.createObjectURL(await response.blob());
     const link = document.createElement("a");
     link.href = url;
-    link.download = `frameflow-${id}.${kind === "image" ? "png" : "mp4"}`;
+    link.download = `frameflow-${id}.${kind === "image" ? "png" : kind === "speech" ? "wav" : "mp4"}`;
     document.body.append(link);
     link.click();
     link.remove();

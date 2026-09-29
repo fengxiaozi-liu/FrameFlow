@@ -19,12 +19,7 @@ type QianwenChatResponse struct {
 type QianwenImageRequest struct {
 	Model string `json:"model"`
 	Input struct {
-		Messages []struct {
-			Role    string `json:"role"`
-			Content []struct {
-				Text string `json:"text"`
-			} `json:"content"`
-		} `json:"messages"`
+		Messages []ImageMessage `json:"messages"`
 	} `json:"input"`
 	Parameters struct {
 		Size string `json:"size,omitempty"`
@@ -41,4 +36,13 @@ type QianwenImageResponse struct {
 			} `json:"message"`
 		} `json:"choices"`
 	} `json:"output"`
+}
+
+type ImageContent struct {
+	Text  string `json:"text,omitempty"`
+	Image string `json:"image,omitempty"`
+}
+type ImageMessage struct {
+	Role    string         `json:"role"`
+	Content []ImageContent `json:"content"`
 }

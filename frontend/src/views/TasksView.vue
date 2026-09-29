@@ -19,6 +19,7 @@ const kindLabel: Record<Task["kind"], string> = {
   image: "图片",
   video: "视频",
   composition: "成片",
+  speech: "配音",
 };
 const groups = computed(() => {
   const values = new Map<string, Task[]>();
@@ -49,8 +50,8 @@ function sceneLink(item: Task) {
     ? `/studio/${encodeURIComponent(item.project_id)}/${encodeURIComponent(item.draft_id)}?scene=${encodeURIComponent(item.scene_id)}` : "";
 }
 function savedMedia(task: Task) {
-  if (task.kind !== "image" && task.kind !== "video" && task.kind !== "composition") return false;
-  const ext = task.kind === "image" ? "png" : "mp4";
+  if (task.kind !== "image" && task.kind !== "video" && task.kind !== "composition" && task.kind !== "speech") return false;
+  const ext = task.kind === "image" ? "png" : task.kind === "speech" ? "wav" : "mp4";
   return task.result_url === `/media/${task.kind === "composition" ? "composition" : "generated"}-${task.id}.${ext}`;
 }
 function previewURL(task: Task) {
@@ -65,7 +66,7 @@ function sourcePoster(task: Task) {
   return url.startsWith("https://") ? url : undefined;
 }
 async function download(task: Task) {
-  if (task.kind !== "image" && task.kind !== "video" && task.kind !== "composition") return;
+  if (task.kind !== "image" && task.kind !== "video" && task.kind !== "composition" && task.kind !== "speech") return;
   message.value = "";
   try {
     await api.downloadTask(task.id, task.kind);
@@ -154,6 +155,7 @@ async function retry(item: Task) {
             <StatusBadge :status="task.status" />
           </div>
           <div class="task-meta">
+            <span v-if="task.run_id">制作流程：{{task.run_id}}</span><span v-if="task.depends_on?.length">依赖：{{task.depends_on.join('、')}}</span>
             <span>阶段：{{ task.stage }}</span
             ><span
               >模型：{{ task.model_id || task.provider_code || "未指定" }}</span

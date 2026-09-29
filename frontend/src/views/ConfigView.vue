@@ -25,7 +25,7 @@ const filteredModels = computed(() => models.value.filter((item) =>
   `${item.name} ${item.remote_id}`.toLowerCase().includes(modelQuery.value.toLowerCase().trim()),
 ));
 const visibleModels = computed(() => filteredModels.value.slice(0, shownCount.value));
-const labels: Record<Capability, string> = { story: "文本生成", image: "文生图", video: "图生视频" };
+const labels: Record<Capability, string> = { story: "文本生成", image: "文生图", video: "图生视频", speech: "语音合成" };
 
 function showError(error: unknown) {
   const detail = (error as Error).message;
@@ -177,13 +177,13 @@ onMounted(() => { void loadConnections().catch(showError); });
             <label>模型 ID<input v-model="modelID" required placeholder="例如 qwen-plus" /></label>
             <label>显示名称<input v-model="modelName" placeholder="默认使用模型 ID" /></label>
             <fieldset class="capability-select"><legend>支持的能力</legend>
-              <label v-for="cap in (['story', 'image', 'video'] as const)" :key="cap"><input v-model="modelCapabilities" type="checkbox" :value="cap" />{{ labels[cap] }}</label>
+              <label v-for="cap in (['story', 'image', 'video', 'speech'] as const)" :key="cap"><input v-model="modelCapabilities" type="checkbox" :value="cap" />{{ labels[cap] }}</label>
             </fieldset>
             <button type="button" @click="addingModel = false">取消</button>
             <button class="primary" :disabled="busy" type="submit">添加</button>
           </form>
           <div class="catalog-filters" aria-label="模型类型">
-            <button v-for="item in ([['all', '全部'], ['story', '文本生成'], ['image', '文生图'], ['video', '图生视频']] as const)"
+            <button v-for="item in ([['all', '全部'], ['story', '文本生成'], ['image', '文生图'], ['video', '图生视频'], ['speech', '语音合成']] as const)"
               :key="item[0]" :class="{ active: filter === item[0] }" @click="filter = item[0]">{{ item[1] }}</button>
           </div>
           <label class="catalog-model-search">查找模型<input v-model="modelQuery" type="search" placeholder="名称或模型 ID" @input="shownCount = 50" /></label>
@@ -194,7 +194,7 @@ onMounted(() => { void loadConnections().catch(showError); });
                 <tr v-for="model in visibleModels" :key="model.id">
                   <td><strong>{{ model.name }}</strong><small>{{ model.remote_id }}</small></td>
                   <td><div class="capability-select" :aria-label="`${model.name} 支持的能力`">
-                    <label v-for="cap in (['story', 'image', 'video'] as const)" :key="cap"><input type="checkbox" :checked="model.capabilities?.includes(cap)" :disabled="busy" @change="changeModel(model, { capabilities: model.capabilities?.includes(cap) ? model.capabilities.filter((item) => item !== cap) : [...(model.capabilities || []), cap] })" />{{ labels[cap] }}</label>
+                    <label v-for="cap in (['story', 'image', 'video', 'speech'] as const)" :key="cap"><input type="checkbox" :checked="model.capabilities?.includes(cap)" :disabled="busy" @change="changeModel(model, { capabilities: model.capabilities?.includes(cap) ? model.capabilities.filter((item) => item !== cap) : [...(model.capabilities || []), cap] })" />{{ labels[cap] }}</label>
                   </div></td>
                   <td>{{ model.source === 'manual' ? '手动添加' : '同步' }}</td>
                   <td><label v-if="model.supported" class="toggle"><input type="checkbox" :checked="model.enabled" :disabled="busy" @change="changeModel(model, { enabled: !model.enabled })" />启用</label><span v-else class="catalog-unsupported">待配置能力</span></td>

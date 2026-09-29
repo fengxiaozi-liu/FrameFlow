@@ -22,6 +22,10 @@ type ResultStore struct {
 
 func (s ResultStore) Save(ctx context.Context, taskID string, kind task.Kind, remoteURL string) (string, error) {
 	u, err := url.Parse(remoteURL)
+	if err == nil && kind == task.KindSpeech && u.Scheme == "http" && strings.HasSuffix(strings.ToLower(u.Hostname()), ".aliyuncs.com") {
+		u.Scheme = "https"
+		remoteURL = u.String()
+	}
 	if err != nil || u.Scheme != "https" || !strings.HasSuffix(strings.ToLower(u.Hostname()), ".aliyuncs.com") {
 		return "", errors.New("unexpected model result host")
 	}
@@ -36,6 +40,9 @@ func (s ResultStore) Save(ctx context.Context, taskID string, kind task.Kind, re
 	ext, limit := ".png", int64(30<<20)
 	if kind == task.KindVideo {
 		ext, limit = ".mp4", 500<<20
+	}
+	if kind == task.KindSpeech {
+		ext, limit = ".wav", 30<<20
 	}
 	if err := os.MkdirAll(s.Directory, 0750); err != nil {
 		return "", err
@@ -87,6 +94,12 @@ func (s ResultStore) Save(ctx context.Context, taskID string, kind task.Kind, re
 	}
 	if info.Size() == 0 {
 		return "", errors.New("model result is empty")
+	}
+	if kind == task.KindSpeech {
+		header := make([]byte, 12)
+		if _, err := file.ReadAt(header, 0); err != nil || string(header[:4]) != "RIFF" || string(header[8:]) != "WAVE" {
+			return "", errors.New("speech result is not a WAV file")
+		}
 	}
 	if kind == task.KindVideo {
 		if err := validateMP4(file.Name()); err != nil {

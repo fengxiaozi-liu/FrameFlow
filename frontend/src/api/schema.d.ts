@@ -2018,6 +2018,1093 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/projects/{id}/entities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Success */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["EntityCatalog"];
+                    };
+                };
+                /** @description Version conflict or resource in use */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["BindingError"];
+                    };
+                };
+                /** @description Invalid binding or unsupported capability */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["BindingError"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["EntityWrite"];
+                };
+            };
+            responses: {
+                /** @description Success */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["EntityCatalog"];
+                    };
+                };
+                /** @description Version conflict or resource in use */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["BindingError"];
+                    };
+                };
+                /** @description Invalid binding or unsupported capability */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["BindingError"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{id}/entities/{entityId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                    entityId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["EntityWrite"];
+                };
+            };
+            responses: {
+                /** @description Success */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["EntityCatalog"];
+                    };
+                };
+                /** @description Version conflict or resource in use */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["BindingError"];
+                    };
+                };
+                /** @description Invalid binding or unsupported capability */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["BindingError"];
+                    };
+                };
+            };
+        };
+        trace?: never;
+    };
+    "/api/projects/{id}/entities/{entityId}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                    entityId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["EntityWrite"];
+                };
+            };
+            responses: {
+                /** @description Success */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["EntityCatalog"];
+                    };
+                };
+                /** @description Version conflict or resource in use */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["BindingError"];
+                    };
+                };
+                /** @description Invalid binding or unsupported capability */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["BindingError"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{id}/voice-profiles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Success */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["EntityCatalog"];
+                    };
+                };
+                /** @description Version conflict or resource in use */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["BindingError"];
+                    };
+                };
+                /** @description Invalid binding or unsupported capability */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["BindingError"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["VoiceProfileWrite"];
+                };
+            };
+            responses: {
+                /** @description Success */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["EntityCatalog"];
+                    };
+                };
+                /** @description Version conflict or resource in use */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["BindingError"];
+                    };
+                };
+                /** @description Invalid binding or unsupported capability */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["BindingError"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{id}/voice-profiles/{voiceId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                    voiceId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["VoiceProfileWrite"];
+                };
+            };
+            responses: {
+                /** @description Success */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["EntityCatalog"];
+                    };
+                };
+                /** @description Version conflict or resource in use */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["BindingError"];
+                    };
+                };
+                /** @description Invalid binding or unsupported capability */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["BindingError"];
+                    };
+                };
+            };
+        };
+        trace?: never;
+    };
+    "/api/projects/{id}/drafts/{draftId}/scenes/{sceneId}/context": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                    draftId: string;
+                    sceneId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["ShotContextWrite"];
+                };
+            };
+            responses: {
+                /** @description Success */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Draft"];
+                    };
+                };
+                /** @description Version conflict or resource in use */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["BindingError"];
+                    };
+                };
+                /** @description Invalid binding or unsupported capability */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["BindingError"];
+                    };
+                };
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{id}/drafts/{draftId}/scenes/{sceneId}/generation-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                    draftId: string;
+                    sceneId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["GenerationRequest"];
+                };
+            };
+            responses: {
+                /** @description Success */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["GenerationPreview"];
+                    };
+                };
+                /** @description Version conflict or resource in use */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["BindingError"];
+                    };
+                };
+                /** @description Invalid binding or unsupported capability */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["BindingError"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{id}/drafts/{draftId}/scenes/{sceneId}/image-tasks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                    draftId: string;
+                    sceneId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["GenerationRequest"];
+                };
+            };
+            responses: {
+                /** @description Success */
+                202: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Task"];
+                    };
+                };
+                /** @description Version conflict or resource in use */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["BindingError"];
+                    };
+                };
+                /** @description Invalid binding or unsupported capability */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["BindingError"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{id}/drafts/{draftId}/scenes/{sceneId}/utterances/{utteranceId}/speech-tasks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                    draftId: string;
+                    sceneId: string;
+                    utteranceId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["GenerationRequest"];
+                };
+            };
+            responses: {
+                /** @description Success */
+                202: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Task"];
+                    };
+                };
+                /** @description Version conflict or resource in use */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["BindingError"];
+                    };
+                };
+                /** @description Invalid binding or unsupported capability */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["BindingError"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{id}/drafts/{draftId}/scenes/{sceneId}/media-takes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                    draftId: string;
+                    sceneId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Success */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["MediaTakeList"];
+                    };
+                };
+                /** @description Version conflict or resource in use */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["BindingError"];
+                    };
+                };
+                /** @description Invalid binding or unsupported capability */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["BindingError"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{id}/drafts/{draftId}/scenes/{sceneId}/selected-media": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                    draftId: string;
+                    sceneId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["SelectMediaTake"];
+                };
+            };
+            responses: {
+                /** @description Success */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Draft"];
+                    };
+                };
+                /** @description Version conflict or resource in use */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["BindingError"];
+                    };
+                };
+                /** @description Invalid binding or unsupported capability */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["BindingError"];
+                    };
+                };
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{id}/drafts/{draftId}/scenes/{sceneId}/generation-runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                    draftId: string;
+                    sceneId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["GenerationRequest"];
+                };
+            };
+            responses: {
+                /** @description Success */
+                202: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["GenerationRun"];
+                    };
+                };
+                /** @description Version conflict or resource in use */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["BindingError"];
+                    };
+                };
+                /** @description Invalid binding or unsupported capability */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["BindingError"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{id}/drafts/{draftId}/scenes/{sceneId}/generation-runs/{runId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                    draftId: string;
+                    sceneId: string;
+                    runId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Success */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["GenerationRun"];
+                    };
+                };
+                /** @description Version conflict or resource in use */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["BindingError"];
+                    };
+                };
+                /** @description Invalid binding or unsupported capability */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["BindingError"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{id}/drafts/{draftId}/scenes/{sceneId}/generation-runs/{runId}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                    draftId: string;
+                    sceneId: string;
+                    runId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Success */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["GenerationRun"];
+                    };
+                };
+                /** @description Version conflict or resource in use */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["BindingError"];
+                    };
+                };
+                /** @description Invalid binding or unsupported capability */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["BindingError"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/models/{model}/input-capability": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    model: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Success */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ModelInputCapability"];
+                    };
+                };
+                /** @description Version conflict or resource in use */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["BindingError"];
+                    };
+                };
+                /** @description Invalid binding or unsupported capability */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["BindingError"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/models/{model}/voices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    model: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Success */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ModelInputCapability"];
+                    };
+                };
+                /** @description Version conflict or resource in use */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["BindingError"];
+                    };
+                };
+                /** @description Invalid binding or unsupported capability */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["BindingError"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{id}/drafts/{draftId}/scenes/{sceneId}/bound-video-tasks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                    draftId: string;
+                    sceneId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["GenerationRequest"];
+                };
+            };
+            responses: {
+                /** @description Success */
+                202: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Task"];
+                    };
+                };
+                /** @description Version conflict or resource in use */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["BindingError"];
+                    };
+                };
+                /** @description Invalid binding or unsupported capability */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["BindingError"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2130,6 +3217,9 @@ export interface components {
             visual_prompt: string;
             narration: string;
             duration_seconds: number;
+            entity_bindings?: components["schemas"]["ShotEntityBinding"][];
+            prompt_document?: components["schemas"]["PromptDocument"];
+            utterances?: components["schemas"]["Utterance"][];
         };
         Candidate: {
             id: string;
@@ -2142,6 +3232,14 @@ export interface components {
             scenes?: components["schemas"]["Scene"][];
             status: string;
             prompt_version?: string;
+            entities?: {
+                id: string;
+                key: string;
+                /** @enum {string} */
+                kind: "location" | "character";
+                name: string;
+                description: string;
+            }[];
         };
         SceneBinding: {
             scene_id: string;
@@ -2207,6 +3305,11 @@ export interface components {
                 [key: string]: string;
             };
             compositions?: components["schemas"]["Composition"][];
+            media_takes?: components["schemas"]["MediaTake"][];
+            selected_media?: {
+                [key: string]: string;
+            };
+            generation_runs?: components["schemas"]["GenerationRun"][];
         };
         Task: {
             id: string;
@@ -2214,7 +3317,7 @@ export interface components {
             draft_id?: string;
             scene_id?: string;
             /** @enum {string} */
-            kind: "story" | "image" | "video" | "composition";
+            kind: "story" | "image" | "video" | "composition" | "speech";
             status: string;
             input_version?: number;
             input_hash?: string;
@@ -2223,6 +3326,225 @@ export interface components {
             input: Record<string, never>;
             result_url?: string;
             result_duration_seconds?: number;
+            snapshot?: components["schemas"]["GenerationSnapshot"];
+            run_id?: string;
+            depends_on?: string[];
+            request_hash?: string;
+        };
+        ReferenceImage: {
+            material_id: string;
+            content_hash?: string;
+            label?: string;
+            order: number;
+        };
+        EntityVersion: {
+            id: string;
+            /** @enum {string} */
+            kind: "location" | "character";
+            name: string;
+            description: string;
+            revision: number;
+            references: components["schemas"]["ReferenceImage"][];
+            voice_profile_id?: string;
+            voice_profile_revision?: number;
+            archived?: boolean;
+        };
+        VoiceProfile: {
+            id: string;
+            revision: number;
+            name: string;
+            connection_id: string;
+            model_id: string;
+            remote_voice_id: string;
+            language: string;
+            instructions?: string;
+            archived?: boolean;
+        };
+        EntityCatalog: {
+            catalog_version: number;
+            entities: components["schemas"]["EntityVersion"][];
+            voice_profiles: components["schemas"]["VoiceProfile"][];
+        };
+        EntityWrite: {
+            expected_catalog_version: number;
+            entity: components["schemas"]["EntityVersion"];
+        };
+        VoiceProfileWrite: {
+            expected_catalog_version: number;
+            voice_profile: components["schemas"]["VoiceProfile"];
+        };
+        ShotEntityBinding: {
+            id: string;
+            entity_id: string;
+            entity_revision: number;
+            /** @description Present replaces base description; absent inherits. */
+            description_override?: string;
+            description_supplement?: string;
+            selected_material_ids?: string[];
+            /** @enum {string} */
+            role: "primary" | "supplement" | "cast";
+        };
+        PromptNode: {
+            /** @constant */
+            type: "text";
+            text: string;
+        } | {
+            /** @constant */
+            type: "entity_ref";
+            binding_id: string;
+        };
+        PromptDocument: {
+            /** @constant */
+            schema_version: 1;
+            nodes: components["schemas"]["PromptNode"][];
+        };
+        Utterance: {
+            id: string;
+            /** @enum {string} */
+            speaker_type: "character" | "narrator";
+            speaker_id?: string;
+            speaker_revision?: number;
+            text: string;
+            order: number;
+            emotion?: string;
+            voice_profile_id?: string;
+            voice_profile_revision?: number;
+            pause_after_ms?: number;
+        };
+        ShotContextWrite: {
+            expected_version: number;
+            entity_bindings: components["schemas"]["ShotEntityBinding"][];
+            prompt_document: components["schemas"]["PromptDocument"];
+            utterances: components["schemas"]["Utterance"][];
+        };
+        GenerationRequest: {
+            expected_version: number;
+            idempotency_key: string;
+            model_id: string;
+            /** @enum {string} */
+            path: "reference_video" | "reference_image_then_video" | "first_frame_video" | "speech";
+            aspect_ratio?: string;
+            resolution?: string;
+            duration_seconds?: number;
+            utterance_id?: string;
+            video_model_id?: string;
+        };
+        ResolvedEntity: {
+            binding_id: string;
+            entity_id: string;
+            revision: number;
+            description: string;
+            references: {
+                material_id: string;
+                content_hash: string;
+                label?: string;
+                url?: string;
+            }[];
+        };
+        GenerationSnapshot: {
+            id: string;
+            /** @constant */
+            schema_version: 1;
+            project_id: string;
+            draft_id: string;
+            scene_id: string;
+            draft_version: number;
+            entities: components["schemas"]["ResolvedEntity"][];
+            utterances?: components["schemas"]["Utterance"][];
+            prompt: string;
+            model_id: string;
+            capability_version: string;
+            path: string;
+            aspect_ratio?: string;
+            resolution?: string;
+            duration_seconds?: number;
+            input_hash: string;
+            /** Format: date-time */
+            created_at?: string;
+            speech?: {
+                voice_profile_id: string;
+                voice_revision: number;
+                model_id: string;
+                voice: string;
+                language: string;
+                text: string;
+                instructions?: string;
+            }[];
+            dependency_hash?: string;
+        };
+        BindingIssue: {
+            code: string;
+            field: string;
+            message: string;
+            binding_id?: string;
+            utterance_id?: string;
+            material_id?: string;
+        };
+        GenerationPreview: {
+            valid: boolean;
+            issues: components["schemas"]["BindingIssue"][];
+            snapshot?: components["schemas"]["GenerationSnapshot"];
+        };
+        MediaTake: {
+            id: string;
+            /** @enum {string} */
+            kind: "image" | "speech";
+            scene_id: string;
+            utterance_id?: string;
+            task_id: string;
+            material_id: string;
+            snapshot_id: string;
+            input_hash: string;
+            duration_seconds?: number;
+            stale?: boolean;
+            dependency_hash?: string;
+        };
+        SelectMediaTake: {
+            expected_version: number;
+            take_id: string;
+            utterance_id?: string;
+        };
+        GenerationRun: {
+            id: string;
+            scene_id: string;
+            state: string;
+            task_ids: string[];
+            snapshot_id: string;
+            error?: string;
+            plan?: components["schemas"]["GenerationSnapshot"][];
+            request_hash?: string;
+            video_model_id?: string;
+            resolution?: string;
+            duration_seconds?: number;
+        };
+        ModelInputCapability: {
+            version: string;
+            model_id: string;
+            reference_images: number;
+            speech: boolean;
+            reference_video: boolean;
+            first_frame: boolean;
+            durations?: number[];
+            resolutions?: string[];
+            voices?: {
+                id: string;
+                name: string;
+                languages: string[];
+            }[];
+        };
+        BindingError: {
+            /** @enum {string} */
+            code: "entity_revision_conflict" | "draft_version_conflict" | "reference_missing" | "entity_in_use" | "reference_limit_exceeded" | "capability_unsupported" | "speaker_unresolved" | "voice_unavailable" | "audio_exceeds_duration" | "idempotency_key_reused";
+            message: string;
+            issues?: components["schemas"]["BindingIssue"][];
+            catalog?: components["schemas"]["EntityCatalog"];
+            draft?: components["schemas"]["Draft"];
+        };
+        MediaTakeList: {
+            takes: components["schemas"]["MediaTake"][];
+            selected?: {
+                [key: string]: string;
+            };
         };
     };
     responses: never;

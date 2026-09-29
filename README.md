@@ -14,6 +14,8 @@ irm https://raw.githubusercontent.com/fengxiaozi-liu/FrameFlow/main/scripts/inst
 
 ## 使用方式
 
+场景/人物多图、描述、音色及逐句台词工作台的使用与升级说明见 [绑定功能迁移说明](docs/migrations/scene-character-binding.md)。
+
 1. 在首页输入视频创意，点击开始创作。
 2. 在工作台编辑故事正文和分镜，分别选择故事、生图和视频 AI 接口。提交生成时，任务会自动关联当前项目和草稿。
 3. 在独立的“素材管理”页面分类上传、预览、选择或删除画面、角色、首尾帧、配音和音乐。

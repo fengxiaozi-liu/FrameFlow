@@ -141,10 +141,10 @@ func TestConnectionUsesHTTPSBaseURL(t *testing.T) {
 		t.Fatalf("changed complete endpoint: %q %v", got, err)
 	}
 	client := Client{HTTP: &http.Client{Transport: roundTrip(func(req *http.Request) (*http.Response, error) {
-		if req.URL.Path != "/api/v1/models" || req.URL.Query().Get("page_no") != "1" {
+		if req.URL.Path != "/compatible-mode/v1/models" || req.URL.RawQuery != "" {
 			t.Fatalf("wrong discovery endpoint: %s", req.URL)
 		}
-		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"output":{"total":0,"models":[]}}`)), Header: make(http.Header)}, nil
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"data":[]}`)), Header: make(http.Header)}, nil
 	})}}
 	if _, err := client.Discover(context.Background(), connection, "test-key"); err != nil {
 		t.Fatal(err)

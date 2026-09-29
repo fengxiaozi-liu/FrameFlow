@@ -301,6 +301,8 @@ func (s TaskService) Download(g *gin.Context) {
 	ext := ".png"
 	if item.Kind == task.KindVideo || item.Kind == task.KindComposition {
 		ext = ".mp4"
+	} else if item.Kind == task.KindSpeech {
+		ext = ".wav"
 	} else if item.Kind != task.KindImage {
 		writeError(g, Invalid("result_not_media", errors.New("task has no media result")))
 		return

@@ -63,6 +63,23 @@ func (c Composer) Compose(ctx context.Context, id string, input task.Composition
 			return "", 0, fmt.Errorf("scene %s clip duration changed after submission", clip.SceneID)
 		}
 		target := filepath.Join(work, fmt.Sprintf("clip-%04d.mp4", index))
+		if len(clip.VoiceSegments) > 0 {
+			segments := []VoiceSegment{}
+			for _, v := range clip.VoiceSegments {
+				path, err := resolveLocal(c.UploadDir, v.MediaPath)
+				if err != nil {
+					return "", 0, err
+				}
+				segments = append(segments, VoiceSegment{Path: path, PauseAfterMS: v.PauseAfterMS})
+			}
+			voiceName := fmt.Sprintf("voice-%04d.wav", index)
+			voicePath := filepath.Join(work, voiceName)
+			if _, err := MixVoiceTrack(ctx, segments, probed.Duration, voicePath); err != nil {
+				return "", 0, err
+			}
+			// Use the private work path only inside this invocation.
+			clip.VoicePath = voicePath
+		}
 		if err := c.normalizeClip(ctx, source, clip, probed, width, height, input.SourceVolume, input.VoiceVolume, target); err != nil {
 			return "", 0, fmt.Errorf("scene %s normalize: %w", clip.SceneID, err)
 		}
@@ -126,6 +143,10 @@ func (c Composer) normalizeClip(ctx context.Context, source string, clip task.Co
 	voiceIndex := -1
 	if clip.VoicePath != "" {
 		voice, err := resolveLocal(c.UploadDir, clip.VoicePath)
+		if len(clip.VoiceSegments) > 0 {
+			voice = clip.VoicePath
+			err = nil
+		}
 		if err != nil {
 			return err
 		}
@@ -146,6 +167,9 @@ func (c Composer) normalizeClip(ctx context.Context, source string, clip task.Co
 		args = append(args, "-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=48000")
 	}
 	videoFilter := fmt.Sprintf("[0:v]scale=%d:%d:force_original_aspect_ratio=decrease,pad=%d:%d:(ow-iw)/2:(oh-ih)/2:black,fps=30,format=yuv420p[v]", width, height, width, height)
+	if clip.MuteSource {
+		sourceVolume = 0
+	}
 	audioFilter := fmt.Sprintf("[%d:a]volume=%.3f[base]", sourceAudioIndex, sourceVolume)
 	if voiceIndex >= 0 {
 		audioFilter += fmt.Sprintf(";[%d:a]volume=%.3f[voice];[base][voice]amix=inputs=2:duration=first:dropout_transition=0[a]", voiceIndex, voiceVolume)

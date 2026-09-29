@@ -1,13 +1,18 @@
 package project
 
 import (
+	"encoding/json"
 	"errors"
 	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/story"
+	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/task"
 	"strings"
 	"time"
 )
 
 type Draft struct {
+	MediaTakes           []MediaTake          `json:"media_takes,omitempty"`
+	SelectedMedia        map[string]string    `json:"selected_media,omitempty"`
+	GenerationRuns       []task.GenerationRun `json:"generation_runs,omitempty"`
 	ID                   string               `json:"id"`
 	ProjectID            string               `json:"project_id"`
 	Name                 string               `json:"name"`
@@ -59,6 +64,8 @@ type Composition struct {
 }
 
 type StoryboardSnapshot struct {
+	MediaTakes       []MediaTake       `json:"media_takes,omitempty"`
+	SelectedMedia    map[string]string `json:"selected_media,omitempty"`
 	ID               string            `json:"id"`
 	SourceBody       string            `json:"source_body,omitempty"`
 	Scenes           []story.Scene     `json:"scenes"`
@@ -103,12 +110,21 @@ func (d *Draft) CaptureStoryboardSnapshot(id string, now time.Time) error {
 	for sceneID, versionID := range d.SelectedVersions {
 		selected[sceneID] = versionID
 	}
-	d.StoryboardSnapshots = append(d.StoryboardSnapshots, StoryboardSnapshot{
+	snapshot := StoryboardSnapshot{
 		ID: id, SourceBody: d.StoryboardSourceBody, Scenes: append([]story.Scene{}, d.Story.Scenes...),
 		Bindings:         append([]SceneBinding(nil), d.Bindings...),
 		VideoVersions:    append([]VideoVersion(nil), d.VideoVersions...),
-		SelectedVersions: selected, CreatedAt: now,
-	})
+		SelectedVersions: selected, CreatedAt: now, MediaTakes: d.MediaTakes, SelectedMedia: d.SelectedMedia,
+	}
+	b, err := json.Marshal(snapshot)
+	if err != nil {
+		return err
+	}
+	snapshot = StoryboardSnapshot{}
+	if err = json.Unmarshal(b, &snapshot); err != nil {
+		return err
+	}
+	d.StoryboardSnapshots = append(d.StoryboardSnapshots, snapshot)
 	return nil
 }
 
@@ -230,6 +246,7 @@ type DraftOutput struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 type Project struct {
+	EntityCatalog
 	ID        string    `json:"id"`
 	Name      string    `json:"name"`
 	Drafts    []Draft   `json:"drafts"`

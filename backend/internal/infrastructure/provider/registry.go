@@ -77,3 +77,27 @@ func (r *Registry) UploadAudio(ctx context.Context, connection domain.Connection
 }
 
 func NewDiscovery() domain.Discovery { return bailian.Client{} }
+
+func (r *Registry) GenerateSpeech(ctx context.Context, connection domain.Connection, model domain.Model, input domain.SpeechRequest, options domain.RequestOptions) (domain.SpeechResult, error) {
+	client, err := r.client(connection)
+	if err != nil {
+		return domain.SpeechResult{}, err
+	}
+	speech, ok := client.(domain.SpeechClient)
+	if !ok {
+		return domain.SpeechResult{}, domain.ErrUnsupported
+	}
+	return speech.GenerateSpeech(ctx, connection, model, input, options)
+}
+
+func (r *Registry) Voices(connection domain.Connection, model domain.Model) []domain.Voice {
+	client, err := r.client(connection)
+	if err != nil {
+		return nil
+	}
+	speech, ok := client.(domain.SpeechClient)
+	if !ok {
+		return nil
+	}
+	return speech.Voices(model)
+}

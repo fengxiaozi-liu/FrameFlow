@@ -13,6 +13,7 @@ const selected = ref<Material | null>(null);
 const uses = ref<string[]>([]);
 const input = ref<HTMLInputElement>();
 const uploading = ref(false);
+const failedUpload = ref<File>();
 const progress = ref(0);
 const error = ref("");
 const message = ref("");
@@ -52,13 +53,16 @@ async function upload(event: Event) {
   const field = event.target as HTMLInputElement;
   const file = field.files?.[0];
   if (!file) return;
+  await uploadFile(file);field.value='';
+}
+async function uploadFile(file:File) {
   uploading.value = true; progress.value = 0; error.value = ""; message.value = "";
   try {
     const item = await api.uploadMaterial(file, uploadCategory.value, (value) => { progress.value = value; });
     category.value = uploadCategory.value; search.value = ""; mediaType.value = "";
-    await load(); await inspect(item); message.value = `已上传“${item.name}”。`;
-  } catch (cause) { error.value = (cause as Error).message; }
-  finally { uploading.value = false; field.value = ""; }
+    await load(); await inspect(item); message.value = `已上传“${item.name}”。`;failedUpload.value=undefined;
+  } catch (cause) { error.value = (cause as Error).message;failedUpload.value=file; }
+  finally { uploading.value = false; }
 }
 async function save() {
   if (!selected.value) return;
@@ -91,7 +95,7 @@ function locationLink(use: string) {
     </header>
     <input ref="input" class="file-input" type="file" :accept="accept" aria-label="选择素材文件" @change="upload" />
     <div v-if="uploading" class="progress" role="progressbar" :aria-valuenow="progress" aria-valuemin="0" aria-valuemax="100"><i :style="{ width: progress + '%' }" /></div>
-    <p v-if="error" class="notice error" role="alert">{{ error }}</p><p v-if="message" class="notice" role="status">{{ message }}</p>
+    <p v-if="error" class="notice error" role="alert">{{ error }}</p><button v-if="failedUpload" :disabled="uploading" @click="uploadFile(failedUpload)">重试上传 {{failedUpload.name}}</button><p v-if="message" class="notice" role="status">{{ message }}</p>
     <nav class="material-tabs" aria-label="素材类型"><button v-for="tab in categories" :key="tab.id" :class="{ active: category === tab.id }" :aria-current="category === tab.id ? 'page' : undefined" @click="category = tab.id">{{ tab.label }}</button></nav>
     <div class="material-tools"><label class="material-search"><span class="material-search-icon" aria-hidden="true">⌕</span><span class="sr-only">搜索名称或标签</span><input v-model="search" type="search" aria-label="搜索名称或标签" placeholder="搜索素材名称或标签" /></label><label><span class="sr-only">媒体类型</span><select v-model="mediaType" aria-label="媒体类型"><option value="">全部类型</option><option value="image">图片</option><option value="audio">音频</option></select></label><label><span class="sr-only">排序</span><select v-model="sortOrder" aria-label="排序"><option value="newest">最近添加</option><option value="oldest">最早添加</option><option value="name">按名称</option></select></label></div>
     <div class="material-workspace" :class="{ 'has-selection': !!selected }"><section class="materials-grid" aria-label="素材列表">

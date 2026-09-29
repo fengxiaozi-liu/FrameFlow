@@ -2,7 +2,9 @@ package processor
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"github.com/fengxiaozi-liu/FrameFlow/internal/interfaces/websocket"
@@ -86,7 +88,18 @@ func (p *Processor) processModel(ctx context.Context, item *task.Task, progress 
 		item.ResultURL, item.ResultDurationSeconds = result, duration
 		return p.Task.Save(ctx, *item)
 	}
-	if item.Kind == task.KindStory && (item.ResultText != "" || item.ResultCandidate != nil) || item.ResultURL != "" && (item.Kind == task.KindImage || item.Kind == task.KindVideo) && strings.HasPrefix(item.ResultURL, "/media/") {
+	if item.Kind == task.KindStory && (item.ResultText != "" || item.ResultCandidate != nil) || item.ResultURL != "" && (item.Kind == task.KindImage || item.Kind == task.KindVideo || item.Kind == task.KindSpeech) && strings.HasPrefix(item.ResultURL, "/media/") {
+		return nil
+	}
+	if item.ResultURL != "" && p.SaveResult != nil && (item.Kind == task.KindImage || item.Kind == task.KindVideo || item.Kind == task.KindSpeech) {
+		path, err := p.SaveResult(ctx, item.ID, item.Kind, item.ResultURL)
+		if err != nil {
+			return err
+		}
+		item.ResultURL = path
+		if p.Task != nil {
+			return p.Task.Save(ctx, *item)
+		}
 		return nil
 	}
 	if p.Models == nil || p.ProviderConnections == nil || p.ModelClient == nil {
@@ -112,7 +125,62 @@ func (p *Processor) processModel(ctx context.Context, item *task.Task, progress 
 	}
 	progress(20, task.StagePreparing)
 	options := provider.RequestOptions{Timeout: 5 * time.Minute}
+	refs := []provider.ImageReference{}
+	if item.Snapshot != nil {
+		snap := item.Snapshot
+		if snap.ModelID != item.ModelID {
+			return errors.New("snapshot model mismatch")
+		}
+		frozen, err := task.FreezeSnapshot(*snap)
+		if err != nil || frozen.InputHash != snap.InputHash {
+			return errors.New("invalid snapshot fingerprint")
+		}
+		item.Input.Prompt = snap.Prompt
+		item.Input.AspectRatio = snap.AspectRatio
+		item.Input.Duration = snap.DurationSeconds
+		item.Input.Resolution = snap.Resolution
+		for _, e := range snap.Entities {
+			for _, r := range e.References {
+				name := strings.TrimPrefix(r.URL, "/media/")
+				if name == r.URL || filepath.Base(name) != name || strings.ContainsAny(name, `/\`) {
+					return errors.New("invalid snapshot reference")
+				}
+				data, err := os.ReadFile(filepath.Join(p.MediaDir, name))
+				if err != nil {
+					return err
+				}
+				hash := sha256.Sum256(data)
+				if hex.EncodeToString(hash[:]) != r.ContentHash {
+					return errors.New("reference content changed since submission")
+				}
+				url, err := p.videoSource(r.URL)
+				if err != nil {
+					return err
+				}
+				refs = append(refs, provider.ImageReference{URL: url, EntityID: e.EntityID, Label: r.Label})
+			}
+		}
+		if item.Kind == task.KindVideo && len(refs) == 1 {
+			item.Input.SourceImageURL = refs[0].URL
+		}
+	}
 	switch item.Kind {
+	case task.KindSpeech:
+		if item.Snapshot == nil || len(item.Snapshot.Speech) != 1 {
+			return errors.New("speech snapshot is required")
+		}
+		client, ok := p.ModelClient.(interface {
+			GenerateSpeech(context.Context, provider.Connection, provider.Model, provider.SpeechRequest, provider.RequestOptions) (provider.SpeechResult, error)
+		})
+		if !ok {
+			return provider.ErrUnsupported
+		}
+		v := item.Snapshot.Speech[0]
+		result, err := client.GenerateSpeech(ctx, connection, model, provider.SpeechRequest{Text: v.Text, Voice: v.Voice, Language: v.Language, Instructions: v.Instructions}, options)
+		if err != nil {
+			return err
+		}
+		item.ResultURL = result.URL
 	case task.KindStory:
 		progress(55, task.StageGeneratingStory)
 		request := provider.StoryRequest{Prompt: item.Input.Prompt, Model: model.RemoteID}
@@ -147,7 +215,7 @@ func (p *Processor) processModel(ctx context.Context, item *task.Task, progress 
 		}
 	case task.KindImage:
 		progress(55, task.StageGeneratingImage)
-		result, err := p.ModelClient.GenerateImage(ctx, connection, model, provider.ImageRequest{Prompt: item.Input.Prompt, Model: model.RemoteID, AspectRatio: item.Input.AspectRatio}, options)
+		result, err := p.ModelClient.GenerateImage(ctx, connection, model, provider.ImageRequest{Prompt: item.Input.Prompt, Model: model.RemoteID, AspectRatio: item.Input.AspectRatio, References: refs}, options)
 		if err != nil {
 			return err
 		}
@@ -227,6 +295,12 @@ func (p *Processor) processModel(ctx context.Context, item *task.Task, progress 
 		return provider.ErrUnsupported
 	}
 	if item.ResultURL != "" && p.SaveResult != nil {
+		// Persist the vendor result before downloading so retries cannot regenerate paid media.
+		if p.Task != nil {
+			if err := p.Task.Save(ctx, *item); err != nil {
+				return err
+			}
+		}
 		path, err := p.SaveResult(ctx, item.ID, item.Kind, item.ResultURL)
 		if err != nil {
 			return err
@@ -281,6 +355,8 @@ func capability(kind task.Kind) provider.Capability {
 		return provider.Image
 	case task.KindVideo:
 		return provider.Video
+	case task.KindSpeech:
+		return provider.Speech
 	default:
 		return ""
 	}
@@ -290,6 +366,11 @@ func capability(kind task.Kind) provider.Capability {
 func (p *Processor) Execute(ctx context.Context, item task.Task) {
 	ctx, cancel := context.WithCancel(ctx)
 	p.mu.Lock()
+	if p.running[item.ID] != nil {
+		p.mu.Unlock()
+		cancel()
+		return
+	}
 	if p.running == nil {
 		p.running = make(map[string]context.CancelFunc)
 	}
@@ -322,7 +403,11 @@ func (p *Processor) Execute(ctx context.Context, item task.Task) {
 		At:        item.UpdatedAt,
 	})
 	var err error
-	for attempt := 0; attempt < 3; attempt++ {
+	attempts := 3
+	if item.Snapshot != nil {
+		attempts = 1
+	}
+	for attempt := 0; attempt < attempts; attempt++ {
 		if !p.active(ctx, item) || ctx.Err() != nil {
 			return
 		}
@@ -347,7 +432,7 @@ func (p *Processor) Execute(ctx context.Context, item task.Task) {
 				At:        item.UpdatedAt,
 			})
 		}
-		if item.ModelID == "" {
+		if item.ModelID == "" && item.Kind != task.KindComposition {
 			err = errors.New("legacy provider execution is unavailable; select a model")
 		} else {
 			err = p.processModel(ctx, &item, process)
@@ -359,7 +444,7 @@ func (p *Processor) Execute(ctx context.Context, item task.Task) {
 			break
 		}
 		item.RetryCount = attempt + 1
-		if attempt < 2 {
+		if attempt < attempts-1 {
 			timer := time.NewTimer(time.Duration(1<<attempt) * 25 * time.Millisecond)
 			select {
 			case <-ctx.Done():

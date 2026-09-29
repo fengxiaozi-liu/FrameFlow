@@ -96,8 +96,20 @@ func main() {
 	processor.ModelClient = providerinfra.NewRegistry(vault)
 	processor.SaveResult = (providerinfra.ResultStore{Directory: uploadDir}).Save
 	processor.MediaDir = uploadDir
-	processor.Results = application.TaskResultApplier{Projects: projects.Repo}
+	processor.Results = application.TaskResultApplier{Projects: projects.Repo, Materials: materials.Repo, Directory: uploadDir, Probe: media.Probe}
 	tasks.Enqueuer = processor
+	go func() {
+		ticker := time.NewTicker(3 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				tasks.AdvanceGenerationRuns(ctx)
+			}
+		}
+	}()
 	workerDone := make(chan struct{})
 	go func() { defer close(workerDone); processor.Start(ctx) }()
 	go func() {
@@ -143,7 +155,7 @@ func main() {
 		}
 		go func() { serveError <- http.Serve(listener, router) }()
 	}
-	if openOnStart == "1" && listenErr == nil && os.Getenv("FRAMEFLOW_OPEN_BROWSER")!="0" {
+	if openOnStart == "1" && listenErr == nil && os.Getenv("FRAMEFLOW_OPEN_BROWSER") != "0" {
 		go func() {
 			time.Sleep(500 * time.Millisecond)
 			var command string

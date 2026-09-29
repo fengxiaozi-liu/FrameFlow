@@ -7,11 +7,13 @@ import (
 
 	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/material"
 	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/project"
+	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/provider"
 	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/task"
 	"github.com/gin-gonic/gin"
 )
 
 type ProjectService struct {
+	Models    provider.ModelRepository
 	Repo      project.Repository
 	Materials material.Repository
 	Tasks     task.Repository
@@ -133,6 +135,18 @@ func (s ProjectService) SaveDraft(ctx *gin.Context) {
 			d.VideoVersions = p.Drafts[i].VideoVersions
 			d.SelectedVersions = p.Drafts[i].SelectedVersions
 			d.Compositions = p.Drafts[i].Compositions
+			d.MediaTakes = p.Drafts[i].MediaTakes
+			d.SelectedMedia = p.Drafts[i].SelectedMedia
+			d.GenerationRuns = p.Drafts[i].GenerationRuns
+			for j := range d.Story.Scenes {
+				for _, old := range p.Drafts[i].Story.Scenes {
+					if old.ID == d.Story.Scenes[j].ID {
+						d.Story.Scenes[j].EntityBindings = old.EntityBindings
+						d.Story.Scenes[j].PromptDocument = old.PromptDocument
+						d.Story.Scenes[j].Utterances = old.Utterances
+					}
+				}
+			}
 			d.Version = p.Drafts[i].Version + 1
 			p.Drafts[i] = d
 			return nil

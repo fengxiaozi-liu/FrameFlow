@@ -1,0 +1,54 @@
+{
+  "project": "20260928162007.038622200",
+  "draft": "binding-live-draft",
+  "run": "run-537bae9c913d08e228f7220c705b9ba9",
+  "started_at": "2026-09-28T16:20:07.157Z",
+  "completed_at": "2026-09-28T16:23:38.948Z",
+  "tasks": [
+    {
+      "id": "run-537bae9c913d08e228f7220c705b9ba9-3",
+      "kind": "video",
+      "status": "succeeded",
+      "result_url": "/media/generated-run-537bae9c913d08e228f7220c705b9ba9-3.mp4",
+      "input_hash": "5618122a4e5ad6989a1b08f8ec2f33a14d0d41e43f0001ff4f4040d7aa66790d",
+      "reference_count": 1
+    },
+    {
+      "id": "run-537bae9c913d08e228f7220c705b9ba9-2",
+      "kind": "speech",
+      "status": "succeeded",
+      "result_url": "/media/generated-run-537bae9c913d08e228f7220c705b9ba9-2.wav",
+      "input_hash": "11dddcc2385022cde87e59f416259665422726c12e8b5b598ec07eb5009dca3c",
+      "voices": [
+        "Ethan"
+      ],
+      "reference_count": 0
+    },
+    {
+      "id": "run-537bae9c913d08e228f7220c705b9ba9-1",
+      "kind": "speech",
+      "status": "succeeded",
+      "result_url": "/media/generated-run-537bae9c913d08e228f7220c705b9ba9-1.wav",
+      "input_hash": "9338d606d918aa05565a6e12e7129dbfa7d136b1dd0c4e47d723c37032843ebb",
+      "voices": [
+        "Cherry"
+      ],
+      "reference_count": 0
+    },
+    {
+      "id": "run-537bae9c913d08e228f7220c705b9ba9-0",
+      "kind": "image",
+      "status": "succeeded",
+      "result_url": "/media/generated-run-537bae9c913d08e228f7220c705b9ba9-0.png",
+      "input_hash": "eec4eb76e2715a968ec96f586462b3a948a2a7db9d6b9fd56b477036c83c0155",
+      "reference_count": 2
+    },
+    {
+      "id": "compose-8a28b46241cd26a4725902e2774185a2",
+      "kind": "composition",
+      "status": "succeeded",
+      "result_url": "/media/composition-compose-8a28b46241cd26a4725902e2774185a2.mp4",
+      "input_hash": "a9e9fc106ead2f2eb6ce916d0dc14f3dc7a3b85d0208ad0a20c418a4249761d3"
+    }
+  ]
+}

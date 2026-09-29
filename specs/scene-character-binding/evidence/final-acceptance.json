@@ -1,0 +1,66 @@
+{
+  "verified_at": "2026-09-28T17:08:00.574Z",
+  "project": "20260928162007.038622200",
+  "draft": "final-review",
+  "run": "run-c989010241683f4fb95bb9335b907f70",
+  "state": "completed",
+  "composition": "composition-compose-ca799b7f3d2341566ea01e152a11da4b",
+  "tasks": [
+    {
+      "id": "run-c989010241683f4fb95bb9335b907f70-0",
+      "kind": "image",
+      "status": "succeeded",
+      "result_url": "/media/generated-run-c989010241683f4fb95bb9335b907f70-0.png",
+      "input_hash": "6d07fc2139e009efbf4892f39cb8ed228ca0062a2ea5c71c7a962dfc66467e24",
+      "reference_count": 2
+    },
+    {
+      "id": "run-c989010241683f4fb95bb9335b907f70-1",
+      "kind": "speech",
+      "status": "succeeded",
+      "result_url": "/media/generated-run-c989010241683f4fb95bb9335b907f70-1.wav",
+      "input_hash": "f857ea3bbd279cced82a75c11a8d94f5c3e31b35203d7e4ed7e0a45b5c906192",
+      "voices": [
+        "Cherry"
+      ],
+      "reference_count": 0
+    },
+    {
+      "id": "run-c989010241683f4fb95bb9335b907f70-2",
+      "kind": "speech",
+      "status": "succeeded",
+      "result_url": "/media/generated-run-c989010241683f4fb95bb9335b907f70-2.wav",
+      "input_hash": "b183e1f8d891f3ec60ba9d6e7d7017b4f8c03cc45d8124a4a18bb953d749048a",
+      "voices": [
+        "Ethan"
+      ],
+      "reference_count": 0
+    },
+    {
+      "id": "run-c989010241683f4fb95bb9335b907f70-3",
+      "kind": "video",
+      "status": "succeeded",
+      "result_url": "/media/generated-run-c989010241683f4fb95bb9335b907f70-3.mp4",
+      "remote_task_id": "702e51d8-1837-4171-9a3f-56eeea48d9a1",
+      "input_hash": "0d4ed81c7d771e6caa20ffb1f0b2e49d0940278229f2858a2ede80776b477374",
+      "reference_count": 1
+    },
+    {
+      "id": "compose-ca799b7f3d2341566ea01e152a11da4b",
+      "kind": "composition",
+      "status": "succeeded",
+      "result_url": "/media/composition-compose-ca799b7f3d2341566ea01e152a11da4b.mp4",
+      "input_hash": "4dea068f6f622b226c337ab0ccd64e596fd0db16b45a16ce343abdb840ed06f9"
+    }
+  ],
+  "source_sha256": {
+    "frontend/src/components/studio/BindingWorkbench.vue": "c50c595b402fdf50664710a36534d866bbe46a8f89286a2ea0e5b0a913d6e676",
+    "frontend/src/components/studio/DialogueVoicePanel.vue": "9e6fcc1d8afeb48f65f3d037cb3cfd53d1ca7f4e06d76cc18f677e0ac3ecad86",
+    "frontend/src/components/studio/MentionPromptEditor.vue": "54e168f78bacbc027c48348c39600252f8206d997121fe3fd067a09ce25dc396",
+    "frontend/src/views/StudioView.vue": "dbd101478af9c108bf3417689ef8198ae200740d05151f26787eaeadffcd19bc",
+    "frontend/src/styles/studio.css": "6bad3a2e7475a42f6ed7a818a10fdf136398f21c1527f882bda4f26696c5f2a8",
+    "backend/internal/application/generation_runs.go": "565bdce47d6448a6f2d2054c0f4635600e75ac1818a380d1d721f8693843fc8b",
+    "backend/internal/application/generation_compiler.go": "0cbd0a957f940b2f9b7d285e8cc7dbc371b4181659064a396862d218e1b6323e",
+    "backend/internal/domain/processor/processor.go": "63466ceb6b4fff785623fbf21519d1426235055df21e85a8b0d13b54291af5d5"
+  }
+}

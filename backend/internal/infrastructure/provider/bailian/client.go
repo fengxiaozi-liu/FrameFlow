@@ -114,6 +114,9 @@ func (c Client) key(ctx context.Context, connection provider.Connection) (string
 }
 
 func (c Client) Discover(ctx context.Context, connection provider.Connection, key string) ([]provider.DiscoveredModel, error) {
+	if strings.Contains(connection.BaseURL, "/compatible-mode/") {
+		return c.discoverCompatible(ctx, connection, key)
+	}
 	items := make([]provider.DiscoveredModel, 0)
 	for page := 1; page <= 100; page++ {
 		var response struct {
@@ -218,14 +221,21 @@ func (c Client) GenerateImage(ctx context.Context, connection provider.Connectio
 	}
 	req := protocol.QianwenImageRequest{Model: id}
 	req.Parameters.Size = sizes[input.AspectRatio]
-	req.Input.Messages = append(req.Input.Messages, struct {
-		Role    string `json:"role"`
-		Content []struct {
-			Text string `json:"text"`
-		} `json:"content"`
-	}{Role: "user", Content: []struct {
-		Text string `json:"text"`
-	}{{Text: input.Prompt}}})
+	content := []protocol.ImageContent{}
+	if len(input.References) > 0 {
+		cap, ok := provider.InputCapabilityFor(id)
+		if !ok || len(input.References) > cap.ReferenceImages {
+			return provider.ImageResult{}, errors.New("reference_limit_exceeded")
+		}
+		for _, ref := range input.References {
+			if ref.URL == "" {
+				return provider.ImageResult{}, errors.New("missing reference image")
+			}
+			content = append(content, protocol.ImageContent{Image: ref.URL})
+		}
+	}
+	content = append(content, protocol.ImageContent{Text: input.Prompt})
+	req.Input.Messages = append(req.Input.Messages, protocol.ImageMessage{Role: "user", Content: content})
 	var response protocol.QianwenImageResponse
 	if err := c.request(ctx, connection, key, http.MethodPost, "/api/v1/services/aigc/multimodal-generation/generation", req, &response, false); err != nil {
 		return provider.ImageResult{}, err

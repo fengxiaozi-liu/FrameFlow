@@ -3,6 +3,7 @@ package story
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"strings"
 	"time"
@@ -17,27 +18,38 @@ const (
 
 // Candidate remains separate from the editable document until explicitly applied.
 type Candidate struct {
-	ID            string          `json:"id"`
-	TaskID        string          `json:"task_id"`
-	Target        CandidateTarget `json:"target"`
-	Mode          string          `json:"mode,omitempty"`
-	Instruction   string          `json:"instruction,omitempty"`
-	SourceVersion int64           `json:"source_version"`
-	SourceBody    string          `json:"source_body,omitempty"`
-	Body          string          `json:"body,omitempty"`
-	Scenes        []Scene         `json:"scenes,omitempty"`
-	Status        string          `json:"status"`
-	PromptVersion string          `json:"prompt_version,omitempty"`
-	CreatedAt     time.Time       `json:"created_at"`
+	Entities      []CandidateEntity `json:"entities,omitempty"`
+	ID            string            `json:"id"`
+	TaskID        string            `json:"task_id"`
+	Target        CandidateTarget   `json:"target"`
+	Mode          string            `json:"mode,omitempty"`
+	Instruction   string            `json:"instruction,omitempty"`
+	SourceVersion int64             `json:"source_version"`
+	SourceBody    string            `json:"source_body,omitempty"`
+	Body          string            `json:"body,omitempty"`
+	Scenes        []Scene           `json:"scenes,omitempty"`
+	Status        string            `json:"status"`
+	PromptVersion string            `json:"prompt_version,omitempty"`
+	CreatedAt     time.Time         `json:"created_at"`
+}
+type CandidateEntity struct {
+	ID          string `json:"id,omitempty"`
+	Key         string `json:"key"`
+	Kind        string `json:"kind"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
 }
 
 type Scene struct {
-	ID              string `json:"id"`
-	Order           int    `json:"order"`
-	Title           string `json:"title"`
-	VisualPrompt    string `json:"visual_prompt"`
-	Narration       string `json:"narration"`
-	DurationSeconds int    `json:"duration_seconds"`
+	EntityBindings  []EntityBinding `json:"entity_bindings,omitempty"`
+	PromptDocument  *PromptDocument `json:"prompt_document,omitempty"`
+	Utterances      []Utterance     `json:"utterances,omitempty"`
+	ID              string          `json:"id"`
+	Order           int             `json:"order"`
+	Title           string          `json:"title"`
+	VisualPrompt    string          `json:"visual_prompt"`
+	Narration       string          `json:"narration"`
+	DurationSeconds int             `json:"duration_seconds"`
 }
 
 func NewSceneID() (string, error) {
@@ -88,7 +100,36 @@ func (d *Document) AddScene(s Scene) error {
 func (d *Document) CopyScene(id string) (Scene, error) {
 	for _, existing := range d.Scenes {
 		if existing.ID == id {
-			copy := existing
+			var copy Scene
+			b, _ := json.Marshal(existing)
+			if err := json.Unmarshal(b, &copy); err != nil {
+				return Scene{}, err
+			}
+			mapping := map[string]string{}
+			for i := range copy.EntityBindings {
+				old := copy.EntityBindings[i].ID
+				next, err := NewSceneID()
+				if err != nil {
+					return Scene{}, err
+				}
+				copy.EntityBindings[i].ID = "binding-" + next
+				mapping[old] = copy.EntityBindings[i].ID
+			}
+			if copy.PromptDocument != nil {
+				for i := range copy.PromptDocument.Nodes {
+					n := &copy.PromptDocument.Nodes[i]
+					if n.Type == "entity_ref" {
+						n.BindingID = mapping[n.BindingID]
+					}
+				}
+			}
+			for i := range copy.Utterances {
+				next, err := NewSceneID()
+				if err != nil {
+					return Scene{}, err
+				}
+				copy.Utterances[i].ID = "utterance-" + next
+			}
 			copy.ID = ""
 			if err := d.AddScene(copy); err != nil {
 				return Scene{}, err
@@ -105,6 +146,14 @@ func (d *Document) UpdateScene(id string, changes Scene) (Scene, error) {
 	}
 	for i := range d.Scenes {
 		if d.Scenes[i].ID == id {
+			changes.EntityBindings = d.Scenes[i].EntityBindings
+			changes.PromptDocument = d.Scenes[i].PromptDocument
+			if len(changes.EntityBindings) == 0 {
+				changes.PromptDocument = &PromptDocument{SchemaVersion: 1, Nodes: []PromptNode{{Type: "text", Text: changes.VisualPrompt}}}
+			} else {
+				changes.VisualPrompt = d.Scenes[i].VisualPrompt
+			}
+			changes.Utterances = d.Scenes[i].Utterances
 			changes.ID = id
 			changes.Order = d.Scenes[i].Order
 			d.Scenes[i] = changes

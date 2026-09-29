@@ -111,8 +111,50 @@ func (s TaskService) CreateComposition(g *gin.Context) {
 			continue
 		}
 		clip := task.CompositionClip{SceneID: scene.ID, VersionID: selectedID, MediaPath: chosen.LocalMediaPath, DurationSeconds: probe.Duration}
+		if len(scene.Utterances) > 0 {
+			total := 0.0
+			for _, u := range scene.Utterances {
+				takeID := d.SelectedMedia[scene.ID+":speech:"+u.ID]
+				var take *project.MediaTake
+				for i := range d.MediaTakes {
+					v := &d.MediaTakes[i]
+					if v.ID == takeID && v.SceneID == scene.ID && v.UtteranceID == u.ID {
+						take = v
+					}
+				}
+				if take == nil || take.Stale || take.DependencyHash != dependencyHash(p.EntityCatalog, scene, "speech", u.ID) {
+					add(scene.ID, "utterance:"+u.ID, "请生成并选用当前台词的配音")
+					continue
+				}
+				asset, err := s.Materials.Get(g.Request.Context(), take.MaterialID)
+				if err != nil {
+					add(scene.ID, "utterance:"+u.ID, "配音素材不可用")
+					continue
+				}
+				path, err := localMediaPath(s.UploadDir, asset.URL)
+				if err != nil {
+					add(scene.ID, "utterance:"+u.ID, "配音文件不可用")
+					continue
+				}
+				audio, err := s.Probe(g.Request.Context(), path)
+				if err != nil || !audio.HasAudio {
+					add(scene.ID, "utterance:"+u.ID, "配音文件无法读取")
+					continue
+				}
+				total += audio.Duration + float64(u.PauseAfterMS)/1000
+				clip.VoiceSegments = append(clip.VoiceSegments, task.CompositionVoice{MaterialID: asset.ID, MediaPath: asset.URL, PauseAfterMS: u.PauseAfterMS, InputHash: take.InputHash})
+			}
+			if total > probe.Duration+0.05 {
+				add(scene.ID, "utterances", fmt.Sprintf("台词与停顿合计 %.2f 秒，超过视频 %.2f 秒；请缩短台词或生成更长视频", total, probe.Duration))
+			}
+			clip.MuteSource = true
+		}
 		for _, binding := range d.Bindings {
 			if binding.SceneID != scene.ID || binding.Usage != "voiceover" {
+				continue
+			}
+			if len(scene.Utterances) > 0 {
+				add(scene.ID, "voiceover", "逐句台词配音与旧后期配音不能同时选用，请移除旧配音绑定")
 				continue
 			}
 			asset, err := s.Materials.Get(g.Request.Context(), binding.MaterialID)

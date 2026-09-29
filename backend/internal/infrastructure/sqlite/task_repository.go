@@ -59,6 +59,10 @@ func Open(ctx context.Context, path string) (*TaskRepository, error) {
 		_ = db.Close()
 		return nil, err
 	}
+	if err = migrateEntities(ctx, db); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
 	return &TaskRepository{db: db}, nil
 }
 
@@ -225,7 +229,22 @@ func deleteJSON(ctx context.Context, db *sql.DB, table, id string) error {
 }
 
 func (r *TaskRepository) SaveProject(ctx context.Context, v project.Project) error {
-	return saveJSON(ctx, r.db, "projects", v.ID, v, "", "")
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	if _, err = tx.ExecContext(ctx, `INSERT INTO projects(id,payload) VALUES(?,?) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload`, v.ID, string(b)); err != nil {
+		return err
+	}
+	if err = syncProjectReferences(ctx, tx, v); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (r *TaskRepository) GetProject(ctx context.Context, id string) (project.Project, error) {
@@ -362,6 +381,9 @@ func (r *ProjectRepository) Update(ctx context.Context, id string, change func(*
 	if _, err = tx.ExecContext(ctx, `UPDATE projects SET payload=? WHERE id=?`, string(payload), id); err != nil {
 		return value, err
 	}
+	if err = syncProjectReferences(ctx, tx, value); err != nil {
+		return value, err
+	}
 	return value, tx.Commit()
 }
 
@@ -418,8 +440,34 @@ func (r *TaskRepository) Save(ctx context.Context, t task.Task) error {
 	if err != nil {
 		return err
 	}
-	_, err = r.db.ExecContext(ctx, `INSERT INTO tasks(id,project_id,draft_id,payload) VALUES(?,?,?,?) ON CONFLICT(id) DO UPDATE SET project_id=excluded.project_id,draft_id=excluded.draft_id,payload=excluded.payload`, t.ID, nullString(t.ProjectID), nullString(t.DraftID), string(b))
-	return err
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	var old string
+	if err = tx.QueryRowContext(ctx, `SELECT payload FROM tasks WHERE id=?`, t.ID).Scan(&old); err == nil {
+		var previous task.Task
+		if err = json.Unmarshal([]byte(old), &previous); err != nil {
+			return err
+		}
+		if previous.Snapshot != nil {
+			a, _ := json.Marshal(previous.Snapshot)
+			b, _ := json.Marshal(t.Snapshot)
+			if string(a) != string(b) {
+				return errors.New("generation snapshot is immutable")
+			}
+		}
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+	if _, err = tx.ExecContext(ctx, `INSERT INTO tasks(id,project_id,draft_id,payload) VALUES(?,?,?,?) ON CONFLICT(id) DO UPDATE SET project_id=excluded.project_id,draft_id=excluded.draft_id,payload=excluded.payload`, t.ID, nullString(t.ProjectID), nullString(t.DraftID), string(b)); err != nil {
+		return err
+	}
+	if err = syncTaskReferences(ctx, tx, t); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 func nullString(value string) any {
 	if value == "" {

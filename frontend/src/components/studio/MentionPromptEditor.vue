@@ -1,0 +1,16 @@
+<script setup lang="ts">
+import { nextTick, ref } from 'vue';
+import type { PromptDocument } from '../../api/bindings';
+const props=defineProps<{modelValue:PromptDocument;options:{id:string;name:string;kind:string}[];disabled?:boolean}>();
+const emit=defineEmits<{'update:modelValue':[PromptDocument]}>();
+const picker=ref(false),active=ref(0);let insertion={index:0,start:0,end:0};
+const root=ref<HTMLElement>();let returnFocus:HTMLElement|undefined;
+function close(){picker.value=false;void nextTick(()=>returnFocus?.focus())}
+function pickerKey(event:KeyboardEvent){if(event.isComposing)return;if(event.key==='Escape'){event.preventDefault();close()}else if(event.key==='ArrowDown'||event.key==='ArrowUp'){event.preventDefault();active.value=Math.max(0,Math.min(props.options.length-1,active.value+(event.key==='ArrowDown'?1:-1)));(root.value?.querySelectorAll<HTMLElement>('[role=option]')[active.value])?.focus()}}
+function update(index:number,text:string){const nodes=props.modelValue.nodes.map(n=>({...n}));nodes[index]={type:'text',text};emit('update:modelValue',{schema_version:1,nodes})}
+function open(index:number,el?:HTMLTextAreaElement){returnFocus=document.activeElement as HTMLElement;insertion={index,start:el?.selectionStart??0,end:el?.selectionEnd??0};picker.value=true;active.value=0;void nextTick(()=>root.value?.querySelector<HTMLElement>('[role=option],.mention-picker button')?.focus())}
+function insert(id:string){const nodes=props.modelValue.nodes.map(n=>({...n}));const old=nodes[insertion.index];const text=old?.type==='text'?old.text:'';nodes.splice(insertion.index,old?.type==='text'?1:0,{type:'text',text:text.slice(0,insertion.start)},{type:'entity_ref',binding_id:id},{type:'text',text:text.slice(insertion.end)});emit('update:modelValue',{schema_version:1,nodes});close()}
+function remove(index:number){const nodes=props.modelValue.nodes.map(n=>({...n}));nodes.splice(index,1);emit('update:modelValue',{schema_version:1,nodes:nodes.length?nodes:[{type:'text',text:''}]})}
+function key(event:KeyboardEvent,index:number){if(event.isComposing)return;if(event.key==='@'){event.preventDefault();open(index,event.target as HTMLTextAreaElement)}else if(event.key==='Escape'){picker.value=false}}
+</script>
+<template><div ref="root" class="mention-editor"><div class="prompt-nodes"><template v-for="(node,index) in modelValue.nodes" :key="index"><textarea v-if="node.type==='text'" :value="node.text" :disabled="disabled" aria-label="镜头描述文本" rows="2" @input="update(index,($event.target as HTMLTextAreaElement).value)" @keydown="key($event,index)" /><span v-else class="mention-chip">@{{options.find(o=>o.id===node.binding_id)?.name||'引用失效'}}<button type="button" :disabled="disabled" aria-label="移除描述引用" @click="remove(index)">×</button></span></template></div><button type="button" :disabled="disabled" @click="open(modelValue.nodes.length)">＠ 插入场景或人物</button><div v-if="picker" class="mention-picker" role="listbox" aria-label="引用候选" @keydown="pickerKey"><p v-if="!options.length">请先添加场景或人物分组。</p><button v-for="(option,i) in options" :key="option.id" type="button" role="option" :aria-selected="i===active" @focus="active=i" @click="insert(option.id)">{{option.kind==='location'?'场景':'人物'}} · {{option.name}} · {{option.id.slice(-6)}}</button><button type="button" @click="close">取消</button></div></div></template>
