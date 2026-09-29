@@ -10,10 +10,8 @@ import type {
   ProviderConnection,
   Task,
   TaskInput,
-  SceneBinding,
   VideoVersion,
   Composition,
-  CreateVideoTaskInput,
   CreateCompositionInput,
 } from "./types";
 const base = import.meta.env.VITE_API_BASE_URL || "";
@@ -64,16 +62,6 @@ export const api = {
     request<Draft>(`/api/projects/${encodeURIComponent(projectId)}/drafts/${encodeURIComponent(draftId)}/scenes${sceneId ? `/${encodeURIComponent(sceneId)}` : ""}`, { method: sceneId ? "PATCH" : "POST", body: JSON.stringify(input) }),
   deleteScene: (projectId: string, draftId: string, sceneId: string, expected_version: number) =>
     request<Draft>(`/api/projects/${encodeURIComponent(projectId)}/drafts/${encodeURIComponent(draftId)}/scenes/${encodeURIComponent(sceneId)}?expected_version=${expected_version}`, { method: "DELETE" }),
-  saveBindings: (projectId: string, draftId: string, sceneId: string, expected_version: number, bindings: SceneBinding[]) =>
-    request<Draft>(`/api/projects/${encodeURIComponent(projectId)}/drafts/${encodeURIComponent(draftId)}/scenes/${encodeURIComponent(sceneId)}/bindings`, { method:"PUT", body:JSON.stringify({expected_version,bindings}) }),
-  videoCapability: (modelId: string) =>
-    request<{supported:boolean; reason?:string; capability?:{min_duration:number; max_duration:number; resolutions:string[]; allowed_media:Record<string,number>}}>(`/api/models/${encodeURIComponent(modelId)}/video-capability`),
-  validateSceneVideo: (projectId:string,draftId:string,sceneId:string,model_id:string,resolution:string) =>
-    request<{valid:boolean;issues:{scene_id:string;field:string;message:string}[]}>(`/api/projects/${encodeURIComponent(projectId)}/drafts/${encodeURIComponent(draftId)}/scenes/${encodeURIComponent(sceneId)}/video-validation`,{method:"POST",body:JSON.stringify({model_id,resolution})}),
-  createSceneVideo: (projectId:string,draftId:string,sceneId:string,input:CreateVideoTaskInput) =>
-    request<Task>(`/api/projects/${encodeURIComponent(projectId)}/drafts/${encodeURIComponent(draftId)}/scenes/${encodeURIComponent(sceneId)}/video-tasks`,{method:"POST",body:JSON.stringify(input)}),
-  createBatchVideo: (projectId:string,draftId:string,input:CreateVideoTaskInput) =>
-    request<{created:Task[];failed:{scene_id:string;field:string;message:string}[]}>(`/api/projects/${encodeURIComponent(projectId)}/drafts/${encodeURIComponent(draftId)}/video-tasks/batch`,{method:"POST",body:JSON.stringify(input)}),
   sceneVersions: (projectId:string,draftId:string,sceneId:string) =>
     request<{versions:VideoVersion[];selected_version_id:string}>(`/api/projects/${encodeURIComponent(projectId)}/drafts/${encodeURIComponent(draftId)}/scenes/${encodeURIComponent(sceneId)}/versions`),
   selectSceneVersion: (projectId:string,draftId:string,sceneId:string,expected_version:number,version_id:string) =>

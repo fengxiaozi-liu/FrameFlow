@@ -7,6 +7,10 @@ test('group descriptions, duplicate names, references, reload and local scope',a
  const s=await seed(request);await page.goto(s.url);const work=page.getByRole('region',{name:'场景人物工作台'});await expect(work).toBeVisible();
  for(const label of ['＋ 添加场景','＋ 添加人物','＋ 添加人物']){await work.getByRole('button',{name:label,exact:true}).click();const form=work.locator('form');await form.getByLabel('名称',{exact:true}).fill('同名');await form.getByLabel('基础描述',{exact:true}).fill(label.includes('场景')?'午后咖啡馆':'蓝外套，短发');await form.getByRole('button',{name:'保存设定并用于此镜头'}).click();await expect(form).toHaveCount(0);await expect(work.getByRole('status').first()).toHaveText('已保存')}
  await expect(work.locator('.entity-card')).toHaveCount(3);
+ await expect(work.getByRole('region',{name:'场景绑定'})).toContainText('1 个');
+ await expect(work.getByRole('region',{name:'人物绑定'})).toContainText('2 个');
+ await expect(work.getByRole('region',{name:'当前镜头制作任务'})).toContainText('制作任务');
+ await expect(page.locator('.scene-list .scene-row').first()).toContainText('绑定：1 个场景 · 2 个人物');
  await work.getByRole('button',{name:'＠ 插入场景或人物'}).click();await work.getByRole('option').nth(2).click();await expect(work.locator('.mention-chip')).toContainText('@同名');
  await work.getByLabel('本镜头补充').nth(1).fill('中文输入：微笑，手持咖啡。');await expect(work.getByRole('status').first()).toHaveText('已保存');
  const d=await(await request.get(`/api/projects/${s.p}/drafts/${s.d}`)).json();expect(d.story.scenes[0].prompt_document.nodes.some((n:{binding_id?:string})=>n.binding_id===d.story.scenes[0].entity_bindings[2].id)).toBeTruthy();

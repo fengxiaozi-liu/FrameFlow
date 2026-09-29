@@ -141,8 +141,8 @@ func (d *Document) CopyScene(id string) (Scene, error) {
 }
 
 func (d *Document) UpdateScene(id string, changes Scene) (Scene, error) {
-	if strings.TrimSpace(changes.Title) == "" || strings.TrimSpace(changes.VisualPrompt) == "" || changes.DurationSeconds <= 0 {
-		return Scene{}, errors.New("scene title, visual prompt and positive duration are required")
+	if strings.TrimSpace(changes.Title) == "" || changes.DurationSeconds <= 0 {
+		return Scene{}, errors.New("scene title and positive duration are required")
 	}
 	for i := range d.Scenes {
 		if d.Scenes[i].ID == id {

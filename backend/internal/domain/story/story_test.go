@@ -13,6 +13,12 @@ func TestDocumentScene(t *testing.T) {
 	if err := d.AddScene(Scene{Title: "opening"}); err != nil || len(d.Scenes) != 1 || d.Scenes[0].Order != 1 {
 		t.Fatal(err, d.Scenes)
 	}
+	if _, err := d.UpdateScene(d.Scenes[0].ID, Scene{Title: "renamed", DurationSeconds: 5}); err != nil {
+		t.Fatalf("title should save before a new scene has a visual prompt: %v", err)
+	}
+	if d.Scenes[0].Title != "renamed" || d.Scenes[0].DurationSeconds != 5 {
+		t.Fatalf("scene information was not saved: %+v", d.Scenes[0])
+	}
 }
 
 func TestSceneIdentitySurvivesReorderCopyAndDelete(t *testing.T) {

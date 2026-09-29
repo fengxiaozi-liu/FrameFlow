@@ -49,6 +49,10 @@ function sceneLink(item: Task) {
   return draft?.story.scenes.some((scene) => scene.id === item.scene_id)
     ? `/studio/${encodeURIComponent(item.project_id)}/${encodeURIComponent(item.draft_id)}?scene=${encodeURIComponent(item.scene_id)}` : "";
 }
+function sceneLabel(item: Task) {
+  const scene = projects.value.find((project) => project.id === item.project_id)?.drafts.find((draft) => draft.id === item.draft_id)?.story.scenes.find((value) => value.id === item.scene_id);
+  return scene ? `镜头 ${String(scene.order).padStart(2, "0")} · ${scene.title || "未命名"}` : "";
+}
 function savedMedia(task: Task) {
   if (task.kind !== "image" && task.kind !== "video" && task.kind !== "composition" && task.kind !== "speech") return false;
   const ext = task.kind === "image" ? "png" : task.kind === "speech" ? "wav" : "mp4";
@@ -150,7 +154,7 @@ async function retry(item: Task) {
                 {{ new Date(task.created_at).toLocaleString() }} ·
                 {{ task.id }}</small
               >
-              <RouterLink v-if="sceneLink(task)" :to="sceneLink(task)" class="text-link">查看镜头</RouterLink><small v-else-if="task.scene_id">原镜头已删除，结果仅保留在任务中心</small>
+              <RouterLink v-if="sceneLink(task)" :to="sceneLink(task)" class="text-link">所属{{ sceneLabel(task) }}</RouterLink><small v-else-if="task.scene_id">原镜头已删除，结果仅保留在任务中心</small>
             </div>
             <StatusBadge :status="task.status" />
           </div>

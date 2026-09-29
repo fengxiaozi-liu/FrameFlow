@@ -10,7 +10,7 @@ onUnmounted(stopPlayback);
 const reviewedEntities=ref<Candidate['entities']>();
 import { useWorkspaceStore } from "../stores/workspace";
 import { useTaskStore } from "../stores/tasks";
-import type { Candidate, Draft, Model, Scene, TaskEvent, Material, SceneBinding, VideoVersion, Composition, CreateVideoTaskInput, CreateCompositionInput } from "../api/types";
+import type { Candidate, Draft, Model, Scene, TaskEvent, Material, VideoVersion, Composition, CreateCompositionInput } from "../api/types";
 
 const workspace = useWorkspaceStore();
 const tasks = useTaskStore();
@@ -57,21 +57,8 @@ const latestStory = computed(() => storyCandidates.value.at(-1));
 const latestStoryboard = computed(() => storyboardCandidates.value.at(-1));
 const canGenerateStoryboard = computed(() => !!draft.value.story.body.trim() && saveState.value === "saved" && !!selectedStoryModel.value);
 const selectedStoryModel = ref("");
-const videoModels = ref<Model[]>([]);
-const selectedVideoModel = ref("");
-const videoCapability = ref<{supported:boolean;reason?:string;capability?:{min_duration:number;max_duration:number;resolutions:string[];allowed_media:Record<string,number>}} | null>(null);
 const materials = ref<Material[]>([]);
-const pickerUsage = ref<SceneBinding["usage"] | "">("");
-const pickerChoice = ref("");
-const bindingBusy = ref(false);
-const pickerFile = ref<HTMLInputElement>();
-const pickerUploading = ref(false);
-const pickerProgress = ref(0);
-const videoResolution = ref<NonNullable<CreateVideoTaskInput["resolution"]>>("1080P");
-const validationIssues = ref<{field:string;message:string}[]>([]);
 const selectedSceneVersions = ref<VideoVersion[]>([]);
-const selectedSceneTasks = computed(() => tasks.items.filter((item) => item.scene_id === selectedSceneID.value && item.project_id === workspace.projectId && item.draft_id === draft.value.id));
-const batchFailures = ref<{scene_id:string;field:string;message:string}[]>([]);
 const musicMaterialID = ref("");
 const musicVolume = ref(0.25);
 const sourceVolume = ref(1);
@@ -95,36 +82,39 @@ function compositionIsOld(value: Composition) {
     (value.voice_volume ?? 1) !== voiceVolume.value ||
     value.aspect_ratio !== outputAspect.value || value.resolution !== outputResolution.value;
 }
-const sceneBindings = computed(() => (draft.value.bindings || []).filter((binding) => binding.scene_id === selectedSceneID.value));
 const storyboardDuration = computed(() => draft.value.story.scenes.reduce((total, scene) => total + (scene.duration_seconds || 0), 0));
-function materialForScene(sceneID: string, usage: SceneBinding["usage"]) {
-  const materialID = draft.value.bindings?.find((binding) => binding.scene_id === sceneID && binding.usage === usage)?.material_id;
-  return materials.value.find((item) => item.id === materialID);
-}
 function scenePreview(sceneID: string) {
-  const image = materialForScene(sceneID, "first_frame") || materialForScene(sceneID, "scene_reference");
-  return image ? api.mediaUrl(image.url) : "";
+  const takeID = draft.value.selected_media?.[`${sceneID}:image`];
+  const take = draft.value.media_takes?.find((item) => item.id === takeID);
+  const binding = draft.value.story.scenes.find((scene) => scene.id === sceneID)?.entity_bindings?.find((item) => item.selected_material_ids?.length);
+  const material = materials.value.find((item) => item.id === (take?.material_id || binding?.selected_material_ids?.[0]));
+  return material ? api.mediaUrl(material.url) : "";
 }
 function sceneStatus(sceneID: string) {
   const current = tasks.items.filter((item) => item.scene_id === sceneID && item.project_id === workspace.projectId && item.draft_id === draft.value.id && item.kind === "video").at(-1);
-  if (current?.status === "running") return "生成中";
-  if (current?.status === "queued") return "排队中";
-  if (current?.status === "failed") return "生成失败";
-  if (draft.value.video_versions?.some((version) => version.scene_id === sceneID)) return "已完成";
-  return "待生成";
+  if (current?.status === "running") return "视频生成中";
+  if (current?.status === "queued") return "视频排队中";
+  if (current?.status === "failed") return "视频生成失败";
+  if (draft.value.selected_versions?.[sceneID]) return "视频已选用";
+  if (draft.value.video_versions?.some((version) => version.scene_id === sceneID)) return "视频待选用";
+  return "视频待制作";
 }
-const usageLabels: Record<SceneBinding["usage"], string> = {
-  character_reference:"角色参考", scene_reference:"场景参考", prop_reference:"道具参考",
-  first_frame:"首帧", last_frame:"尾帧", driving_audio:"驱动音频", voiceover:"后期配音",
-};
-const pickerMaterials = computed(() => materials.value.filter((item) =>
-  pickerUsage.value === "character_reference" ? item.kind === "character" :
-  pickerUsage.value === "prop_reference" ? item.kind === "prop" :
-  pickerUsage.value === "driving_audio" || pickerUsage.value === "voiceover" ? item.kind === "voice" :
-  item.kind === "scene"));
+function bindingSummary(scene: Scene) {
+  const bindings = scene.entity_bindings || [];
+  return `${bindings.filter((binding) => binding.role !== 'cast').length} 个场景 · ${bindings.filter((binding) => binding.role === 'cast').length} 个人物`;
+}
 const instructionKey = computed(() => `frameflow-story-instruction:${workspace.projectId}:${draft.value.id}`);
 
-function acceptShotDraft(value:Draft){if((value.version||0)>=(draft.value.version||0))acceptDraft(value)}
+function acceptShotDraft(value:Draft){
+  if((value.version||0)<(draft.value.version||0))return;
+  const edited = sceneForm.value;
+  const original = selectedScene.value;
+  const pendingTitle = edited && original && edited.title !== original.title ? edited.title : undefined;
+  const pendingDuration = edited && original && edited.duration_seconds !== original.duration_seconds ? edited.duration_seconds : undefined;
+  acceptDraft(value);
+  if(sceneForm.value && pendingTitle !== undefined)sceneForm.value.title=pendingTitle;
+  if(sceneForm.value && pendingDuration !== undefined)sceneForm.value.duration_seconds=pendingDuration;
+}
 function acceptDraft(value: Draft, preserveBody?: string, preserveName?: string) {
   lastSavedBody = value.story.body;
   lastSavedName = value.name;
@@ -229,9 +219,7 @@ onMounted(async () => {
     const models = await api.models("story");
     storyModels.value = models.models.filter((model) => model.enabled && model.supported);
     selectedStoryModel.value = storyModels.value.find((model) => model.default)?.id || storyModels.value[0]?.id || "";
-    videoModels.value = (await api.models("video")).models.filter((model) => model.enabled);
     bindingModels.value = (await api.models()).models;
-    selectedVideoModel.value = videoModels.value.find((model) => model.default)?.id || videoModels.value[0]?.id || "";
     materials.value = (await api.materials()).materials || [];
     const requestedScene = String(route.query.scene || "");
     if (requestedScene && draft.value.story.scenes.some((scene) => scene.id === requestedScene)) {
@@ -239,9 +227,6 @@ onMounted(async () => {
     } else if (draft.value.story.scenes.length) selectScene(draft.value.story.scenes[0].id);
     await tasks.load();
   } catch (error) { message.value = (error as Error).message; }
-});
-watch(selectedVideoModel, async (id) => {
-  videoCapability.value = id ? await api.videoCapability(id).catch(() => ({supported:false,reason:"无法读取模型能力"})) : null;
 });
 onUnmounted(() => { unsubscribe(); if (saveTimer) clearTimeout(saveTimer); stopDrawerResize(); window.removeEventListener("resize", clampDrawerToViewport); });
 onBeforeRouteLeave(async () => {
@@ -380,78 +365,6 @@ async function loadVersions() {
   try {selectedSceneVersions.value=(await api.sceneVersions(workspace.projectId,draft.value.id,selectedSceneID.value)).versions}
   catch {selectedSceneVersions.value=(draft.value.video_versions || []).filter((version)=>version.scene_id===selectedSceneID.value)}
 }
-function openPicker(usage: SceneBinding["usage"]) {
-  pickerUsage.value = usage;
-  pickerChoice.value = "";
-}
-async function changeBinding(usage: SceneBinding["usage"], materialID = "") {
-  if (!selectedSceneID.value) return;
-  bindingBusy.value = true;
-  try {
-    await requireSaved();
-    const next = sceneBindings.value.filter((binding) => binding.usage !== usage);
-    if (materialID) next.push({scene_id:selectedSceneID.value,material_id:materialID,usage});
-    acceptDraft(await api.saveBindings(workspace.projectId,draft.value.id,selectedSceneID.value,draft.value.version || 0,next));
-    pickerUsage.value = "";
-    message.value = materialID ? "镜头素材绑定已保存。" : "已解绑镜头素材，素材文件仍保留。";
-  } catch (cause) { message.value = (cause as Error).message; }
-  finally { bindingBusy.value = false; }
-}
-async function uploadForScene(event: Event) {
-  const field = event.target as HTMLInputElement;
-  const file = field.files?.[0];
-  if (!file || !pickerUsage.value) return;
-  const kind = pickerUsage.value === "character_reference" ? "character"
-    : pickerUsage.value === "prop_reference" ? "prop"
-    : pickerUsage.value === "driving_audio" || pickerUsage.value === "voiceover" ? "voice" : "scene";
-  pickerUploading.value = true; pickerProgress.value = 0;
-  try {
-    const item = await api.uploadMaterial(file, kind, (value) => { pickerProgress.value = value; });
-    materials.value = (await api.materials()).materials || [];
-    pickerChoice.value = item.id;
-    message.value = "素材已上传，请确认绑定到当前镜头。";
-  } catch (cause) { message.value = (cause as Error).message; }
-  finally { pickerUploading.value = false; field.value = ""; }
-}
-async function checkVideoScene() {
-  try {
-    await requireSaved();
-    const result = await api.validateSceneVideo(workspace.projectId,draft.value.id,selectedSceneID.value,selectedVideoModel.value,videoResolution.value);
-    validationIssues.value = result.issues;
-    message.value = result.valid ? "当前镜头参数可提交生成。" : "请按镜头检查结果修正参数。";
-  } catch (cause) { message.value = (cause as Error).message; }
-}
-async function generateSceneVideo() {
-  if (!selectedSceneID.value) return;
-  try {
-    await requireSaved();
-    const check = await api.validateSceneVideo(workspace.projectId,draft.value.id,selectedSceneID.value,selectedVideoModel.value,videoResolution.value);
-    validationIssues.value = check.issues;
-    if (!check.valid) { message.value = "请先修正镜头输入。"; return; }
-    const created = await api.createSceneVideo(workspace.projectId,draft.value.id,selectedSceneID.value,{
-      expected_version:draft.value.version || 0,idempotency_key:crypto.randomUUID(),
-      model_id:selectedVideoModel.value,resolution:videoResolution.value,
-    });
-    await tasks.load(workspace.projectId,draft.value.id);
-    message.value = `镜头任务 ${created.id} 已提交，完成后可选择新版本。`;
-  } catch (cause) {
-    const issuePayload = (cause as {payload?:{issues?:{field:string;message:string}[]}}).payload;
-    if (issuePayload?.issues) validationIssues.value = issuePayload.issues;
-    message.value = (cause as Error).message;
-  }
-}
-async function generateBatchVideo() {
-  try {
-    await requireSaved();
-    const result = await api.createBatchVideo(workspace.projectId,draft.value.id,{
-      expected_version:draft.value.version || 0,idempotency_key:crypto.randomUUID(),
-      model_id:selectedVideoModel.value,resolution:videoResolution.value,
-    });
-    batchFailures.value = result.failed;
-    await tasks.load(workspace.projectId,draft.value.id);
-    message.value = `已提交 ${result.created.length} 个镜头，${result.failed.length} 项需要修正。`;
-  } catch (cause) { message.value = (cause as Error).message; }
-}
 async function chooseVersion(versionID: string) {
   try {
     await requireSaved();
@@ -552,20 +465,19 @@ function applyImport(action: "append" | "replace") {
 
     <section v-else-if="activeTab === 'scenes'" class="workspace-scenes">
       <p v-if="draft.storyboard_source_body && draft.storyboard_source_body !== draft.story.body" class="notice">正文已修改，当前分镜需要复核；可保留并编辑镜头，或重新生成分镜候选。</p>
-      <ul v-if="batchFailures.length" class="notice error"><li v-for="(failure,index) in batchFailures" :key="index">{{ failure.scene_id }} · {{ failure.field }}：{{ failure.message }}</li></ul>
       <div class="scene-layout" :class="{ 'has-selection': !!sceneForm }">
         <div ref="sceneBoardElement" class="scene-board">
           <div class="scene-board-header">
             <div class="scene-board-heading"><span class="scene-count">{{ draft.story.scenes.length }}</span><div><h2>分镜</h2><p>将故事拆解为镜头，逐一完善画面与素材</p></div></div>
-            <div class="actions"><button @click="sceneAction('create')">＋ 新增分镜</button><button class="primary" :disabled="!draft.story.scenes.length || !videoCapability?.supported" @click="generateBatchVideo">批量生成视频</button></div>
+            <div class="actions"><button @click="sceneAction('create')">＋ 新增分镜</button></div>
           </div>
           <div class="scene-list" aria-label="分镜列表">
             <p v-if="!draft.story.scenes.length" class="empty">先从正文生成分镜，也可以手动新增。</p>
             <div v-for="scene in draft.story.scenes" :key="scene.id" class="scene-row-wrap">
               <button class="scene-row" :class="{ active: scene.id === selectedSceneID }" :aria-pressed="scene.id === selectedSceneID" @click="switchScene(scene.id)">
                 <span class="scene-thumb"><img v-if="scenePreview(scene.id)" :src="scenePreview(scene.id)" alt="" loading="lazy" /><span v-else class="scene-thumb-empty">画面待添加</span><span class="scene-thumb-number">{{ String(scene.order).padStart(2, "0") }}</span></span>
-                <span class="scene-row-copy"><strong>{{ scene.title || `镜头 ${scene.order}` }}</strong><span class="scene-description">{{ scene.visual_prompt || "暂未填写画面描述" }}</span><span class="scene-row-tags"><span>{{ (draft.bindings || []).filter((binding) => binding.scene_id === scene.id && !["driving_audio", "voiceover"].includes(binding.usage)).length }} 张参考图</span><span>{{ (draft.bindings || []).filter((binding) => binding.scene_id === scene.id && ["driving_audio", "voiceover"].includes(binding.usage)).length }} 段音频</span></span></span>
-                <span class="scene-row-duration">{{ scene.duration_seconds }} 秒</span><span class="scene-status" :class="{ complete: sceneStatus(scene.id) === '已完成', running: ['生成中', '排队中'].includes(sceneStatus(scene.id)) }">{{ sceneStatus(scene.id) }}</span>
+                <span class="scene-row-copy"><strong>镜头 {{ String(scene.order).padStart(2, "0") }} · {{ scene.title || "未命名" }}</strong><span class="scene-description">{{ scene.visual_prompt || "暂未填写画面描述" }}</span><span class="scene-row-tags"><span>绑定：{{ bindingSummary(scene) }}</span></span></span>
+                <span class="scene-row-duration">{{ scene.duration_seconds }} 秒</span><span class="scene-status" :class="{ complete: sceneStatus(scene.id) === '视频已选用', running: ['视频生成中', '视频排队中'].includes(sceneStatus(scene.id)) }">{{ sceneStatus(scene.id) }}</span>
               </button>
               <button class="scene-row-delete" :aria-label="`删除镜头 ${scene.order}：${scene.title}`" @click="deleteSelectedScene(scene.id)">删除</button>
             </div>
@@ -576,27 +488,7 @@ function applyImport(action: "append" | "replace") {
           <div class="scene-inspector-heading"><button class="mobile-panel-back" @click="selectedSceneID = ''; sceneForm = null">返回镜头列表</button><h3>镜头 {{ String(selectedScene?.order || 0).padStart(2, "0") }}</h3><button class="scene-close" aria-label="关闭镜头设置" @click="selectedSceneID = ''; sceneForm = null">×</button></div>
           <div class="scene-inspector-content">
             <BindingWorkbench ref="workbench" v-if="selectedScene" :key="draft.id+selectedScene.id" :project-id="workspace.projectId" :draft="draft" :scene="selectedScene" :materials="materials" :models="bindingModels" @saved="acceptShotDraft" @material="materials.push($event)" />
-            <details class="legacy-settings"><summary>标题与高级设置（手动首尾帧 / 旧版兼容）</summary><p>场景人物的描述与台词请在上方工作台编辑；下方仅用于手动素材和旧版镜头。</p><label class="scene-title-label">标题<input v-model="sceneForm.title" /></label>
-            <label v-if="!selectedScene?.entity_bindings?.length">画面描述<textarea v-model="sceneForm.visual_prompt" rows="4" /></label>
-            <div class="scene-form-grid"><label>时长（秒）<input v-model.number="sceneForm.duration_seconds" type="number" min="1" /></label><label>画幅<input value="由视频模型决定" disabled /></label></div>
-            <h3>参考图片</h3>
-            <div v-for="usage in (['first_frame', 'last_frame', 'character_reference', 'scene_reference', 'prop_reference'] as SceneBinding['usage'][])" :key="usage" class="scene-material-row">
-              <div class="scene-material-preview"><img v-if="materialForScene(selectedSceneID, usage)" :src="api.mediaUrl(materialForScene(selectedSceneID, usage)!.url)" alt="" /><span v-else>＋</span></div>
-              <div class="scene-material-copy"><strong>{{ usageLabels[usage] }}</strong><small>{{ materialForScene(selectedSceneID, usage)?.name || "尚未选择素材" }}</small></div>
-              <button @click="openPicker(usage)">{{ materialForScene(selectedSceneID, usage) ? "更换" : "选择" }}</button>
-              <button v-if="materialForScene(selectedSceneID, usage)" :disabled="bindingBusy" @click="changeBinding(usage)">移除</button>
-            </div>
-            <h3>参考音频</h3>
-            <div v-for="usage in (['driving_audio', 'voiceover'] as SceneBinding['usage'][])" :key="usage" class="scene-material-row">
-              <div class="scene-material-preview audio">♫</div><div class="scene-material-copy"><strong>{{ usageLabels[usage] }}</strong><small>{{ materialForScene(selectedSceneID, usage)?.name || "尚未选择音频" }}</small></div>
-              <button @click="openPicker(usage)">{{ materialForScene(selectedSceneID, usage) ? "更换" : "选择" }}</button><button v-if="materialForScene(selectedSceneID, usage)" :disabled="bindingBusy" @click="changeBinding(usage)">移除</button>
-            </div>
-            <label>文本旁白（可选）<textarea v-model="sceneForm.narration" rows="3" placeholder="填写旁白文本；不会自动合成语音" /></label>
-          <div v-if="pickerUsage" class="candidate-card"><h3>选择{{ usageLabels[pickerUsage] }}</h3><p v-if="!pickerMaterials.length">当前类别没有素材，可在这里上传。</p><select v-else v-model="pickerChoice" aria-label="待绑定素材"><option value="">请选择</option><option v-for="item in pickerMaterials" :key="item.id" :value="item.id">{{ item.name }}</option></select><input ref="pickerFile" class="file-input" type="file" :accept="pickerUsage === 'driving_audio' || pickerUsage === 'voiceover' ? 'audio/*' : 'image/*'" @change="uploadForScene" /><div class="actions"><button :disabled="pickerUploading" @click="pickerFile?.click()">{{ pickerUploading ? `上传中 ${pickerProgress}%` : "上传新素材" }}</button><button @click="pickerUsage = ''">取消</button><button class="primary" :disabled="!pickerChoice || bindingBusy || pickerUploading" @click="changeBinding(pickerUsage as SceneBinding['usage'], pickerChoice)">确认绑定</button></div><RouterLink to="/materials">打开素材库</RouterLink></div>
-          <h3>视频模型</h3><label>模型<select v-model="selectedVideoModel"><option v-for="model in videoModels" :key="model.id" :value="model.id">{{ model.name }}</option></select></label><label>清晰度<select v-model="videoResolution"><option value="720P">720P</option><option value="1080P">1080P</option></select></label><p v-if="videoCapability && !videoCapability.supported" class="notice error">{{ videoCapability.reason }}</p><p v-else-if="videoCapability?.capability">支持首帧、可选尾帧和驱动音频；{{ videoCapability.capability.min_duration }}–{{ videoCapability.capability.max_duration }} 秒。</p><button :disabled="!selectedVideoModel" @click="checkVideoScene">检查生成条件</button><ul v-if="validationIssues.length" class="notice error"><li v-for="issue in validationIssues" :key="issue.field + issue.message">{{ issue.field }}：{{ issue.message }}</li></ul>
-          <p v-if="sceneBindings.some((binding) => ['character_reference','scene_reference','prop_reference'].includes(binding.usage))" class="notice">当前模型不支持参考图参与视频生成；绑定会保留，提交时需处理。</p>
-          <button @click="sceneAction('update')">保存高级设置</button><button v-if="!selectedScene?.entity_bindings?.length" class="primary" :disabled="!videoCapability?.supported" @click="generateSceneVideo">生成当前镜头视频</button></details>
-          <h3>生成任务</h3><p v-if="!selectedSceneTasks.length">暂无镜头任务。</p><div v-for="item in selectedSceneTasks" :key="item.id" class="task-row"><span>{{ item.status }} · {{ item.progress }}%</span><button v-if="item.status === 'failed'" @click="retryVideoTask(item.id)">重试</button><small v-if="item.error">{{ item.error }}</small></div>
+            <div class="scene-basic-settings"><h3>镜头信息</h3><label class="scene-title-label">镜头标题<input v-model="sceneForm.title" /></label><div class="scene-form-grid"><label>时长（秒）<input v-model.number="sceneForm.duration_seconds" type="number" min="1" /></label></div><button @click="sceneAction('update')">保存镜头信息</button></div>
           <h3>历史版本</h3><p v-if="!selectedSceneVersions.length">新版本完成后会显示在这里；到达时不会自动选用。</p><div v-for="version in selectedSceneVersions" :key="version.id" class="candidate-card"><video :src="api.mediaUrl(version.local_media_path)" controls preload="metadata" /><small>{{ new Date(version.created_at).toLocaleString() }} · {{ version.duration_seconds }} 秒</small><p v-if="version.based_on_old_settings" class="notice">基于旧设置生成</p><button class="primary" :disabled="draft.selected_versions?.[selectedSceneID] === version.id" @click="chooseVersion(version.id)">{{ draft.selected_versions?.[selectedSceneID] === version.id ? "已选用" : "选用此版本" }}</button><button v-if="draft.selected_versions?.[selectedSceneID] === version.id" @click="chooseVersion('')">取消选用</button></div>
           <div class="scene-edit-actions"><button @click="sceneAction('move', Math.max(1, (selectedScene?.order || 1) - 1))">上移</button><button @click="sceneAction('move', Math.min(draft.story.scenes.length, (selectedScene?.order || 1) + 1))">下移</button><button @click="sceneAction('copy')">复制</button><button class="danger-button" @click="deleteSelectedScene()">删除</button></div>
           </div>

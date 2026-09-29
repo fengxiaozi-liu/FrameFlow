@@ -70,9 +70,19 @@
 .workspace-scenes .scene-row-duration,.workspace-scenes .scene-status { position:static; grid-column:auto; font-size:12px; }
 .workspace-scenes .scene-thumb { width:76px; min-width:0; }
 .scene-inspector-content .binding-workbench h3 { color:#e6f4f1; }
-.legacy-settings { margin:18px 0; padding:12px; border:1px solid var(--line); border-radius:8px; }
-.legacy-settings summary { cursor:pointer; font-weight:650; }
-.legacy-settings>label { display:grid; gap:6px; }
+.scene-basic-settings { margin:18px 0; padding:12px; border:1px solid var(--line); border-radius:8px; }
+.scene-basic-settings>label { display:grid; gap:6px; }
+.binding-groups { display:grid; gap:12px; margin:16px 0; }
+.binding-group { padding:14px; border:1px solid var(--line); border-radius:12px; background:#172521; }
+.binding-group h3 { display:flex; gap:8px; align-items:baseline; margin:0 0 10px; }
+.binding-group h3 small { color:var(--muted); font-size:12px; font-weight:400; }
+.binding-group-scene { border-left:4px solid #14b8a6; }
+.binding-group-character { border-left:4px solid #c4a7ff; }
+.binding-group-character .entity-kind { color:#dac9ff; border-color:#9b83d2; background:#302943; }
+.binding-group .entity-card { margin-bottom:8px; }
+.shot-task-section { margin-top:20px; padding:16px; border:1px solid #64819a; border-radius:12px; background:#182631; }
+.shot-task-section h3 { display:flex; gap:10px; align-items:baseline; }
+.shot-task-section h3 small { color:#b9d0df; font-size:12px; font-weight:400; }
 input[type=range] { accent-color:var(--teal-600); }
 .binding-workbench .entity-body>* { min-width:0; }
 .binding-workbench .dialogue-row label { width:150px; }
