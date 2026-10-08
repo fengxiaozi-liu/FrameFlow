@@ -2,6 +2,36 @@ import {test,expect,type APIRequestContext,type Page} from '@playwright/test';
 import {randomUUID} from 'node:crypto';
 import AxeBuilder from '@axe-core/playwright';
 
+test('cancelling file selection keeps the entity drawer and unsaved input',async({page,request})=>{
+ const s=await seed(request);await page.goto(`${s.base}/shots/shot`);
+ for(const kind of ['场景','人物']){
+  await page.getByRole('button',{name:`＋ 添加${kind}`,exact:true}).click();
+  const drawer=page.getByRole('dialog');
+  await drawer.getByLabel('名称',{exact:true}).fill(`待保存${kind}`);
+  await drawer.getByLabel('参考描述',{exact:true}).fill('取消选图后仍需保留的描述');
+  const upload=drawer.getByLabel('上传参考图片',{exact:true});
+  // The native picker dispatches a bubbling cancel event on its file input.
+  await upload.dispatchEvent('cancel',{bubbles:true,cancelable:false});
+  await expect(drawer).toBeVisible();
+  await expect(drawer.getByLabel('名称',{exact:true})).toHaveValue(`待保存${kind}`);
+  await expect(drawer.getByLabel('参考描述',{exact:true})).toHaveValue('取消选图后仍需保留的描述');
+  await upload.setInputFiles('public/home/cafe.png');
+  await upload.dispatchEvent('cancel',{bubbles:true,cancelable:false});
+  await expect(drawer.locator('.reference-upload-preview')).toContainText('cafe.png');
+  await expect(drawer.locator('.reference-pending-upload').getByRole('checkbox')).toHaveCount(0);
+  await expect(drawer.getByRole('button',{name:'上传到素材库',exact:true})).toBeEnabled();
+  await drawer.getByRole('button',{name:'取消上传',exact:true}).click();
+  await expect(drawer).toBeVisible();
+  if(kind==='场景'){
+   await drawer.getByLabel('名称',{exact:true}).focus();await page.keyboard.press('Escape');
+  }else{
+   await drawer.getByRole('button',{name:'取消',exact:true}).click();
+  }
+  await expect(drawer).toHaveCount(0);
+  await expect(page.getByRole('button',{name:`＋ 添加${kind}`,exact:true})).toBeFocused();
+ }
+});
+
 test('new shot opens detail, keeps a single name field and recovers creation after lost response',async({page,request},testInfo)=>{
  const s=await seed(request);await page.goto(`${s.base}/shots`);
  await expect(page.getByLabel('新分镜名称')).toHaveCount(0);
@@ -105,8 +135,8 @@ test('list, configuration order, frozen task details, failure retry and another 
   await form.screenshot({path:testInfo.outputPath(`entity-form-${name}-mobile.png`)});await page.setViewportSize({width:1440,height:1000});
   await form.getByRole('button',{name:'保存并引用'}).click();await expect(form).toHaveCount(0);await expect(page.getByRole('status').first()).toHaveText('已保存');
  }
- const card=page.locator('.entity-card').nth(1);const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl6p9sAAAAASUVORK5CYII=','base64');await card.locator('input[type=file]').setInputFiles({name:'林夏.png',mimeType:'image/png',buffer:png});await expect(card.locator('.reference-tile')).toHaveCount(1);await expect(page.getByRole('status').first()).toHaveText('已保存');await card.locator('input[type=file]').first().setInputFiles({name:'林夏替换.png',mimeType:'image/png',buffer:png});await expect(card.locator('.reference-tile')).toHaveCount(1);await expect(page.getByRole('status').first()).toHaveText('已保存');
- await page.evaluate(()=>scrollTo(0,0));await page.screenshot({path:testInfo.outputPath('shot-detail-desktop.png'),fullPage:true});await page.setViewportSize({width:390,height:844});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBeTruthy();await page.evaluate(()=>scrollTo(0,0));await page.screenshot({path:testInfo.outputPath('shot-detail-mobile.png'),fullPage:true});await page.setViewportSize({width:1440,height:1000});await page.reload();await expect(page.getByRole('combobox',{name:'视频模型',exact:true})).toHaveValue(s.video);
+ const card=page.locator('.entity-card').nth(1);await card.locator('summary').click();const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl6p9sAAAAASUVORK5CYII=','base64');await card.locator('input[type=file]').setInputFiles({name:'林夏.png',mimeType:'image/png',buffer:png});await expect(card.locator('.reference-tile')).toHaveCount(1);await expect(page.getByRole('status').first()).toHaveText('已保存');await card.locator('input[type=file]').first().setInputFiles({name:'林夏替换.png',mimeType:'image/png',buffer:png});await expect(card.locator('.reference-tile')).toHaveCount(1);await expect(page.getByRole('status').first()).toHaveText('已保存');
+ await card.getByRole('button',{name:'编辑项目设定'}).click();await expect(page.getByRole('dialog').locator('.reference-tile')).toHaveCount(1);await page.getByRole('dialog').getByRole('button',{name:'保存并引用'}).click();await expect(page.getByRole('dialog')).toHaveCount(0);await expect(card.locator('.reference-tile')).toHaveCount(1);await page.evaluate(()=>scrollTo(0,0));await page.screenshot({path:testInfo.outputPath('shot-detail-desktop.png'),fullPage:true});await page.setViewportSize({width:390,height:844});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBeTruthy();await page.evaluate(()=>scrollTo(0,0));await page.screenshot({path:testInfo.outputPath('shot-detail-mobile.png'),fullPage:true});await page.setViewportSize({width:1440,height:1000});await page.reload();await expect(page.getByRole('combobox',{name:'视频模型',exact:true})).toHaveValue(s.video);
  await page.getByRole('button',{name:'生成视频',exact:true}).click();await expect(page).toHaveURL(/\/runs\/run-/);await expect(page.getByRole('heading',{name:'分镜图',exact:true})).toHaveCount(0);await expect(page.locator('.run-step')).toHaveCount(1);
  await expect(page.getByRole('heading',{name:'制作任务详情'})).toBeVisible();await expect(page.getByRole('region',{name:'本次生成设定'})).toContainText('4 秒');await expect(page.getByRole('button',{name:'按原输入重试'})).toBeVisible({timeout:15000});
  await page.screenshot({path:testInfo.outputPath('video-task-detail-desktop.png'),fullPage:true});await page.getByRole('button',{name:'按原输入重试'}).click();await expect(page.getByRole('button',{name:'按原输入重试'})).toBeVisible({timeout:15000});
@@ -116,7 +146,94 @@ test('list, configuration order, frozen task details, failure retry and another 
  await page.getByRole('link',{name:'分镜列表',exact:true}).click();await expect(page.locator('.shot-list-row')).toContainText('2 个制作任务');await page.setViewportSize({width:390,height:844});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBeTruthy();await page.getByRole('link',{name:'进入详情 →'}).click();await page.getByRole('link',{name:'进入任务 →'}).nth(1).click();await page.getByRole('button',{name:'取消制作任务'}).click();await page.getByRole('link',{name:'分镜详情',exact:true}).click();await expect(page.locator('.generation-run-row').nth(1)).toContainText('已取消');
 });
 test('lost submit response recovers same run without duplication',async({page,request})=>{
- const s=await seed(request);await page.goto(`${s.base}/shots/shot`);await configure(page,s);await page.getByRole('button',{name:'＋ 添加场景',exact:true}).click();const form=page.getByRole('dialog');await form.getByLabel('名称',{exact:true}).fill('参考场景');await form.locator('input[type=file]').setInputFiles({name:'场景.png',mimeType:'image/png',buffer:Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl6p9sAAAAASUVORK5CYII=','base64')});await expect(form.locator('.reference-tile')).toHaveCount(1);await form.getByRole('button',{name:'保存并引用'}).click();await expect(form).toHaveCount(0);const keys:string[]=[];
+ const s=await seed(request);await page.goto(`${s.base}/shots/shot`);await configure(page,s);await page.getByRole('button',{name:'＋ 添加场景',exact:true}).click();const form=page.getByRole('dialog');await form.getByLabel('名称',{exact:true}).fill('参考场景');await form.locator('input[type=file]').setInputFiles({name:'场景.png',mimeType:'image/png',buffer:Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl6p9sAAAAASUVORK5CYII=','base64')});await form.getByRole('button',{name:'使用这张图片',exact:true}).click();await expect(form.locator('.reference-tile')).toHaveCount(1);await form.getByRole('button',{name:'保存并引用'}).click();await expect(form).toHaveCount(0);const keys:string[]=[];
  await page.route('**/generation-runs',async route=>{if(route.request().method()!=='POST'){await route.continue();return}keys.push(route.request().postDataJSON().idempotency_key);if(keys.length===1){await route.fetch();await route.abort('failed')}else await route.continue()});
  await page.getByRole('button',{name:'生成视频',exact:true}).click();await expect(page.getByRole('alert')).toBeVisible();await page.getByRole('button',{name:'生成视频',exact:true}).click();await expect(page).toHaveURL(/\/runs\/run-/);await page.getByRole('link',{name:'分镜详情',exact:true}).click();await expect(page.locator('.generation-run-row')).toHaveCount(1);expect(keys).toHaveLength(2);expect(keys[0]).toBe(keys[1]);await page.reload();await expect(page.locator('.generation-run-row')).toHaveCount(1);
+});
+
+
+test('drawer image generation recovers submission, retries failure and adds classified references explicitly',async({page,request},testInfo)=>{
+ const s=await seed(request);const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl6p9sAAAAASUVORK5CYII=','base64');
+ await page.route('**/media/reference-demo.png',r=>r.fulfill({contentType:'image/png',body:png}));
+ const generatedId='drawer-'+randomUUID();let body:any,status='failed',submits=0,retries=0,cancels=0;
+ await page.route('**/reference-image-tasks',async route=>{submits++;const input=route.request().postDataJSON();if(submits===1){body=input;await route.abort('failed');return}expect(input).toEqual(body);await route.fulfill({status:202,json:{id:generatedId,status,kind:'image',progress:40}})});
+ await page.route(`**/api/tasks/${generatedId}`,route=>route.fulfill({json:{id:generatedId,status,kind:'image',progress:status==='succeeded'?100:40,error:status==='failed'?'模型暂时不可用':''}}));
+ await page.route(`**/api/tasks/${generatedId}/retry`,route=>{retries++;status='running';return route.fulfill({json:{id:generatedId,status,kind:'image',progress:40}})});
+ await page.route(`**/api/tasks/${generatedId}/cancel`,route=>{cancels++;status='cancelled';return route.fulfill({json:{id:generatedId,status,kind:'image',progress:40}})});
+ const material={id:`result-${generatedId}`,name:'雨夜咖啡馆 · 生成参考图',kind:'scene',url:'/media/reference-demo.png',reference_only:true,project_id:s.p};
+ expect((await request.post('/api/materials',{data:material})).ok()).toBeTruthy();
+ await page.goto(`${s.base}/shots/shot`);await page.getByRole('button',{name:'＋ 添加场景',exact:true}).click();const drawer=page.getByRole('dialog');await drawer.getByLabel('名称',{exact:true}).fill('雨夜咖啡馆');await drawer.getByLabel('参考描述',{exact:true}).fill('雨夜，玻璃窗，室内暖色灯光');await drawer.getByRole('button',{name:'文生图',exact:true}).click();
+ const generator=drawer.getByRole('region',{name:'文生图设置'});await generator.getByLabel('生图模型').selectOption(s.image);await generator.getByRole('button',{name:'使用参考描述'}).click();await expect(generator.getByLabel('生图提示词')).toHaveValue('雨夜，玻璃窗，室内暖色灯光');
+ await generator.getByRole('button',{name:'生成图片',exact:true}).click();await generator.getByRole('button',{name:'恢复提交',exact:true}).click();await expect(generator).toContainText('模型暂时不可用');expect(body.kind).toBe('scene');expect(body.aspect_ratio).toBe('16:9');
+ await generator.getByRole('button',{name:'按原设置重试'}).click();await generator.getByRole('button',{name:'取消生成'}).click();await expect(generator.getByRole('status')).toContainText('已取消');await generator.getByRole('button',{name:'按原设置重试'}).click();status='succeeded';
+ await expect(generator.getByRole('button',{name:'使用这张图片',exact:true})).toBeVisible();await expect(drawer.locator('.reference-tile')).toHaveCount(0);
+ await generator.scrollIntoViewIfNeeded();await page.screenshot({path:testInfo.outputPath('reference-image-generator-desktop.png')});
+ const axe=await new AxeBuilder({page}).include('.entity-editor-drawer').withTags(['wcag2a','wcag2aa']).analyze();expect(axe.violations).toEqual([]);
+ await page.setViewportSize({width:390,height:844});await generator.getByRole('button',{name:'使用这张图片',exact:true}).scrollIntoViewIfNeeded();expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBeTruthy();await page.screenshot({path:testInfo.outputPath('reference-image-generator-mobile.png')});
+ await generator.getByRole('button',{name:'使用这张图片',exact:true}).click();await expect(drawer.locator('.reference-tile')).toHaveCount(1);await expect(generator.getByRole('button',{name:'已加入参考图',exact:true})).toBeDisabled();await drawer.getByRole('button',{name:'保存并引用'}).click();await expect(drawer).toHaveCount(0);await page.reload();await expect(page.locator('.entity-card .reference-tile')).toHaveCount(1);
+ expect((await(await request.get('/api/materials')).json()).materials.some((m:any)=>m.id===material.id)).toBe(false);expect(submits).toBe(2);expect(retries).toBe(2);expect(cancels).toBe(1);const catalog=await(await request.get(`/api/projects/${s.p}/entities`)).json();expect(catalog.entities[0].references[0].material_id).toBe(material.id);const draft=await(await request.get(`/api/projects/${s.p}/drafts/${s.d}`)).json();expect(draft.generation_runs||[]).toHaveLength(0);
+ await page.getByRole('button',{name:'＋ 添加人物',exact:true}).click();await drawer.getByRole('button',{name:'从素材库选择',exact:true}).first().click();await expect(drawer.getByRole('button',{name:`选择参考图 ${material.name}`,exact:true})).toHaveCount(0);await drawer.getByRole('button',{name:'文生图',exact:true}).click();await expect(drawer.getByLabel('图片画幅')).toHaveValue('1:1');await drawer.getByRole('button',{name:'取消',exact:true}).click();
+});
+
+
+test('character drawer can select library images and explains unavailable generation models',async({page,request})=>{
+ const s=await seed(request);const id='character-'+randomUUID();const image={id,kind:'character',name:'林夏已有参考',url:'/media/existing-person.png'};
+ expect((await request.post('/api/materials',{data:image})).ok()).toBeTruthy();
+ await page.route('**/api/models?*',r=>r.fulfill({json:{models:[]}}));
+ await page.goto(`${s.base}/shots/shot`);await page.getByRole('button',{name:'＋ 添加人物',exact:true}).click();const drawer=page.getByRole('dialog');await drawer.getByLabel('名称',{exact:true}).fill('林夏');await drawer.getByRole('button',{name:'文生图',exact:true}).click();await expect(drawer).toContainText('暂无可用生图模型');await expect(drawer.getByRole('button',{name:'生成图片',exact:true})).toBeDisabled();
+ await drawer.getByRole('button',{name:'从素材库选择',exact:true}).click();const select=drawer.getByRole('button',{name:`选择参考图 ${image.name}`,exact:true});await select.click();await expect(select).toBeDisabled();await expect(drawer.locator('.reference-tile')).toHaveCount(1);await drawer.getByRole('button',{name:'保存并引用'}).click();await expect(drawer).toHaveCount(0);await page.reload();await expect(page.locator('.entity-card .reference-tile')).toHaveCount(1);const catalog=await(await request.get(`/api/projects/${s.p}/entities`)).json();expect(catalog.entities[0].kind).toBe('character');expect(catalog.entities[0].references[0].material_id).toBe(id);
+});
+
+test('reference upload uses explicit library button, survives reload and retries without duplicate uploads',async({page,request},testInfo)=>{
+ const s=await seed(request);await page.goto(`${s.base}/shots/shot`);
+ const ids:string[]=[];
+ for(const publish of [false,true]){
+  await page.getByRole('button',{name:'＋ 添加场景',exact:true}).click();const drawer=page.getByRole('dialog');
+  await drawer.getByLabel('名称',{exact:true}).fill(publish?'共享咖啡馆':'仅作参考的咖啡馆');
+  await expect(drawer.locator('.upload-tile')).toHaveCount(0);
+  await drawer.getByLabel('上传参考图片').setInputFiles('public/home/cafe.png');
+  const upload=drawer.locator('.reference-pending-upload');await expect(upload.getByRole('checkbox')).toHaveCount(0);
+  await expect(drawer.locator('.reference-tile')).toHaveCount(0);await drawer.getByRole('button',{name:'保存并引用'}).click();await expect(drawer.getByRole('alert')).toContainText('请先使用或取消');
+  let uploadRequests=0;const countUpload=(r:any)=>{if(r.url().endsWith('/api/materials/upload')&&r.method()==='POST')uploadRequests++};page.on('request',countUpload);
+  const uploaded=page.waitForResponse(r=>r.url().endsWith('/api/materials/upload')&&r.request().method()==='POST');
+  if(publish){
+   let promotions=0;await page.route('**/api/materials/*/library',async r=>{promotions++;if(promotions===1)await r.fulfill({status:503,json:{error:{message:'入库暂时失败，请重试'}}});else await r.continue()});
+   await upload.getByRole('button',{name:'上传到素材库',exact:true}).click();await expect(drawer.getByRole('alert').last()).toContainText('入库暂时失败');
+   await expect(drawer.locator('.reference-tile')).toHaveCount(0);
+   await upload.getByRole('button',{name:'上传到素材库',exact:true}).click();await expect(upload.getByRole('button',{name:'已上传到素材库',exact:true})).toBeDisabled();
+   await expect(drawer.locator('.reference-tile')).toHaveCount(0);expect(promotions).toBe(2);
+   const m=await(await uploaded).json();expect((await(await request.get('/api/materials')).json()).materials.filter((v:any)=>v.id===m.id)).toHaveLength(1);
+  }
+  await drawer.getByRole('button',{name:'文生图',exact:true}).click();await drawer.getByRole('button',{name:'从素材库选择',exact:true}).click();
+  await expect(upload).toBeVisible();if(publish)await expect(upload.getByRole('button',{name:'已上传到素材库',exact:true})).toBeDisabled();
+  if(!publish){await upload.scrollIntoViewIfNeeded();await page.screenshot({path:testInfo.outputPath('optional-library-desktop.png')});expect((await new AxeBuilder({page}).include('.entity-editor-drawer').withTags(['wcag2a','wcag2aa']).analyze()).violations).toEqual([])}
+  await upload.getByRole('button',{name:'使用这张图片',exact:true}).click();const m=await(await uploaded).json();ids.push(m.id);
+  await expect(drawer.locator('.reference-tile')).toHaveCount(1);await expect(upload).toHaveCount(0);
+  expect(uploadRequests).toBe(1);page.off('request',countUpload);
+  const library=await(await request.get('/api/materials')).json();expect(library.materials.some((v:any)=>v.id===m.id)).toBe(publish);
+  await drawer.getByRole('button',{name:'文生图',exact:true}).click();await expect(drawer.locator('.reference-tile')).toHaveCount(1);
+  await drawer.getByRole('button',{name:'保存并引用'}).click();await expect(drawer).toHaveCount(0);await page.reload();
+  await expect(page.locator('.entity-card .reference-tile')).toHaveCount(ids.length);await expect(page.locator('.entity-card .entity-cover').first()).toBeVisible();
+ }
+ await page.locator('.entity-card').first().getByRole('button',{name:'编辑项目设定'}).click();const drawer=page.getByRole('dialog');await expect(drawer.locator('.reference-tile')).toHaveCount(1);
+ await page.setViewportSize({width:390,height:844});await drawer.locator('.reference-selected-summary').scrollIntoViewIfNeeded();expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBeTruthy();await page.screenshot({path:testInfo.outputPath('optional-library-mobile.png')});
+ await drawer.getByRole('button',{name:'移除参考图绑定'}).click();await drawer.getByRole('button',{name:'保存并引用'}).click();await expect(drawer).toHaveCount(0);
+ expect((await request.get(`/api/materials/${ids[0]}`)).ok()).toBeTruthy();expect((await(await request.get('/api/materials')).json()).materials.some((m:any)=>m.id===ids[1])).toBeTruthy();
+});
+
+test('generated reference publishes only on explicit use and recovers publication failure',async({page,request},testInfo)=>{
+ const s=await seed(request);const id='optional-'+randomUUID(),materialID='result-'+id;
+ const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl6p9sAAAAASUVORK5CYII=','base64');
+ await page.route('**/media/optional.png',r=>r.fulfill({contentType:'image/png',body:png}));
+ expect((await request.post('/api/materials',{data:{id:materialID,name:'生成参考',kind:'character',url:'/media/optional.png',reference_only:true,project_id:s.p}})).ok()).toBeTruthy();
+ const task={id,status:'succeeded',kind:'image',progress:100};
+ await page.route('**/reference-image-tasks',r=>r.fulfill({status:202,json:task}));await page.route(`**/api/tasks/${id}`,r=>r.fulfill({json:task}));
+ let promotions=0;await page.route(`**/api/materials/${materialID}/library`,async r=>{promotions++;if(promotions===1)await r.fulfill({status:503,json:{error:{message:'入库暂时失败，请重试'}}});else await r.continue()});
+ await page.goto(`${s.base}/shots/shot`);await page.getByRole('button',{name:'＋ 添加人物',exact:true}).click();const drawer=page.getByRole('dialog');await drawer.getByLabel('名称',{exact:true}).fill('林夏');await drawer.getByLabel('参考描述',{exact:true}).fill('米色风衣');await drawer.getByRole('button',{name:'文生图',exact:true}).click();const generator=drawer.getByRole('region',{name:'文生图设置'});await generator.getByLabel('生图模型').selectOption(s.image);await generator.getByRole('button',{name:'生成图片',exact:true}).click();
+ await expect(generator.getByLabel('同时保存到素材库')).not.toBeChecked();await expect(drawer.locator('.reference-tile')).toHaveCount(0);
+ expect((await(await request.get('/api/materials')).json()).materials.some((m:any)=>m.id===materialID)).toBeFalsy();
+ await generator.getByLabel('同时保存到素材库').check();await generator.getByRole('button',{name:'使用这张图片'}).click();await expect(generator.getByRole('alert')).toContainText('入库暂时失败');await expect(drawer.locator('.reference-tile')).toHaveCount(0);
+ await generator.getByRole('button',{name:'使用这张图片'}).click();await expect(drawer.locator('.reference-tile')).toHaveCount(1);await expect(generator.getByRole('button',{name:'已加入参考图'})).toBeDisabled();expect(promotions).toBe(2);
+ expect((await(await request.get('/api/materials')).json()).materials.filter((m:any)=>m.id===materialID)).toHaveLength(1);
+ await drawer.getByRole('button',{name:'保存并引用'}).click();await expect(drawer).toHaveCount(0);await page.reload();await expect(page.locator('.entity-card .reference-tile')).toHaveCount(1);
 });

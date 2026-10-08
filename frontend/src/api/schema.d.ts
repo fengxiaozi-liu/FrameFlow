@@ -1812,6 +1812,8 @@ export interface paths {
         get: {
             parameters: {
                 query?: {
+                    /** @description Include project reference images alongside library assets */
+                    project_id?: string;
                     kind?: "scene" | "character" | "prop" | "voice" | "music";
                     q?: string;
                     media_type?: "image" | "audio";
@@ -1883,6 +1885,9 @@ export interface paths {
             requestBody: {
                 content: {
                     "multipart/form-data": {
+                        /** @default false */
+                        reference_only?: boolean;
+                        project_id?: string;
                         /** Format: binary */
                         file: string;
                         /** @enum {string} */
@@ -1990,6 +1995,43 @@ export interface paths {
                 };
             };
         };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/materials/{id}/library": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: components["parameters"]["ID"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Explicitly saved to library */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Material"];
+                    };
+                };
+            };
+        };
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -3371,6 +3413,9 @@ export interface components {
             input_fingerprint?: string;
         };
         Material: {
+            /** @default false */
+            reference_only: boolean;
+            project_id?: string;
             id: string;
             name: string;
             /** @enum {string} */

@@ -86,6 +86,22 @@ func (s MaterialService) Upload(g *gin.Context) {
 		return
 	}
 	asset.NormalizeLegacyKind()
+	if value := g.PostForm("reference_only"); value != "" && value != "false" {
+		if value != "true" || s.Projects == nil || g.PostForm("project_id") == "" {
+			writeError(g, Invalid("invalid_reference_scope", errors.New("reference image requires a project")))
+			return
+		}
+		if _, err = s.Projects.Get(ctx, g.PostForm("project_id")); err != nil {
+			writeError(g, err)
+			return
+		}
+		if !strings.HasPrefix(contentType, "image/") {
+			writeError(g, Invalid("invalid_reference_media", errors.New("reference must be an image")))
+			return
+		}
+		asset.ReferenceOnly = true
+		asset.ProjectID = g.PostForm("project_id")
+	}
 	if !validMaterialKind(asset.Kind) || strings.HasPrefix(contentType, "image/") && asset.Kind != material.Scene && asset.Kind != material.Character && asset.Kind != material.Prop || strings.HasPrefix(contentType, "audio/") && asset.Kind != material.Voice && asset.Kind != material.Music {
 		writeError(g, Invalid("invalid_material_kind", errors.New("category does not match media type")))
 		return

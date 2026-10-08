@@ -117,7 +117,6 @@ test("a completed storyboard task reveals its candidate and applying it opens th
   sendTaskEvent!(JSON.stringify({ task_id: taskId, project_id: projectId, draft_id: draftId, status: "succeeded", progress: 100, stage: "completed", at: new Date().toISOString() }));
   const card = page.locator(".editor-card .candidate-card");
   await expect(card).toContainText("走进书店");
-  await expect.poll(() => page.evaluate(() => scrollY)).toBeGreaterThan(0);
   await expect.poll(async () => {
     const button = (await card.getByRole("button", { name: "应用分镜" }).boundingBox())!;
     return button.y + button.height <= page.viewportSize()!.height;
@@ -127,16 +126,18 @@ test("a completed storyboard task reveals its candidate and applying it opens th
   await expect(page.locator(".shot-list-row")).toContainText("走进书店");
 });
 
-test("story editor follows the wide card layout and stays usable on mobile", async ({ page }, testInfo) => {
-  await page.goto("/studio");
+test("story editor fills the space beside navigation and stays usable on mobile", async ({ page }, testInfo) => {
+  await page.goto("/studio/new");
   const card = page.locator(".editor-card");
   await expect(card).toBeVisible();
   const desktop = await card.boundingBox();
-  expect(desktop?.width).toBeGreaterThan(1200);
+  const sidebar = await page.locator('.app-header').boundingBox();
+  expect(desktop!.x).toBeGreaterThanOrEqual(sidebar!.x + sidebar!.width);
+  expect(desktop!.width).toBeGreaterThan(page.viewportSize()!.width * .7);
   const projectBar = await page.locator(".studio-project-bar").boundingBox();
   const tabs = await page.locator(".workspace-tabs").boundingBox();
-  expect(Math.abs(tabs!.x + tabs!.width / 2 - (projectBar!.x + projectBar!.width / 2))).toBeLessThan(2);
-  await expect(page.locator(".workspace-tabs button").first()).toHaveCSS("font-size", "18px");
+  expect(Math.abs(tabs!.x + tabs!.width - (projectBar!.x + projectBar!.width))).toBeLessThan(2);
+  await expect(page.locator(".workspace-tabs button").first()).toHaveCSS("font-size", "13px");
   await expect(page.locator(".body-editor")).toHaveCSS("border-top-width", "0px");
   await page.screenshot({ path: testInfo.outputPath("studio-desktop.png"), fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 });
@@ -146,7 +147,7 @@ test("story editor follows the wide card layout and stays usable on mobile", asy
 });
 
 test("story drawer restores keyboard focus and mobile material picker keeps a retry path", async ({ page }, testInfo) => {
-  await page.goto("/studio");
+  await page.goto("/studio/new");
   const opener = page.getByRole("button", { name: "故事联想" });
   await opener.focus();
   await opener.press("Enter");
@@ -198,12 +199,11 @@ test("home, studio scene editing and WebSocket connection", async ({ page }) => 
   });
   await page.goto("/");
   await expect(
-    page.getByRole("heading", { name: "开始下一段视频创作" }),
+    page.getByRole("heading", { name: /把你的故事，\s*变成画面/ }),
   ).toBeVisible();
-  await page.getByPlaceholder(/例如：用 30 秒/).fill("记录城市的一天");
   await page.getByRole("button", { name: "开始创作" }).click();
   await expect(page).toHaveURL(/studio/);
-  await page.getByRole("button", { name: /分镜/ }).first().click();
+  await page.getByRole("navigation", { name: "创作阶段" }).getByRole("button", { name: /分镜/ }).click();
   await page.getByRole("button",{name:"＋ 新增分镜",exact:true}).click();await page.getByLabel("分镜名称",{exact:true}).fill("城市清晨");
   await page.getByLabel("镜头描述文本").fill("清晨街道与行人");await page.getByRole("link",{name:"分镜列表",exact:true}).click();
   await page.getByRole("button",{name:"＋ 新增分镜",exact:true}).click();await page.getByLabel("分镜名称",{exact:true}).fill("城市傍晚");await page.getByRole('link',{name:'分镜列表',exact:true}).click();await expect(page.locator(".shot-list-row")).toHaveCount(2);
@@ -221,7 +221,7 @@ test("provider switching and responsive layout", async ({ page }) => {
   await expect(
     page.locator(".catalog-table tbody tr").filter({ hasText: "qwen-plus" }),
   ).toBeVisible();
-  await page.goto("/studio");
+  await page.goto("/studio/new");
   await page.getByRole("button", { name: "故事联想" }).click();
   await expect(page.getByRole("dialog", { name: "故事联想" }).getByLabel("故事模型")).toHaveValue("e2e-bailian:qwen-plus");
   await page.getByRole("button", { name: "关闭故事联想" }).click();
@@ -311,6 +311,7 @@ test("Bailian connection saves a complete HTTPS endpoint", async ({
   await expect(
     page.getByRole("heading", { name: "自定义百炼连接" }),
   ).toBeVisible();
+  await page.getByRole("button", { name: "连接设置", exact: true }).click();
   await expect(page.getByLabel("API 完整地址")).toHaveValue(
     "https://custom.example.com/compatible-mode/v1/chat/completions",
   );
@@ -428,7 +429,7 @@ test("failed story generation preserves the saved body and retry control", async
   await page.route("**/api/projects/*/drafts/*/candidates", (route) =>
     route.fulfill({ status: 503, json: { message: "生成服务暂不可用" } }),
   );
-  await page.goto("/studio");
+  await page.goto("/studio/new");
   await page.getByLabel("故事正文").fill("用户已写的正文");
   await expect(page.locator(".editor-footer")).toContainText("已保存");
   await page.getByRole("button", { name: "故事联想" }).click();

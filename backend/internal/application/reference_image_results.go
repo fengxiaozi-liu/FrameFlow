@@ -54,5 +54,5 @@ func (a TaskResultApplier) saveReferenceImage(ctx context.Context, item task.Tas
 	if err != nil {
 		return err
 	}
-	return a.Materials.Save(ctx, material.Asset{ID: id, Name: item.Input.MaterialName + " · 生成参考图", Kind: material.Kind(strings.TrimPrefix(item.Target, "reference_")), URL: item.ResultURL, CreatedAt: time.Now().UTC(), Tags: []string{"文生图"}, Media: material.MediaInfo{Width: cfg.Width, Height: cfg.Height, SizeBytes: info.Size(), Format: http.DetectContentType(sample[:n])}})
+	return a.Materials.Save(ctx, material.Asset{ReferenceOnly: true, ProjectID: item.ProjectID, ID: id, Name: item.Input.MaterialName + " · 生成参考图", Kind: material.Kind(strings.TrimPrefix(item.Target, "reference_")), URL: item.ResultURL, CreatedAt: time.Now().UTC(), Tags: []string{"文生图"}, Media: material.MediaInfo{Width: cfg.Width, Height: cfg.Height, SizeBytes: info.Size(), Format: http.DetectContentType(sample[:n])}})
 }

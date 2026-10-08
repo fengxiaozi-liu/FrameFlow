@@ -39,10 +39,11 @@ func TestReferenceImageResultsRemainIndependentAndIdempotent(t *testing.T) {
 			t.Fatal(err)
 		}
 		asset, err := a.Materials.Get(ctx, "result-"+kind)
-		if err != nil || string(asset.Kind) != kind || asset.Media.Width != 16 {
+		if err != nil || string(asset.Kind) != kind || asset.Media.Width != 16 || !asset.ReferenceOnly || asset.ProjectID != "p" {
 			t.Fatal(asset, err)
 		}
 		asset.Name = "用户改名"
+		asset.ReferenceOnly = false // Explicit promotion must survive result replay.
 		if err = a.Materials.Save(ctx, asset); err != nil {
 			t.Fatal(err)
 		}
@@ -50,7 +51,7 @@ func TestReferenceImageResultsRemainIndependentAndIdempotent(t *testing.T) {
 			t.Fatal(err)
 		}
 		asset, _ = a.Materials.Get(ctx, asset.ID)
-		if asset.Name != "用户改名" {
+		if asset.Name != "用户改名" || asset.ReferenceOnly {
 			t.Fatal("replay overwrote material")
 		}
 	}

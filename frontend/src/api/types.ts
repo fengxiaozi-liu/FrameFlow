@@ -179,6 +179,8 @@ export interface Model {
 }
 export type MaterialKind = "scene" | "character" | "prop" | "voice" | "music" | "visual" | "frame";
 export interface Material {
+  reference_only?: boolean;
+  project_id?: string;
   id: string;
   name: string;
   kind: MaterialKind;

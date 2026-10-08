@@ -36,6 +36,8 @@ func (s MaterialService) Save(g *gin.Context) {
 		asset.CreatedAt = stored.CreatedAt
 		asset.Media = stored.Media
 		asset.LegacyKind = stored.LegacyKind
+		asset.ReferenceOnly = stored.ReferenceOnly
+		asset.ProjectID = stored.ProjectID
 		code = 200
 	} else if asset.ID == "" {
 		asset.ID = time.Now().UTC().Format("20060102150405.000000000")
@@ -74,6 +76,9 @@ func (s MaterialService) List(g *gin.Context) {
 	mediaType := g.Query("media_type")
 	filtered := items[:0]
 	for _, item := range items {
+		if item.ReferenceOnly && (g.Query("project_id") == "" || item.ProjectID != g.Query("project_id")) {
+			continue
+		}
 		if mediaType == "image" && item.Kind != material.Scene && item.Kind != material.Character && item.Kind != material.Prop || mediaType == "audio" && item.Kind != material.Voice && item.Kind != material.Music {
 			continue
 		}
@@ -120,6 +125,23 @@ func (s MaterialService) Delete(g *gin.Context) {
 		return
 	}
 	g.Status(http.StatusNoContent)
+}
+
+// AddToLibrary promotes the existing file without changing its ID or references.
+func (s MaterialService) AddToLibrary(g *gin.Context) {
+	item, err := s.Repo.Get(g.Request.Context(), g.Param("id"))
+	if err != nil {
+		writeError(g, err)
+		return
+	}
+	if item.ReferenceOnly {
+		item.ReferenceOnly = false
+		if err = s.Repo.Save(g.Request.Context(), item); err != nil {
+			writeError(g, err)
+			return
+		}
+	}
+	g.JSON(http.StatusOK, item)
 }
 
 func validMaterialKind(kind material.Kind) bool {

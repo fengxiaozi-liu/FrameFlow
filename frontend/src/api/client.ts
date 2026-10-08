@@ -209,19 +209,21 @@ export const api = {
       `/api/connections/${encodeURIComponent(item.connection_id)}/models/${encodeURIComponent(item.id)}`,
       { method: "DELETE" },
     ),
-  materials: (kind: MaterialKind | "" = "", q = "", mediaType = "") => {
+  materials: (kind: MaterialKind | "" = "", q = "", mediaType = "", projectId = "") => {
     const params = new URLSearchParams();
     if (kind) params.set("kind", kind);
     if (q) params.set("q", q);
     if (mediaType) params.set("media_type", mediaType);
+    if (projectId) params.set("project_id", projectId);
     return request<{ materials: Material[] }>(`/api/materials?${params}`);
   },
   materialUses: (id: string) => request<{ uses: string[] }>(`/api/materials/${encodeURIComponent(id)}/uses`),
-  uploadMaterial: (file: File, kind: MaterialKind, onProgress?: (value: number) => void) => {
+  uploadMaterial: (file: File, kind: MaterialKind, onProgress?: (value: number) => void, scope?: {projectId: string; referenceOnly: boolean}) => {
     const body = new FormData();
     body.append("file", file);
     body.append("kind", kind);
     body.append("name", file.name);
+    if(scope) { body.append("reference_only", String(scope.referenceOnly)); body.append("project_id", scope.projectId); }
     return new Promise<Material>((resolve, reject) => {
       const xhr = new XMLHttpRequest();
       xhr.open("POST", `${endpoint}/api/materials/upload`);
@@ -244,6 +246,7 @@ export const api = {
       method: "PUT",
       body: JSON.stringify(item),
     }),
+  addMaterialToLibrary: (id: string) => request<Material>(`/api/materials/${encodeURIComponent(id)}/library`, {method: "POST"}),
   deleteMaterial: (id: string) =>
     request<void>(`/api/materials/${id}`, { method: "DELETE" }),
   socketUrl: () =>

@@ -117,6 +117,7 @@ func RegisterRoutes(
 	materialRoutes.PUT("/:id", materials.Save)
 	materialRoutes.DELETE("/:id", materials.Delete)
 	materialRoutes.POST("/upload", materials.Upload)
+	materialRoutes.POST("/:id/library", materials.AddToLibrary)
 }
 
 func RegisterStatic(engine *gin.Engine, uploadDir string, files fs.FS) {

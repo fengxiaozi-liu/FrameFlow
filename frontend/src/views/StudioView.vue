@@ -223,7 +223,7 @@ onMounted(async () => {
     storyModels.value = models.models.filter((model) => model.enabled && model.supported);
     selectedStoryModel.value = storyModels.value.find((model) => model.default)?.id || storyModels.value[0]?.id || "";
     bindingModels.value = (await api.models()).models;
-    materials.value = (await api.materials()).materials || [];
+    materials.value = (await api.materials("", "", "", workspace.projectId)).materials || [];
     const requestedScene = String(route.query.scene || "");
     if (requestedScene && draft.value.story.scenes.some((scene) => scene.id === requestedScene)) {
       selectScene(requestedScene); activeTab.value = "scenes";
@@ -441,7 +441,7 @@ function applyImport(action: "append" | "replace") {
 </script>
 
 <template>
-  <main class="studio-page creative-workspace" @play.capture="claimPlayback($event.target as HTMLMediaElement)">
+  <main class="studio-page creative-workspace" :class="{ 'body-workspace': activeTab === 'body' }" @play.capture="claimPlayback($event.target as HTMLMediaElement)">
     <div class="studio-project-bar">
       <header class="studio-head">
         <div class="studio-identity"><input v-model="draft.name" class="title-input" aria-label="草稿名称" /><p class="studio-meta"><span>{{ workspace.projectName || "新项目" }}</span><span aria-hidden="true">·</span><span class="save-indicator" :class="saveState">{{ saveState === "saved" ? "已保存" : saveState === "saving" ? "保存中" : saveState === "failed" ? "保存失败" : "尚未保存" }}</span></p></div>

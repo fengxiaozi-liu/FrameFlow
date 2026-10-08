@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from "vue-router";
 import HomeView from "../views/HomeView.vue";
 import StudioView from "../views/StudioView.vue";
+import WorkbenchView from "../views/WorkbenchView.vue";
 import TasksView from "../views/TasksView.vue";
 import ConfigView from "../views/ConfigView.vue";
 import MaterialsView from "../views/MaterialsView.vue";
@@ -11,7 +12,8 @@ export default createRouter({
   history: createWebHistory(),
   routes: [
     { path: "/", component: HomeView },
-    { path: "/studio", component: StudioView },
+    { path: "/studio", component: WorkbenchView },
+    { path: "/studio/new", component: StudioView },
     { path: "/studio/:projectId/:draftId", component: StudioView },
     { path: '/studio/:projectId/:draftId/shots', component: ShotListView },
     { path: '/studio/:projectId/:draftId/shots/:sceneId', component: ShotDetailView },

@@ -27,14 +27,16 @@ type MediaInfo struct {
 }
 
 type Asset struct {
-	ID         string    `json:"id"`
-	Name       string    `json:"name"`
-	Kind       Kind      `json:"kind"`
-	LegacyKind Kind      `json:"legacy_kind,omitempty"`
-	Tags       []string  `json:"tags,omitempty"`
-	Media      MediaInfo `json:"media,omitempty"`
-	URL        string    `json:"url"`
-	CreatedAt  time.Time `json:"created_at"`
+	ReferenceOnly bool      `json:"reference_only,omitempty"`
+	ProjectID     string    `json:"project_id,omitempty"`
+	ID            string    `json:"id"`
+	Name          string    `json:"name"`
+	Kind          Kind      `json:"kind"`
+	LegacyKind    Kind      `json:"legacy_kind,omitempty"`
+	Tags          []string  `json:"tags,omitempty"`
+	Media         MediaInfo `json:"media,omitempty"`
+	URL           string    `json:"url"`
+	CreatedAt     time.Time `json:"created_at"`
 }
 
 func (a *Asset) NormalizeLegacyKind() bool {

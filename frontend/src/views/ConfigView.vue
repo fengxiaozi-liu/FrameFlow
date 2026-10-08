@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, nextTick, onMounted, ref } from "vue";
 import { api } from "../api/client";
 import type { Capability, Model, ProviderConnection } from "../api/types";
 
@@ -8,6 +8,9 @@ const models = ref<Model[]>([]);
 const selectedID = ref("");
 const draft = ref<ProviderConnection>(blankConnection());
 const creating = ref(false);
+const settingsOpen = ref(false);
+const settingsToggle = ref<HTMLButtonElement | null>(null);
+const loading = ref(true);
 const apiKey = ref("");
 const modelID = ref("");
 const modelName = ref("");
@@ -47,6 +50,7 @@ async function loadConnections(select?: string) {
 function selectConnection(id: string) {
   selectedID.value = id;
   creating.value = false;
+  settingsOpen.value = false;
   draft.value = { ...(connections.value.find((item) => item.id === id) || blankConnection()) };
   apiKey.value = "";
   addingModel.value = false;
@@ -66,6 +70,11 @@ function newConnection() {
   apiKey.value = "";
   creating.value = true;
   addingModel.value = false;
+}
+async function closeSettings() {
+  settingsOpen.value = false;
+  await nextTick();
+  settingsToggle.value?.focus();
 }
 async function saveConnection() {
   busy.value = true;
@@ -141,7 +150,7 @@ async function removeConnection() {
   catch (error) { showError(error); }
   finally { busy.value = false; }
 }
-onMounted(() => { void loadConnections().catch(showError); });
+onMounted(() => { void loadConnections().catch(showError).finally(() => { loading.value = false; }); });
 </script>
 
 <template>
@@ -151,7 +160,13 @@ onMounted(() => { void loadConnections().catch(showError); });
       <button class="primary" @click="newConnection">添加厂商连接</button>
     </header>
     <p v-if="message" :class="['notice', { error: messageIsError }]" :role="messageIsError ? 'alert' : 'status'">{{ message }}</p>
-    <div :class="['catalog-layout', { 'catalog-layout-creating': creating }]">
+    <p v-if="loading" role="status">正在加载厂商连接…</p>
+    <section v-else-if="!connections.length && !creating" class="catalog-welcome" aria-labelledby="catalog-welcome-title">
+      <div><h2 id="catalog-welcome-title">连接模型，开始 AI 创作</h2><p>添加厂商的 API 地址和密钥，然后同步或手动添加模型。</p></div>
+      <ol><li>添加厂商连接</li><li>同步或添加模型</li><li>选择能力并启用</li></ol>
+      <button class="primary" @click="newConnection">添加第一个连接</button>
+    </section>
+    <div v-else :class="['catalog-layout', { 'catalog-layout-creating': creating, 'catalog-layout-settings': active && settingsOpen && !creating }]">
       <aside class="catalog-sidebar">
         <h2>厂商连接</h2>
         <button v-for="connection in connections" :key="connection.id"
@@ -168,6 +183,7 @@ onMounted(() => { void loadConnections().catch(showError); });
           <header class="catalog-toolbar">
             <div><h2>{{ active.name }}</h2><small>模型列表</small></div>
             <div class="actions">
+              <button ref="settingsToggle" :aria-expanded="settingsOpen" aria-controls="connection-settings" @click="settingsOpen = !settingsOpen">连接设置</button>
               <button :disabled="busy || !active.credential_set" @click="testConnection">测试连接</button>
               <button :disabled="busy || !active.credential_set" @click="sync">同步模型</button>
               <button class="primary" :disabled="busy" @click="addingModel = !addingModel">手动添加</button>
@@ -210,14 +226,14 @@ onMounted(() => { void loadConnections().catch(showError); });
         <div v-else class="empty">选择或添加厂商连接</div>
       </section>
 
-      <aside v-if="active || creating" class="catalog-settings">
-        <h2>{{ creating ? '添加连接' : '连接设置' }}</h2>
+      <aside v-if="active || creating" v-show="creating || settingsOpen" id="connection-settings" class="catalog-settings">
+        <div class="catalog-settings-heading"><h2>{{ creating ? '添加连接' : '连接设置' }}</h2><button v-if="!creating" class="quiet" aria-label="收起连接设置" @click="closeSettings">收起</button></div>
         <form @submit.prevent="saveConnection">
           <label>名称<input v-model="draft.name" required placeholder="例如 百炼 · 北京" /></label>
           <label>厂商<select v-model="draft.vendor" :disabled="!creating"><option value="bailian">阿里云百炼</option></select></label>
           <label v-if="draft.vendor === 'bailian'">API 完整地址<input v-model.trim="draft.base_url" required type="url" placeholder="https://{WorkspaceId}.cn-beijing.maas.aliyuncs.com/compatible-mode/v1/chat/completions" /></label>
           <label>API Key<input v-model="apiKey" type="password" autocomplete="new-password" :placeholder="draft.credential_set ? '已配置，留空表示不修改' : '输入 API Key'" /></label>
-          <div class="catalog-settings-actions"><button class="primary" type="submit" :disabled="busy">保存连接</button><button v-if="active" type="button" class="quiet" :disabled="busy" @click="removeConnection">删除连接</button></div>
+          <div class="catalog-settings-actions"><button class="primary" type="submit" :disabled="busy">保存连接</button><button v-if="creating" type="button" :disabled="busy" @click="selectConnection(connections[0]?.id || '')">取消</button><button v-if="active" type="button" class="quiet" :disabled="busy" @click="removeConnection">删除连接</button></div>
         </form>
       </aside>
     </div>

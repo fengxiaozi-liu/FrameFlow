@@ -1,5 +1,6 @@
 import type { components } from './schema';
 import { request } from './client';
+import type {Task} from './types';
 type S = components['schemas'];
 export type EntityVersion=S['EntityVersion'];
 export type EntityCatalog=S['EntityCatalog'];
@@ -18,6 +19,8 @@ const write=<T>(path:string,method:string,body:unknown)=>request<T>(path,{method
 // shape for all readers, including the intermediate voice-before-entity save.
 export const normalizeEntityCatalog=(catalog:EntityCatalog):EntityCatalog=>({...catalog,entities:catalog.entities||[],voice_profiles:catalog.voice_profiles||[]});
 export const bindingsApi={
+ referenceImage:(p:string,d:string,input:S['ReferenceImageRequest'])=>write<Task>(`${project(p)}/drafts/${encodeURIComponent(d)}/reference-image-tasks`,'POST',input),
+ task:(id:string)=>request<Task>(`/api/tasks/${encodeURIComponent(id)}`),
  catalog:(p:string)=>request<EntityCatalog>(`${project(p)}/entities`).then(normalizeEntityCatalog),
  saveEntity:(p:string,input:S['EntityWrite'],create=false)=>write<EntityCatalog>(`${project(p)}/entities${create?'':`/${encodeURIComponent(input.entity.id)}`}`,create?'POST':'PATCH',input).then(normalizeEntityCatalog),
  archiveEntity:(p:string,input:S['EntityWrite'])=>write<EntityCatalog>(`${project(p)}/entities/${encodeURIComponent(input.entity.id)}/archive`,'POST',input).then(normalizeEntityCatalog),
