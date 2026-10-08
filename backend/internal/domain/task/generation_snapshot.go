@@ -94,6 +94,10 @@ func FreezeSnapshot(value GenerationSnapshot) (GenerationSnapshot, error) {
 }
 
 type GenerationRun struct {
+	CreatedAt       *time.Time           `json:"created_at,omitempty"`
+	UpdatedAt       *time.Time           `json:"updated_at,omitempty"`
+	Selection       *RunSelection        `json:"selection,omitempty"`
+	Steps           []Task               `json:"steps,omitempty"`
 	RequestHash     string               `json:"request_hash,omitempty"`
 	VideoModelID    string               `json:"video_model_id,omitempty"`
 	Resolution      string               `json:"resolution,omitempty"`
@@ -105,4 +109,10 @@ type GenerationRun struct {
 	TaskIDs         []string             `json:"task_ids"`
 	SnapshotID      string               `json:"snapshot_id"`
 	Error           string               `json:"error,omitempty"`
+}
+
+type RunSelection struct {
+	ImageTakeID    string            `json:"image_take_id,omitempty"`
+	SpeechTakeIDs  map[string]string `json:"speech_take_ids,omitempty"`
+	VideoVersionID string            `json:"video_version_id,omitempty"`
 }

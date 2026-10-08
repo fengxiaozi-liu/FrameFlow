@@ -101,7 +101,7 @@ function locationLink(use: string) {
     <div class="material-workspace" :class="{ 'has-selection': !!selected }"><section class="materials-grid" aria-label="素材列表">
       <button v-for="item in sortedItems" :key="item.id" class="card material-card" :class="{ selected: selected?.id === item.id }" :aria-pressed="selected?.id === item.id" @click="inspect(item)">
         <span class="material-card-preview"><img v-if="item.kind !== 'voice' && item.kind !== 'music'" :src="api.mediaUrl(item.url)" :alt="item.name" loading="lazy" /><span v-else class="audio-tile"><span class="audio-play" aria-hidden="true">▶</span><span class="audio-wave" aria-hidden="true">▂▅▃▆▂▄▇▃▅</span></span></span>
-        <span class="material-card-info"><strong>{{ item.name }}</strong><span class="material-kind" :class="item.kind">{{ categories.find((tab) => tab.id === item.kind)?.label }}</span></span>
+        <span class="material-card-info"><strong :title="item.name">{{ item.name }}</strong><span class="material-card-meta"><span class="material-kind" :class="item.kind">{{ categories.find((tab) => tab.id === item.kind)?.label }}</span><span class="material-measure" v-if="item.kind === 'voice' || item.kind === 'music'">{{ item.media?.duration_seconds ? `${item.media.duration_seconds.toFixed(1)} 秒` : '音频' }}</span><span class="material-measure" v-else-if="item.media?.width">{{item.media.width}} × {{item.media.height}}</span></span></span>
         <small v-if="item.legacy_kind === 'frame'">原首尾帧</small>
       </button>
       <div v-if="loaded && !items.length && !error" class="material-empty">

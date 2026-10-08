@@ -19,6 +19,9 @@ type VideoCapability struct {
 }
 
 func VideoCapabilityFor(remoteModelID string) (VideoCapability, bool) {
+	if remoteModelID == "wan2.7-r2v" || remoteModelID == "wan2.7-r2v-2026-06-12" {
+		return VideoCapability{ModelPrefix: "wan2.7-r2v", MinDuration: 2, MaxDuration: 15, Resolutions: []string{"720P", "1080P"}, AllowedMedia: map[string]int{"reference_image": 5}, MaxImageBytes: 10 << 20}, true
+	}
 	if remoteModelID != "wan2.7-i2v" && remoteModelID != "wan2.7-i2v-2026-04-25" {
 		return VideoCapability{}, false
 	}
@@ -64,7 +67,11 @@ func (c VideoCapability) ValidateInput(duration int, resolution string, usages [
 			return fmt.Errorf("media usage %q exceeds limit %d", usage, limit)
 		}
 	}
-	if counts["first_frame"] != 1 {
+	if c.ModelPrefix == "wan2.7-r2v" {
+		if counts["reference_image"] == 0 {
+			return fmt.Errorf("at least one reference_image is required")
+		}
+	} else if counts["first_frame"] != 1 {
 		return fmt.Errorf("exactly one first_frame is required")
 	}
 	return nil

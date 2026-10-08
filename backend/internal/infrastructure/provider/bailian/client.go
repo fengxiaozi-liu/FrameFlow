@@ -144,7 +144,7 @@ func (c Client) Discover(ctx context.Context, connection provider.Connection, ke
 							entry.Capabilities = append(entry.Capabilities, provider.Story)
 						case (capability == "IG" || capability == provider.Image) && imageProtocol(m.Model):
 							entry.Capabilities = append(entry.Capabilities, provider.Image)
-						case (capability == "VG" || capability == provider.Video) && strings.HasPrefix(m.Model, "wan2.7-i2v"):
+						case (capability == "VG" || capability == provider.Video) && (strings.HasPrefix(m.Model, "wan2.7-i2v") || strings.HasPrefix(m.Model, "wan2.7-r2v")):
 							entry.Capabilities = append(entry.Capabilities, provider.Video)
 						}
 					}
@@ -255,7 +255,25 @@ func (c Client) GenerateVideo(ctx context.Context, connection provider.Connectio
 	if !model.Supports(provider.Video) || !known {
 		return provider.VideoResult{}, provider.ErrUnsupported
 	}
-	if !strings.HasPrefix(input.SourceImageURL, "https://") && !strings.HasPrefix(input.SourceImageURL, "http://") && !strings.HasPrefix(input.SourceImageURL, "data:image/") {
+	referenceMode := capability.ModelPrefix == "wan2.7-r2v"
+	if referenceMode {
+		if input.SourceImageURL != "" || input.LastFrameURL != "" || input.DrivingAudioURL != "" {
+			return provider.VideoResult{}, errors.New("reference video only accepts reference images")
+		}
+		for _, ref := range input.References {
+			if !strings.HasPrefix(ref.URL, "https://") && !strings.HasPrefix(ref.URL, "http://") && !strings.HasPrefix(ref.URL, "data:image/") {
+				return provider.VideoResult{}, errors.New("reference image must be a public URL or image data URI")
+			}
+		}
+		if input.AspectRatio == "" {
+			input.AspectRatio = "16:9"
+		}
+		if input.AspectRatio != "16:9" && input.AspectRatio != "9:16" && input.AspectRatio != "1:1" {
+			return provider.VideoResult{}, errors.New("unsupported reference video ratio")
+		}
+	} else if len(input.References) > 0 {
+		return provider.VideoResult{}, errors.New("first-frame model does not support reference images")
+	} else if !strings.HasPrefix(input.SourceImageURL, "https://") && !strings.HasPrefix(input.SourceImageURL, "http://") && !strings.HasPrefix(input.SourceImageURL, "data:image/") {
 		return provider.VideoResult{}, errors.New("source image must be a public URL or an image data URI")
 	}
 	if input.LastFrameURL != "" && !strings.HasPrefix(input.LastFrameURL, "https://") && !strings.HasPrefix(input.LastFrameURL, "http://") && !strings.HasPrefix(input.LastFrameURL, "data:image/") {
@@ -283,6 +301,12 @@ func (c Client) GenerateVideo(ctx context.Context, connection provider.Connectio
 		input.Resolution = "1080P"
 	}
 	usages := []string{"first_frame"}
+	if referenceMode {
+		usages = nil
+		for range input.References {
+			usages = append(usages, "reference_image")
+		}
+	}
 	if input.LastFrameURL != "" {
 		usages = append(usages, "last_frame")
 	}
@@ -300,10 +324,20 @@ func (c Client) GenerateVideo(ctx context.Context, connection provider.Connectio
 	}
 	req := protocol.WanxiangVideoRequest{Model: model.RemoteID}
 	req.Input.Prompt = input.Prompt
-	req.Input.Media = append(req.Input.Media, struct {
-		Type string `json:"type"`
-		URL  string `json:"url"`
-	}{Type: "first_frame", URL: input.SourceImageURL})
+	if referenceMode {
+		for _, ref := range input.References {
+			req.Input.Media = append(req.Input.Media, struct {
+				Type string `json:"type"`
+				URL  string `json:"url"`
+			}{Type: "reference_image", URL: ref.URL})
+		}
+		req.Parameters.Ratio = input.AspectRatio
+	} else {
+		req.Input.Media = append(req.Input.Media, struct {
+			Type string `json:"type"`
+			URL  string `json:"url"`
+		}{Type: "first_frame", URL: input.SourceImageURL})
+	}
 	if input.LastFrameURL != "" {
 		req.Input.Media = append(req.Input.Media, struct {
 			Type string `json:"type"`
@@ -329,7 +363,8 @@ func (c Client) GenerateVideo(ctx context.Context, connection provider.Connectio
 }
 
 func (c Client) PollVideo(ctx context.Context, connection provider.Connection, model provider.Model, id string) (provider.VideoResult, bool, error) {
-	if !model.Supports(provider.Video) || !strings.HasPrefix(model.RemoteID, "wan2.7-i2v") {
+	_, known := provider.VideoCapabilityFor(model.RemoteID)
+	if !model.Supports(provider.Video) || !known {
 		return provider.VideoResult{}, false, provider.ErrUnsupported
 	}
 	key, err := c.key(ctx, connection)

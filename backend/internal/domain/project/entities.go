@@ -19,6 +19,7 @@ type EntityVersion struct {
 	Description          string           `json:"description"`
 	Revision             int64            `json:"revision"`
 	References           []ReferenceImage `json:"references"`
+	VoiceMaterialID      string           `json:"voice_material_id,omitempty"`
 	VoiceProfileID       string           `json:"voice_profile_id,omitempty"`
 	VoiceProfileRevision int64            `json:"voice_profile_revision,omitempty"`
 	Archived             bool             `json:"archived,omitempty"`
@@ -53,7 +54,7 @@ func (e EntityVersion) Validate() error {
 		}
 		seen[r.MaterialID] = true
 	}
-	if e.Kind == "location" && e.VoiceProfileID != "" {
+	if e.Kind == "location" && (e.VoiceProfileID != "" || e.VoiceMaterialID != "") {
 		return errors.New("locations cannot have voices")
 	}
 	if (e.VoiceProfileID == "") != (e.VoiceProfileRevision == 0) {

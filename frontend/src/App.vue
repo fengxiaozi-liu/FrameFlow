@@ -6,4 +6,4 @@ const tasks = useTaskStore();
 onMounted(tasks.connect);
 onUnmounted(tasks.disconnect);
 </script>
-<template><AppHeader /><RouterView /></template>
+<template><AppHeader /><RouterView :key="$route.path" /></template>

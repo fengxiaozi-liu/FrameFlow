@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/project"
+	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/story"
 	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/task"
 )
 
@@ -17,7 +18,27 @@ func syncProjectReferences(ctx context.Context, tx *sql.Tx, p project.Project) e
 		_, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO material_references(project_id,draft_id,scene_id,material_id,source_kind,source_id) SELECT ?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM materials WHERE id=?)`, p.ID, d, s, m, k, id, m)
 		return err
 	}
+	shotRefs := func(d string, scenes []story.Scene, kind, source string) error {
+		for _, scene := range scenes {
+			for _, b := range scene.EntityBindings {
+				if b.ReferenceMaterialIDs == nil {
+					continue
+				}
+				for _, id := range *b.ReferenceMaterialIDs {
+					if err := add(d, scene.ID, id, kind, source+":"+b.ID); err != nil {
+						return err
+					}
+				}
+			}
+		}
+		return nil
+	}
 	for _, e := range p.Entities {
+		if e.VoiceMaterialID != "" {
+			if err := add("", "", e.VoiceMaterialID, "entity", fmt.Sprintf("%s:%d", e.ID, e.Revision)); err != nil {
+				return err
+			}
+		}
 		for _, r := range e.References {
 			if err := add("", "", r.MaterialID, "entity", fmt.Sprintf("%s:%d", e.ID, e.Revision)); err != nil {
 				return err
@@ -25,12 +46,29 @@ func syncProjectReferences(ctx context.Context, tx *sql.Tx, p project.Project) e
 		}
 	}
 	for _, d := range p.Drafts {
+		if err := shotRefs(d.ID, d.Story.Scenes, "shot_reference", d.ID); err != nil {
+			return err
+		}
+		for _, run := range d.GenerationRuns {
+			for _, snap := range run.Plan {
+				for _, entity := range snap.Entities {
+					for _, ref := range entity.References {
+						if err := add(d.ID, run.SceneID, ref.MaterialID, "generation_run", run.ID); err != nil {
+							return err
+						}
+					}
+				}
+			}
+		}
 		for _, b := range d.Bindings {
 			if err := add(d.ID, b.SceneID, b.MaterialID, "binding", b.Usage); err != nil {
 				return err
 			}
 		}
 		for _, snap := range d.StoryboardSnapshots {
+			if err := shotRefs(d.ID, snap.Scenes, "storyboard_snapshot", snap.ID); err != nil {
+				return err
+			}
 			for _, take := range snap.MediaTakes {
 				if err := add(d.ID, take.SceneID, take.MaterialID, "storyboard_snapshot", snap.ID); err != nil {
 					return err

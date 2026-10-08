@@ -7,8 +7,16 @@ import type {Draft,Scene} from '../api/types';
 vi.mock('../api/bindings',()=>({bindingsApi:{saveContext:vi.fn()}}));
 describe('shot save concurrency',()=>{
  beforeEach(()=>{localStorage.clear();vi.clearAllMocks()});
+ it('persists generation settings and ignores a save arriving after unmount',async()=>{
+  const scene:Scene={id:'s',order:1,title:'分镜',visual_prompt:'old',narration:'',duration_seconds:4};const draft:Draft={id:'d',name:'d',version:1,story:{body:'',summary:'',scenes:[scene],updated_at:''}};
+  const saved=vi.fn();let editor!:ReturnType<typeof useShotEditor>;const w=mount(defineComponent({setup(){editor=useShotEditor(()=>({project:'p',draft,scene}),saved);return()=>null}}));
+  let resolve!:(v:Awaited<ReturnType<typeof bindingsApi.saveContext>>)=>void;vi.mocked(bindingsApi.saveContext).mockImplementationOnce(()=>new Promise(r=>resolve=r) as ReturnType<typeof bindingsApi.saveContext>);
+  editor.change({generation_settings:{image_model_id:'im',video_model_id:'vid',aspect_ratio:'16:9',resolution:'720P',duration_seconds:4}});const pending=editor.flush();
+  expect(bindingsApi.saveContext).toHaveBeenCalledWith('p','d','s',expect.objectContaining({generation_settings:expect.objectContaining({video_model_id:'vid'})}));
+  w.unmount();resolve({...draft,version:2} as never);await pending;expect(saved).not.toHaveBeenCalled();expect(localStorage.length).toBe(1);
+ });
  it('keeps input typed while saving and saves the next version',async()=>{
-  const scene:Scene={id:'s',order:1,title:'',visual_prompt:'old',narration:'',duration_seconds:4};const draft:Draft={id:'d',name:'d',version:1,story:{body:'',summary:'',scenes:[scene],updated_at:''}};
+  const scene:Scene={id:'s',order:1,title:'分镜',visual_prompt:'old',narration:'',duration_seconds:4};const draft:Draft={id:'d',name:'d',version:1,story:{body:'',summary:'',scenes:[scene],updated_at:''}};
   let editor!:ReturnType<typeof useShotEditor>;const w=mount(defineComponent({setup(){editor=useShotEditor(()=>({project:'p',draft,scene}),()=>{});return()=>null}}));
   let resolve!:(v:Awaited<ReturnType<typeof bindingsApi.saveContext>>)=>void;vi.mocked(bindingsApi.saveContext).mockImplementationOnce(()=>new Promise(r=>resolve=r) as ReturnType<typeof bindingsApi.saveContext>);
   editor.change({prompt_document:{schema_version:1,nodes:[{type:'text',text:'first'}]}});const pending=editor.flush();

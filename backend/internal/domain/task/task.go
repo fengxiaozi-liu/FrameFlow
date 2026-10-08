@@ -52,6 +52,7 @@ func ParseKind(value string) (Kind, error) {
 }
 
 type Input struct {
+	MaterialName    string `json:"material_name,omitempty"`
 	Prompt          string `json:"prompt"`
 	SourceBody      string `json:"source_body,omitempty"`
 	Mode            string `json:"mode,omitempty"`

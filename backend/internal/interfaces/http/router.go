@@ -41,6 +41,7 @@ func RegisterRoutes(
 	taskRoutes.GET("/:id/download", tasks.Download)
 
 	projectRoutes := api.Group("/projects")
+	projectRoutes.POST("/:id/drafts/:draftId/reference-image-tasks", tasks.CreateReferenceImage)
 	projectRoutes.GET("/:id/entities", projects.EntityCatalog)
 	projectRoutes.GET("/:id/entities/:entityId/uses", projects.EntityUsage)
 	projectRoutes.POST("/:id/entities", projects.WriteEntity)
@@ -56,6 +57,8 @@ func RegisterRoutes(
 	projectRoutes.POST("/:id/drafts/:draftId/scenes/:sceneId/bound-video-tasks", tasks.CreateBoundVideo)
 	projectRoutes.GET("/:id/drafts/:draftId/scenes/:sceneId/media-takes", projects.ListMediaTakes)
 	projectRoutes.POST("/:id/drafts/:draftId/scenes/:sceneId/generation-runs", tasks.CreateGenerationRun)
+	projectRoutes.GET("/:id/drafts/:draftId/scenes/:sceneId/generation-runs", tasks.ListGenerationRuns)
+	projectRoutes.PUT("/:id/drafts/:draftId/scenes/:sceneId/generation-runs/:runId/selected-media", tasks.SelectRunMedia)
 	projectRoutes.GET("/:id/drafts/:draftId/scenes/:sceneId/generation-runs/:runId", tasks.GetGenerationRun)
 	projectRoutes.POST("/:id/drafts/:draftId/scenes/:sceneId/generation-runs/:runId/cancel", tasks.CancelGenerationRun)
 	projectRoutes.PUT("/:id/drafts/:draftId/scenes/:sceneId/selected-media", projects.SelectMediaTake)

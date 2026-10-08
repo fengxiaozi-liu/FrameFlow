@@ -17,6 +17,7 @@ const tasks = useTaskStore();
 const route = useRoute();
 const router = useRouter();
 const activeTab = ref<"body" | "scenes" | "video">("body");
+watch(activeTab,value=>{if(value==='scenes'&&workspace.projectId)void router.push(`/studio/${encodeURIComponent(workspace.projectId)}/${encodeURIComponent(workspace.draft.id)}/shots`)});
 const drawerOpen = ref(false);
 const drawerElement = ref<HTMLElement>();
 const drawerWidth = ref(420);
@@ -34,7 +35,7 @@ const selectedSceneID = ref("");
 const bindingModels = ref<Model[]>([]);
 const sceneForm = ref<Scene | null>(null);
 const workbench=ref<InstanceType<typeof BindingWorkbench>>();
-async function switchTab(value:'body'|'scenes'|'video'){if(workbench.value&&!await workbench.value.flush()){message.value='请先处理镜头保存提示。';return}stopPlayback();activeTab.value=value}
+async function switchTab(value:'body'|'scenes'|'video'){if(workbench.value&&!await workbench.value.flush()){message.value='请先处理镜头保存提示。';return}stopPlayback();if(value==='scenes'){try{await requireSaved()}catch(e){message.value=(e as Error).message;return}await router.push(`/studio/${encodeURIComponent(workspace.projectId)}/${encodeURIComponent(draft.value.id)}/shots`);return}activeTab.value=value}
 async function switchScene(id:string){if(workbench.value&&!await workbench.value.flush()){message.value="当前镜头尚未保存，请先处理保存提示。";return}stopPlayback();selectScene(id)}
 const candidateNeedsReview = ref("");
 const importInput = ref<HTMLInputElement>();
@@ -198,6 +199,8 @@ async function handleTaskEvent(event: TaskEvent) {
 }
 
 onMounted(async () => {
+  if(route.query.scene&&route.params.projectId&&route.params.draftId){await router.replace(`/studio/${encodeURIComponent(String(route.params.projectId))}/${encodeURIComponent(String(route.params.draftId))}/shots/${encodeURIComponent(String(route.query.scene))}`);return}
+  if(route.query.tab==='video')activeTab.value='video';
   unsubscribe = tasks.subscribe((event) => void handleTaskEvent(event));
   try {
     const projectID = String(route.params.projectId || "");
@@ -228,7 +231,7 @@ onMounted(async () => {
     await tasks.load();
   } catch (error) { message.value = (error as Error).message; }
 });
-onUnmounted(() => { unsubscribe(); if (saveTimer) clearTimeout(saveTimer); stopDrawerResize(); window.removeEventListener("resize", clampDrawerToViewport); });
+onUnmounted(() => { unsubscribe?.(); if (saveTimer) clearTimeout(saveTimer); stopDrawerResize(); window.removeEventListener("resize", clampDrawerToViewport); });
 onBeforeRouteLeave(async () => {
   if (internalRouteUpdate) return true;
   if (saveState.value === "saved") return true;

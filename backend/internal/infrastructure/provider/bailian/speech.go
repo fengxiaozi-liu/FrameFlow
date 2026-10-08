@@ -74,7 +74,7 @@ func (c Client) discoverCompatible(ctx context.Context, connection provider.Conn
 			caps = append(caps, provider.Speech)
 		case imageProtocol(m.ID):
 			caps = append(caps, provider.Image)
-		case m.ID == "wan2.7-i2v" || m.ID == "wan2.7-i2v-2026-04-25":
+		case m.ID == "wan2.7-i2v" || m.ID == "wan2.7-i2v-2026-04-25" || m.ID == "wan2.7-r2v" || m.ID == "wan2.7-r2v-2026-06-12":
 			caps = append(caps, provider.Video)
 		case chatProtocol(m.ID):
 			caps = append(caps, provider.Story)

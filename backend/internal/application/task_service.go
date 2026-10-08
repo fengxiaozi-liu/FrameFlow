@@ -190,6 +190,26 @@ func (s TaskService) Retry(g *gin.Context) {
 		writeError(g, err)
 		return
 	}
+	if t.RunID != "" {
+		generationRunTransition.Lock()
+		defer generationRunTransition.Unlock()
+		p, err := s.Projects.Get(ctx, t.ProjectID)
+		if err != nil {
+			writeError(g, err)
+			return
+		}
+		d, err := draftByID(&p, t.DraftID)
+		if err != nil {
+			writeError(g, err)
+			return
+		}
+		for _, run := range d.GenerationRuns {
+			if run.ID == t.RunID && run.State == "cancelled" {
+				writeError(g, Conflict("task_not_retryable", errors.New("制作任务已取消，请重新生成")))
+				return
+			}
+		}
+	}
 	if err := t.Retry(time.Now().UTC()); err != nil {
 		writeError(g, Conflict("task_not_retryable", err))
 		return

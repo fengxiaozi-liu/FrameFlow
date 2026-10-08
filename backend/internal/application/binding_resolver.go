@@ -66,6 +66,19 @@ func ResolveBindings(c project.EntityCatalog, scene story.Scene, needSpeech bool
 				}
 			}
 		}
+		if b.ReferenceMaterialIDs != nil {
+			refs = []project.ReferenceImage{}
+			for i, id := range *b.ReferenceMaterialIDs {
+				ref := project.ReferenceImage{MaterialID: id, Order: i, Label: "镜头参考"}
+				for _, base := range e.References {
+					if base.MaterialID == id {
+						ref.Label = base.Label
+						break
+					}
+				}
+				refs = append(refs, ref)
+			}
+		}
 		out.Entities = append(out.Entities, ResolvedBinding{Binding: b, Entity: e, Description: description, References: refs})
 	}
 	out.Prompt = scene.VisualPrompt

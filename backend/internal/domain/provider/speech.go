@@ -46,6 +46,14 @@ func InputCapabilityFor(id string) (InputCapability, bool) {
 		for i := 2; i <= 15; i++ {
 			c.Durations = append(c.Durations, i)
 		}
+	case "wan2.7-r2v", "wan2.7-r2v-2026-06-12":
+		c.Version = "bindings.r2v.v1"
+		c.ReferenceVideo = true
+		c.ReferenceImages = 5
+		c.Resolutions = []string{"720P", "1080P"}
+		for i := 2; i <= 15; i++ {
+			c.Durations = append(c.Durations, i)
+		}
 	default:
 		return c, false
 	}

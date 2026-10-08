@@ -991,6 +991,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/projects/{id}/drafts/{draftId}/reference-image-tasks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["createReferenceImage"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/tasks": {
         parameters: {
             query?: never;
@@ -2764,7 +2780,30 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                    draftId: string;
+                    sceneId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Run list */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["GenerationRunList"];
+                    };
+                };
+            };
+        };
         put?: never;
         post: {
             parameters: {
@@ -3105,6 +3144,64 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/projects/{id}/drafts/{draftId}/scenes/{sceneId}/generation-runs/{runId}/selected-media": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                    draftId: string;
+                    sceneId: string;
+                    runId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["RunSelectionWrite"];
+                };
+            };
+            responses: {
+                /** @description Run selection saved */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["GenerationRun"];
+                    };
+                };
+                /** @description Version conflict */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Result does not belong to this run */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -3156,6 +3253,8 @@ export interface components {
             reconfirm?: boolean;
         };
         SceneWrite: {
+            /** @description Optional stable identity for create retries; existing identity recovers the original scene */
+            creation_id?: string;
             expected_version: number;
             /** @enum {string} */
             action: "create" | "update" | "copy" | "move";
@@ -3220,6 +3319,7 @@ export interface components {
             entity_bindings?: components["schemas"]["ShotEntityBinding"][];
             prompt_document?: components["schemas"]["PromptDocument"];
             utterances?: components["schemas"]["Utterance"][];
+            generation_settings?: components["schemas"]["ShotGenerationSettings"];
         };
         Candidate: {
             id: string;
@@ -3330,12 +3430,30 @@ export interface components {
             run_id?: string;
             depends_on?: string[];
             request_hash?: string;
+            progress?: number;
+            stage?: string;
+            retry_count?: number;
+            error?: string;
+            /** Format: date-time */
+            created_at?: string;
+            /** Format: date-time */
+            updated_at?: string;
         };
         ReferenceImage: {
             material_id: string;
             content_hash?: string;
             label?: string;
             order: number;
+        };
+        ReferenceImageRequest: {
+            idempotency_key: string;
+            /** @enum {string} */
+            kind: "scene" | "character";
+            name: string;
+            prompt: string;
+            model_id: string;
+            /** @enum {string} */
+            aspect_ratio: "16:9" | "9:16" | "1:1";
         };
         EntityVersion: {
             id: string;
@@ -3345,6 +3463,8 @@ export interface components {
             description: string;
             revision: number;
             references: components["schemas"]["ReferenceImage"][];
+            /** @description Selected voice audio material from the material library */
+            voice_material_id?: string;
             voice_profile_id?: string;
             voice_profile_revision?: number;
             archived?: boolean;
@@ -3383,6 +3503,8 @@ export interface components {
             selected_material_ids?: string[];
             /** @enum {string} */
             role: "primary" | "supplement" | "cast";
+            /** @description 当前分镜独立参考图；缺省沿用项目档案，空数组不使用图片。优先于 selected_material_ids。 */
+            reference_material_ids?: string[];
         };
         PromptNode: {
             /** @constant */
@@ -3416,6 +3538,9 @@ export interface components {
             entity_bindings: components["schemas"]["ShotEntityBinding"][];
             prompt_document: components["schemas"]["PromptDocument"];
             utterances: components["schemas"]["Utterance"][];
+            generation_settings?: components["schemas"]["ShotGenerationSettings"];
+            title?: string;
+            narration?: string;
         };
         GenerationRequest: {
             expected_version: number;
@@ -3516,6 +3641,12 @@ export interface components {
             video_model_id?: string;
             resolution?: string;
             duration_seconds?: number;
+            /** Format: date-time */
+            created_at?: string;
+            /** Format: date-time */
+            updated_at?: string;
+            selection?: components["schemas"]["RunSelection"];
+            steps?: components["schemas"]["Task"][];
         };
         ModelInputCapability: {
             version: string;
@@ -3534,7 +3665,7 @@ export interface components {
         };
         BindingError: {
             /** @enum {string} */
-            code: "entity_revision_conflict" | "draft_version_conflict" | "reference_missing" | "entity_in_use" | "reference_limit_exceeded" | "capability_unsupported" | "speaker_unresolved" | "voice_unavailable" | "audio_exceeds_duration" | "idempotency_key_reused";
+            code: "entity_revision_conflict" | "draft_version_conflict" | "reference_missing" | "entity_in_use" | "reference_limit_exceeded" | "capability_unsupported" | "speaker_unresolved" | "voice_unavailable" | "audio_exceeds_duration" | "idempotency_key_reused" | "run_not_found" | "run_result_mismatch" | "invalid_generation_settings" | "invalid_video_model" | "invalid_video_options" | "invalid_run" | "run_conflict";
             message: string;
             issues?: components["schemas"]["BindingIssue"][];
             catalog?: components["schemas"]["EntityCatalog"];
@@ -3545,6 +3676,30 @@ export interface components {
             selected?: {
                 [key: string]: string;
             };
+        };
+        ShotGenerationSettings: {
+            /** @description Legacy image step model; omitted by direct reference-video workflows. */
+            image_model_id?: string;
+            video_model_id: string;
+            aspect_ratio: string;
+            resolution: string;
+            duration_seconds: number;
+        };
+        RunSelection: {
+            image_take_id?: string;
+            speech_take_ids?: {
+                [key: string]: string;
+            };
+            video_version_id?: string;
+        };
+        GenerationRunList: {
+            runs: components["schemas"]["GenerationRun"][];
+        };
+        RunSelectionWrite: {
+            expected_version: number;
+            take_id?: string;
+            utterance_id?: string;
+            video_version_id?: string;
         };
     };
     responses: never;
@@ -3566,4 +3721,46 @@ export interface components {
     pathItems: never;
 }
 export type $defs = Record<string, never>;
-export type operations = Record<string, never>;
+export interface operations {
+    createReferenceImage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                draftId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReferenceImageRequest"];
+            };
+        };
+        responses: {
+            /** @description Idempotent image task; successful result is stored as result-{task.id} material */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Task"];
+                };
+            };
+            /** @description Invalid input or unsupported model */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Idempotency key reused with changed parameters */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+}

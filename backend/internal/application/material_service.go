@@ -139,13 +139,61 @@ func (s MaterialService) usageLocations(g *gin.Context, item material.Asset) ([]
 			return nil, err
 		}
 		for _, p := range projects {
+			for _, entity := range p.EntityCatalog.Entities {
+				if entity.VoiceMaterialID == item.ID {
+					uses = append(uses, p.ID+"/entity/"+entity.ID)
+				}
+				for _, ref := range entity.References {
+					if ref.MaterialID == item.ID {
+						uses = append(uses, p.ID+"/entity/"+entity.ID)
+					}
+				}
+			}
 			for _, d := range p.Drafts {
+				for _, scene := range d.Story.Scenes {
+					for _, binding := range scene.EntityBindings {
+						if binding.ReferenceMaterialIDs != nil {
+							for _, id := range *binding.ReferenceMaterialIDs {
+								if id == item.ID {
+									uses = append(uses, p.ID+"/"+d.ID+"/"+scene.ID)
+								}
+							}
+						}
+					}
+				}
+				for _, run := range d.GenerationRuns {
+					for _, snap := range run.Plan {
+						for _, entity := range snap.Entities {
+							for _, ref := range entity.References {
+								if ref.MaterialID == item.ID {
+									uses = append(uses, p.ID+"/"+d.ID+"/run/"+run.ID)
+								}
+							}
+						}
+					}
+				}
+				for _, take := range d.MediaTakes {
+					if take.MaterialID == item.ID {
+						uses = append(uses, p.ID+"/"+d.ID+"/take/"+take.ID)
+					}
+				}
 				for _, binding := range d.Bindings {
 					if binding.MaterialID == item.ID {
 						uses = append(uses, p.ID+"/"+d.ID+"/"+binding.SceneID)
 					}
 				}
 				for _, snapshot := range d.StoryboardSnapshots {
+					for _, scene := range snapshot.Scenes {
+						for _, binding := range scene.EntityBindings {
+							if binding.ReferenceMaterialIDs != nil {
+								for _, id := range *binding.ReferenceMaterialIDs {
+									if id == item.ID {
+										uses = append(uses, p.ID+"/"+d.ID+"/snapshot/"+snapshot.ID)
+									}
+								}
+							}
+						}
+					}
 					for _, binding := range snapshot.Bindings {
 						if binding.MaterialID == item.ID {
 							uses = append(uses, p.ID+"/"+d.ID+"/snapshot/"+snapshot.ID)
@@ -166,6 +214,15 @@ func (s MaterialService) usageLocations(g *gin.Context, item material.Asset) ([]
 			return nil, err
 		}
 		for _, value := range tasks {
+			if value.Snapshot != nil {
+				for _, entity := range value.Snapshot.Entities {
+					for _, ref := range entity.References {
+						if ref.MaterialID == item.ID {
+							uses = append(uses, "task/"+value.ID)
+						}
+					}
+				}
+			}
 			if value.Input.SourceImageURL == item.URL {
 				uses = append(uses, "task/"+value.ID)
 			}

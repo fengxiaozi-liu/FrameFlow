@@ -3,21 +3,67 @@ package application
 import (
 	"errors"
 	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/project"
+	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/provider"
 	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/story"
 	"github.com/gin-gonic/gin"
+	"path/filepath"
+	"strings"
 	"time"
 )
 
 func (s ProjectService) WriteShotContext(g *gin.Context) {
 	var in struct {
-		Expected   *int64                `json:"expected_version"`
-		Bindings   []story.EntityBinding `json:"entity_bindings"`
-		Prompt     story.PromptDocument  `json:"prompt_document"`
-		Utterances []story.Utterance     `json:"utterances"`
+		Expected   *int64                    `json:"expected_version"`
+		Bindings   []story.EntityBinding     `json:"entity_bindings"`
+		Prompt     story.PromptDocument      `json:"prompt_document"`
+		Utterances []story.Utterance         `json:"utterances"`
+		Title      *string                   `json:"title"`
+		Narration  *string                   `json:"narration"`
+		Settings   *story.GenerationSettings `json:"generation_settings"`
 	}
 	if err := g.ShouldBindJSON(&in); err != nil || in.Expected == nil {
 		writeError(g, Invalid("invalid_context", errors.New("expected_version required")))
 		return
+	}
+	for _, binding := range in.Bindings {
+		if binding.ReferenceMaterialIDs == nil {
+			continue
+		}
+		for _, id := range *binding.ReferenceMaterialIDs {
+			asset, err := s.Materials.Get(g.Request.Context(), id)
+			ext := strings.ToLower(filepath.Ext(asset.URL))
+			if err != nil || !strings.HasPrefix(asset.URL, "/media/") || (ext != ".png" && ext != ".jpg" && ext != ".jpeg" && ext != ".webp") {
+				writeError(g, Invalid("invalid_context", errors.New("镜头参考图不存在或不是已上传图片")))
+				return
+			}
+		}
+	}
+	if in.Settings != nil {
+		if err := in.Settings.Validate(); err != nil {
+			writeError(g, Invalid("invalid_generation_settings", err))
+			return
+		}
+		if in.Settings.ImageModelID != "" {
+			image, e := s.Models.GetModel(g.Request.Context(), in.Settings.ImageModelID)
+			ic, known := provider.InputCapabilityFor(image.RemoteID)
+			if e != nil || !known || !image.Enabled || !image.Supported || !image.Supports(provider.Image) || ic.ReferenceImages == 0 {
+				writeError(g, Invalid("invalid_generation_settings", errors.New("分镜图模型不可用")))
+				return
+			}
+		}
+		video, e := s.Models.GetModel(g.Request.Context(), in.Settings.VideoModelID)
+		vc, known := provider.InputCapabilityFor(video.RemoteID)
+		validDuration, validResolution := false, false
+		for _, v := range vc.Durations {
+			validDuration = validDuration || v == in.Settings.DurationSeconds
+		}
+		for _, v := range vc.Resolutions {
+			validResolution = validResolution || v == in.Settings.Resolution
+		}
+		if e != nil || !known || !video.Enabled || !video.Supported || !video.Supports(provider.Video) || (!vc.FirstFrame && !vc.ReferenceVideo) || !validDuration || !validResolution {
+			writeError(g, Invalid("invalid_generation_settings", errors.New("视频模型、时长或清晰度不可用")))
+			return
+		}
 	}
 	atomic, ok := s.Repo.(project.AtomicRepository)
 	if !ok {
@@ -40,9 +86,29 @@ func (s ProjectService) WriteShotContext(g *gin.Context) {
 				continue
 			}
 			next := *scene
+			if in.Title != nil {
+				if strings.TrimSpace(*in.Title) == "" {
+					return errors.New("请填写分镜名称")
+				}
+				if len([]rune(*in.Title)) > 100 {
+					return errors.New("镜头标题最多100字")
+				}
+				next.Title = *in.Title
+			}
+			if in.Narration != nil {
+				next.Narration = *in.Narration
+			}
 			next.EntityBindings = in.Bindings
 			next.PromptDocument = &in.Prompt
+			next.MergeDescriptionSupplements()
 			next.Utterances = in.Utterances
+			if in.Settings != nil {
+				if err := in.Settings.Validate(); err != nil {
+					return err
+				}
+				next.GenerationSettings = in.Settings
+				next.DurationSeconds = in.Settings.DurationSeconds
+			}
 			r, err := ResolveBindings(p.EntityCatalog, next, false)
 			if err != nil {
 				return err

@@ -17,17 +17,20 @@ import (
 
 var generationRunTransition sync.Mutex
 
+func isVideoPath(path string) bool { return path == "first_frame_video" || path == "reference_video" }
+
 func runIdentity(parts string) string {
 	h := sha256.Sum256([]byte(parts))
 	return hex.EncodeToString(h[:16])
 }
 func (s TaskService) CreateGenerationRun(g *gin.Context) {
 	var in GenerationRequest
-	if err := g.ShouldBindJSON(&in); err != nil || in.IdempotencyKey == "" || in.VideoModelID == "" || in.Path != "reference_image_then_video" {
+	if err := g.ShouldBindJSON(&in); err != nil || in.IdempotencyKey == "" || in.VideoModelID == "" || (in.Path != "reference_image_then_video" && in.Path != "reference_video") || (in.Path == "reference_video" && in.ModelID != in.VideoModelID) {
 		writeError(g, Invalid("invalid_run", errors.New("generation input and video_model_id required")))
 		return
 	}
-	id := "run-" + runIdentity(g.Param("id")+g.Param("draftId")+g.Param("sceneId")+in.IdempotencyKey)
+	id := "run-" + runIdentity(g.Param("id")+"\x00"+g.Param("draftId")+"\x00"+g.Param("sceneId")+"\x00"+in.IdempotencyKey)
+	legacyID := "run-" + runIdentity(g.Param("id")+g.Param("draftId")+g.Param("sceneId")+in.IdempotencyKey)
 	b, _ := json.Marshal(in)
 	hash := runIdentity(string(b))
 	p, err := s.Projects.Get(g.Request.Context(), g.Param("id"))
@@ -41,7 +44,7 @@ func (s TaskService) CreateGenerationRun(g *gin.Context) {
 		return
 	}
 	for _, r := range d.GenerationRuns {
-		if r.ID == id {
+		if r.ID == id || (r.ID == legacyID && r.SceneID == g.Param("sceneId")) {
 			if r.RequestHash != hash {
 				writeError(g, Conflict("idempotency_key_reused", errors.New("run inputs changed")))
 				return
@@ -52,8 +55,9 @@ func (s TaskService) CreateGenerationRun(g *gin.Context) {
 	}
 	model, modelErr := s.Providers.Catalog.Models.GetModel(g.Request.Context(), in.VideoModelID)
 	cap, known := provider.InputCapabilityFor(model.RemoteID)
-	if modelErr != nil || !known || !model.Enabled || !model.Supported || !model.Supports(provider.Video) || !cap.FirstFrame {
-		writeError(g, Invalid("invalid_video_model", errors.New("请选择可用的首帧视频模型后开始制作")))
+	directVideo := in.Path == "reference_video"
+	if modelErr != nil || !known || !model.Enabled || !model.Supported || !model.Supports(provider.Video) || (directVideo && !cap.ReferenceVideo) || (!directVideo && !cap.FirstFrame) {
+		writeError(g, Invalid("invalid_video_model", errors.New("请选择支持当前生成方式的视频模型")))
 		return
 	}
 	duration := in.DurationSeconds
@@ -84,9 +88,10 @@ func (s TaskService) CreateGenerationRun(g *gin.Context) {
 		writeError(g, Invalid("invalid_run", err))
 		return
 	}
-	run := task.GenerationRun{ID: id, SceneID: g.Param("sceneId"), State: "preparing", SnapshotID: snap.ID, RequestHash: hash, VideoModelID: in.VideoModelID, DurationSeconds: in.DurationSeconds, Resolution: in.Resolution, Plan: []task.GenerationSnapshot{snap}, TaskIDs: []string{}}
+	now := time.Now().UTC()
+	run := task.GenerationRun{ID: id, SceneID: g.Param("sceneId"), State: "preparing", SnapshotID: snap.ID, RequestHash: hash, VideoModelID: in.VideoModelID, DurationSeconds: duration, Resolution: resolution, Plan: []task.GenerationSnapshot{snap}, TaskIDs: []string{}, CreatedAt: &now, UpdatedAt: &now, Selection: &task.RunSelection{SpeechTakeIDs: map[string]string{}}}
 	for _, scene := range d.Story.Scenes {
-		if scene.ID == run.SceneID {
+		if scene.ID == run.SceneID && !directVideo {
 			r, err := ResolveBindings(p.EntityCatalog, scene, true)
 			if err != nil {
 				writeError(g, Invalid("invalid_run", err))
@@ -139,6 +144,9 @@ func (s TaskService) CreateGenerationRun(g *gin.Context) {
 	g.JSON(202, run)
 }
 func (s TaskService) GetGenerationRun(g *gin.Context) {
+	if !s.validRunScope(g) {
+		return
+	}
 	_ = s.advanceRun(g.Request.Context(), g.Param("id"), g.Param("draftId"), g.Param("runId"))
 	p, err := s.Projects.Get(g.Request.Context(), g.Param("id"))
 	if err != nil {
@@ -149,6 +157,7 @@ func (s TaskService) GetGenerationRun(g *gin.Context) {
 	if err == nil {
 		for _, r := range d.GenerationRuns {
 			if r.ID == g.Param("runId") {
+				r.Steps = s.runSteps(g.Request.Context(), r)
 				g.JSON(200, r)
 				return
 			}
@@ -157,6 +166,9 @@ func (s TaskService) GetGenerationRun(g *gin.Context) {
 	writeError(g, Invalid("run_not_found", errors.New("run not found")))
 }
 func (s TaskService) CancelGenerationRun(g *gin.Context) {
+	if !s.validRunScope(g) {
+		return
+	}
 	generationRunTransition.Lock()
 	defer generationRunTransition.Unlock()
 	atomic := s.Projects.(project.AtomicRepository)
@@ -170,6 +182,8 @@ func (s TaskService) CancelGenerationRun(g *gin.Context) {
 			r := &d.GenerationRuns[i]
 			if r.ID == g.Param("runId") {
 				r.State = "cancelled"
+				updated := time.Now().UTC()
+				r.UpdatedAt = &updated
 				run = *r
 				return nil
 			}
@@ -240,7 +254,7 @@ func (s TaskService) advanceRun(ctx context.Context, pID, dID, rID string) error
 		kind := task.KindImage
 		if snap.Path == "speech" {
 			kind = task.KindSpeech
-		} else if snap.Path == "first_frame_video" {
+		} else if isVideoPath(snap.Path) {
 			kind = task.KindVideo
 		}
 		item := task.New(id, kind, task.Input{Prompt: snap.Prompt, Duration: snap.DurationSeconds, AspectRatio: snap.AspectRatio, Resolution: snap.Resolution}, time.Now().UTC())
@@ -250,7 +264,7 @@ func (s TaskService) advanceRun(ctx context.Context, pID, dID, rID string) error
 		item.Snapshot = &snap
 		item.InputHash = snap.InputHash
 		item.InputVersion = snap.DraftVersion
-		if kind == task.KindVideo {
+		if kind == task.KindVideo && snap.Path == "first_frame_video" {
 			item.DependsOn = []string{run.ID + "-0"}
 		}
 		repo := s.Store.(interface {
@@ -278,36 +292,55 @@ func (s TaskService) advanceRun(ctx context.Context, pID, dID, rID string) error
 	}
 	if run.Error == "" {
 		run.State = "generating"
-		if len(run.Plan) > 0 && run.Plan[len(run.Plan)-1].Path == "first_frame_video" {
+		if len(run.Plan) > 0 && isVideoPath(run.Plan[len(run.Plan)-1].Path) {
 			run.State = "generating_video"
 		}
 		if allDone {
-			hasVideo := len(run.Plan) > 0 && run.Plan[len(run.Plan)-1].Path == "first_frame_video"
+			hasVideo := len(run.Plan) > 0 && isVideoPath(run.Plan[len(run.Plan)-1].Path)
 			if !hasVideo {
 				run.State = "awaiting_selection"
-				selected := d.SelectedMedia[run.SceneID+":image"] != ""
-				for _, snap := range run.Plan {
-					if snap.Path == "speech" {
-						selected = selected && d.SelectedMedia[run.SceneID+":speech:"+snap.Utterances[0].ID] != ""
+				if run.Selection != nil {
+					selected := run.Selection.ImageTakeID != ""
+					for _, snap := range run.Plan {
+						if snap.Path == "speech" {
+							selected = selected && run.Selection.SpeechTakeIDs[snap.Utterances[0].ID] != ""
+						}
 					}
-				}
-				if selected {
-					for _, scene := range d.Story.Scenes {
-						if scene.ID == run.SceneID {
-							if dependencyHash(p.EntityCatalog, scene, run.Plan[0].Path, "") != run.Plan[0].DependencyHash {
-								run.State = "failed"
-								run.Error = "镜头设定已改变，请创建新流程"
-								break
-							}
-							v := d.Version
-							input := GenerationRequest{ExpectedVersion: &v, ModelID: run.VideoModelID, Path: "first_frame_video", AspectRatio: run.Plan[0].AspectRatio, DurationSeconds: run.DurationSeconds, Resolution: run.Resolution}
-							snap, err := (GenerationCompiler{Models: s.Providers.Catalog.Models, Materials: s.Materials, Directory: s.UploadDir}).Compile(ctx, p, *d, scene, input)
-							if err != nil {
-								run.State = "failed"
-								run.Error = err.Error()
-							} else {
-								run.Plan = append(run.Plan, snap)
-								run.State = "generating_video"
+					if selected {
+						snap, err := s.frozenRunVideo(ctx, *d, run)
+						if err != nil {
+							run.State = "failed"
+							run.Error = err.Error()
+						} else {
+							run.Plan = append(run.Plan, snap)
+							run.State = "generating_video"
+						}
+					}
+				} else {
+					selected := d.SelectedMedia[run.SceneID+":image"] != ""
+					for _, snap := range run.Plan {
+						if snap.Path == "speech" {
+							selected = selected && d.SelectedMedia[run.SceneID+":speech:"+snap.Utterances[0].ID] != ""
+						}
+					}
+					if selected {
+						for _, scene := range d.Story.Scenes {
+							if scene.ID == run.SceneID {
+								if dependencyHash(p.EntityCatalog, scene, run.Plan[0].Path, "") != run.Plan[0].DependencyHash {
+									run.State = "failed"
+									run.Error = "镜头设定已改变，请创建新流程"
+									break
+								}
+								v := d.Version
+								input := GenerationRequest{ExpectedVersion: &v, ModelID: run.VideoModelID, Path: "first_frame_video", AspectRatio: run.Plan[0].AspectRatio, DurationSeconds: run.DurationSeconds, Resolution: run.Resolution}
+								snap, err := (GenerationCompiler{Models: s.Providers.Catalog.Models, Materials: s.Materials, Directory: s.UploadDir}).Compile(ctx, p, *d, scene, input)
+								if err != nil {
+									run.State = "failed"
+									run.Error = err.Error()
+								} else {
+									run.Plan = append(run.Plan, snap)
+									run.State = "generating_video"
+								}
 							}
 						}
 					}
@@ -316,7 +349,7 @@ func (s TaskService) advanceRun(ctx context.Context, pID, dID, rID string) error
 				run.State = "awaiting_video_selection"
 				lastTask := fmt.Sprintf("%s-%d", run.ID, len(run.Plan)-1)
 				version := "version-" + lastTask
-				if d.SelectedVersions[run.SceneID] == version {
+				if (run.Selection != nil && run.Selection.VideoVersionID == version) || (run.Selection == nil && d.SelectedVersions[run.SceneID] == version) {
 					run.State = "awaiting_composition"
 					for _, c := range d.Compositions {
 						for _, v := range c.ClipVersionIDs {
@@ -329,6 +362,8 @@ func (s TaskService) advanceRun(ctx context.Context, pID, dID, rID string) error
 			}
 		}
 	}
+	updated := time.Now().UTC()
+	run.UpdatedAt = &updated
 	_, err = s.Projects.(project.AtomicRepository).Update(ctx, pID, func(current *project.Project) error {
 		draft, err := draftByID(current, dID)
 		if err != nil {

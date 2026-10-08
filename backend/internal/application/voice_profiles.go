@@ -25,7 +25,7 @@ func (s ProjectService) WriteVoice(g *gin.Context) {
 		return
 	}
 	m, modelErr := s.Models.GetModel(g.Request.Context(), in.Voice.ModelID)
-	if modelErr != nil || m.ConnectionID != in.Voice.ConnectionID || !m.Supports(provider.Speech) {
+	if modelErr != nil || m.ConnectionID != in.Voice.ConnectionID || !m.Enabled || !m.Supported || !m.Supports(provider.Speech) {
 		writeError(g, Invalid("voice_unavailable", errors.New("语音模型或连接不可用")))
 		return
 	}

@@ -58,7 +58,7 @@ export const api = {
     request<Draft>(`/api/projects/${encodeURIComponent(projectId)}/drafts/${encodeURIComponent(draftId)}/candidates/${encodeURIComponent(candidateId)}/apply`, { method: "POST", body: JSON.stringify({ expected_version, action, reconfirm,entities }) }),
   restoreDraft: (projectId: string, draftId: string, snapshot_id: string, expected_version: number, reconfirm = false) =>
     request<Draft>(`/api/projects/${encodeURIComponent(projectId)}/drafts/${encodeURIComponent(draftId)}/restore`, { method: "POST", body: JSON.stringify({ snapshot_id, expected_version, reconfirm }) }),
-  writeScene: (projectId: string, draftId: string, sceneId: string | null, input: { expected_version: number; action: "create" | "update" | "copy" | "move"; title?: string; visual_prompt?: string; narration?: string; duration_seconds?: number; order?: number }) =>
+  writeScene: (projectId: string, draftId: string, sceneId: string | null, input: { expected_version: number; action: "create" | "update" | "copy" | "move"; creation_id?: string; title?: string; visual_prompt?: string; narration?: string; duration_seconds?: number; order?: number }) =>
     request<Draft>(`/api/projects/${encodeURIComponent(projectId)}/drafts/${encodeURIComponent(draftId)}/scenes${sceneId ? `/${encodeURIComponent(sceneId)}` : ""}`, { method: sceneId ? "PATCH" : "POST", body: JSON.stringify(input) }),
   deleteScene: (projectId: string, draftId: string, sceneId: string, expected_version: number) =>
     request<Draft>(`/api/projects/${encodeURIComponent(projectId)}/drafts/${encodeURIComponent(draftId)}/scenes/${encodeURIComponent(sceneId)}?expected_version=${expected_version}`, { method: "DELETE" }),

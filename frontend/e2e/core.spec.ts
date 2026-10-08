@@ -59,66 +59,21 @@ async function createDraft(request: APIRequestContext) {
 
 test.beforeEach(async ({ request }) => seedProviders(request));
 
-test("storyboard tab renders an existing draft with an empty history snapshot", async ({ page, request }, testInfo) => {
-  const { projectId, draftId } = await createDraft(request);
-  await page.route(`**/api/projects/${projectId}`, async (route) => {
-    const response = await route.fetch();
-    const project = await response.json();
-    const draft = project.drafts.find((item: { id: string }) => item.id === draftId);
-    draft.story.body = "A short story";
-    draft.story.scenes = Array.from({ length: 6 }, (_, index) => ({
-      id: `scene-${index + 1}`,
-      order: index + 1,
-      title: `Scene ${index + 1}`,
-      visual_prompt: "A quiet street",
-      narration: "",
-      duration_seconds: 10,
-    }));
-    draft.storyboard_snapshots = [{ id: "before-first-storyboard", scenes: null }];
-    await route.fulfill({ response, json: project });
-  });
-  const pageErrors: Error[] = [];
-  page.on("pageerror", (error) => pageErrors.push(error));
-  await page.goto(`/studio/${projectId}/${draftId}`);
-  await page.getByRole("button", { name: /分镜 6/ }).click();
-  await expect(page.locator(".scene-list .scene-row")).toHaveCount(6);
-  await expect(page.locator(".history-strip")).toContainText("0 个镜头 · 恢复");
-  await expect(page.locator(".scene-board")).toBeVisible();
-  await expect(page.locator(".scene-inspector")).toBeVisible();
-  const board = await page.locator(".scene-board").boundingBox();
-  const inspector = await page.locator(".scene-inspector").boundingBox();
-  expect(board!.x + board!.width).toBeLessThan(inspector!.x);
-  await page.screenshot({ path: testInfo.outputPath("storyboard-desktop.png"), fullPage: true });
-  await page.setViewportSize({ width: 390, height: 844 });
-  await expect(page.locator(".scene-inspector")).toBeVisible();
-  await expect(page.locator(".scene-board")).toBeHidden();
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
-  await page.screenshot({ path: testInfo.outputPath("storyboard-mobile.png"), fullPage: true });
-  expect(pageErrors).toEqual([]);
+test("storyboard tab routes to a list without mounting an inspector", async ({ page, request }, testInfo) => {
+ const {projectId,draftId}=await createDraft(request);
+ const draft=await(await request.get(`/api/projects/${projectId}/drafts/${draftId}`)).json();
+ draft.story.body="A short story";draft.story.scenes=Array.from({length:6},(_,i)=>({id:`scene-${i+1}`,order:i+1,title:`Scene ${i+1}`,visual_prompt:"A quiet street",narration:"",duration_seconds:10}));
+ await request.post(`/api/projects/${projectId}/drafts`,{data:draft});
+ const errors:Error[]=[];page.on("pageerror",e=>errors.push(e));await page.goto(`/studio/${projectId}/${draftId}`);
+ await page.getByRole("button",{name:/分镜 6/}).click();await expect(page).toHaveURL(/\/shots$/);await expect(page.locator(".shot-list-row")).toHaveCount(6);await expect(page.locator(".scene-inspector")).toHaveCount(0);
+ await page.screenshot({path:testInfo.outputPath("storyboard-desktop.png"),fullPage:true});await page.setViewportSize({width:390,height:844});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBeTruthy();await page.screenshot({path:testInfo.outputPath("storyboard-mobile.png"),fullPage:true});expect(errors).toEqual([]);
 });
 
-test("a storyboard card can delete its own scene after the settings panel is closed", async ({ page }) => {
-  await page.goto("/studio");
-  await page.getByRole("button", { name: /分镜/ }).first().click();
-  await page.getByRole("button", { name: "新增分镜" }).click();
-  await page.getByRole("button", { name: "新增分镜" }).click();
-  await page.getByRole("button", { name: "关闭镜头设置" }).click();
-  const cards = page.locator(".scene-list .scene-row-wrap");
-  await expect(cards).toHaveCount(2);
-  const deleteButton = cards.nth(1).getByRole("button", { name: /删除镜头/ });
-  page.once("dialog", (dialog) => dialog.dismiss());
-  await deleteButton.click();
-  await expect(cards).toHaveCount(2);
-  page.once("dialog", (dialog) => {
-    expect(dialog.message()).toContain("镜头 2");
-    return dialog.accept();
-  });
-  await deleteButton.click();
-  await expect(cards).toHaveCount(1);
-  await expect(cards.first().getByRole("button", { name: /删除镜头/ })).toHaveAttribute("aria-label", /镜头 1/);
-  await page.reload();
-  await page.getByRole("button", { name: /分镜/ }).first().click();
-  await expect(cards).toHaveCount(1);
+test("list deletes its own scene with confirmation and persists",async({page,request})=>{
+ const {projectId,draftId}=await createDraft(request);await page.goto(`/studio/${projectId}/${draftId}/shots`);
+ await page.getByRole("button",{name:"＋ 新增分镜",exact:true}).click();await expect(page.getByLabel('分镜名称',{exact:true})).toBeFocused();await page.getByRole('link',{name:'分镜列表',exact:true}).click();await expect(page.locator(".shot-list-row")).toHaveCount(1);await page.getByRole("button",{name:"＋ 新增分镜",exact:true}).click();await expect(page.getByLabel('分镜名称',{exact:true})).toBeVisible();await page.getByRole('link',{name:'分镜列表',exact:true}).click();await expect(page.locator(".shot-list-row")).toHaveCount(2);
+ page.once("dialog",d=>d.dismiss());await page.locator(".shot-list-row").nth(1).getByRole("button",{name:"删除",exact:true}).click();await expect(page.locator(".shot-list-row")).toHaveCount(2);
+ page.once("dialog",d=>d.accept());await page.locator(".shot-list-row").nth(1).getByRole("button",{name:"删除",exact:true}).click();await expect(page.locator(".shot-list-row")).toHaveCount(1);await page.reload();await expect(page.locator(".shot-list-row")).toHaveCount(1);
 });
 
 test("a completed storyboard task reveals its candidate and applying it opens the scene list", async ({ page, request }) => {
@@ -168,9 +123,8 @@ test("a completed storyboard task reveals its candidate and applying it opens th
     return button.y + button.height <= page.viewportSize()!.height;
   }).toBe(true);
   await card.getByRole("button", { name: "应用分镜" }).click();
-  await expect(page.locator(".workspace-tabs button.active")).toContainText("分镜");
-  await expect(page.locator(".scene-list .scene-row")).toContainText("走进书店");
-  await expect.poll(async () => (await page.locator(".scene-board").boundingBox())!.y).toBeLessThan(150);
+  await expect(page).toHaveURL(/\/shots$/);
+  await expect(page.locator(".shot-list-row")).toContainText("走进书店");
 });
 
 test("story editor follows the wide card layout and stays usable on mobile", async ({ page }, testInfo) => {
@@ -250,27 +204,11 @@ test("home, studio scene editing and WebSocket connection", async ({ page }) => 
   await page.getByRole("button", { name: "开始创作" }).click();
   await expect(page).toHaveURL(/studio/);
   await page.getByRole("button", { name: /分镜/ }).first().click();
-  await page.getByRole("button", { name: "新增分镜" }).click();
-  await expect(page.locator(".scene-inspector")).toBeVisible();
-  await expect(page.getByText("旧版兼容")).toHaveCount(0);
-  await page.locator(".scene-inspector").getByLabel("镜头标题").fill("城市清晨");
-  await page.locator(".scene-inspector").getByLabel("镜头描述文本").fill("清晨街道与行人");
-  await page.getByRole("button", { name: "保存镜头信息" }).click();
-  await expect(page.locator(".scene-row").filter({ hasText: "城市清晨" })).toBeVisible();
-  await page.getByRole("button", { name: "新增分镜" }).click();
-  await expect(page.locator(".scene-inspector").getByRole("heading", { name: "镜头 02" })).toBeVisible();
-  await page.locator(".scene-inspector").getByLabel("镜头标题").fill("城市傍晚");
-  await page.locator(".scene-inspector").getByLabel("镜头描述文本").fill("傍晚街道与车流");
-  await page.getByRole("button", { name: "保存镜头信息" }).click();
-  await expect(page.locator(".scene-list .scene-row").nth(1)).toContainText("城市傍晚");
-  const moveUp = page.locator(".scene-inspector").getByRole("button", { name: "上移" });
-  await moveUp.focus();
-  await moveUp.press("Enter");
-  await expect(page.locator(".scene-list .scene-row").first()).toContainText("城市傍晚");
-  await page.setViewportSize({ width: 390, height: 844 });
-  await expect(page.locator(".scene-list")).toBeHidden();
-  await page.getByRole("button", { name: "返回镜头列表" }).click();
-  await expect(page.locator(".scene-list")).toBeVisible();
+  await page.getByRole("button",{name:"＋ 新增分镜",exact:true}).click();await page.getByLabel("分镜名称",{exact:true}).fill("城市清晨");
+  await page.getByLabel("镜头描述文本").fill("清晨街道与行人");await page.getByRole("link",{name:"分镜列表",exact:true}).click();
+  await page.getByRole("button",{name:"＋ 新增分镜",exact:true}).click();await page.getByLabel("分镜名称",{exact:true}).fill("城市傍晚");await page.getByRole('link',{name:'分镜列表',exact:true}).click();await expect(page.locator(".shot-list-row")).toHaveCount(2);
+  const moveUp=page.locator(".shot-list-row").nth(1).getByRole("button",{name:"上移"});await moveUp.focus();await moveUp.press("Enter");await expect(page.locator(".shot-list-row").first()).toContainText("城市傍晚");
+  await page.setViewportSize({width:390,height:844});await expect(page.locator(".shot-list")).toBeVisible();
   await expect.poll(() => upgraded).toBeTruthy();
   await page.locator(".app-header").getByRole("link", { name: "任务中心" }).click();
   await expect(page.getByRole("heading", { name: "任务中心" })).toBeVisible();

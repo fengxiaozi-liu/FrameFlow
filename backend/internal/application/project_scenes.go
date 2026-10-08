@@ -3,6 +3,7 @@ package application
 import (
 	"errors"
 	"net/http"
+	"regexp"
 	"strconv"
 	"time"
 
@@ -20,9 +21,14 @@ func (s ProjectService) WriteScene(ctx *gin.Context) {
 		Narration       string `json:"narration"`
 		DurationSeconds int    `json:"duration_seconds"`
 		Order           int    `json:"order"`
+		CreationID      string `json:"creation_id"`
 	}
 	if err := ctx.ShouldBindJSON(&input); err != nil || input.ExpectedVersion == nil || *input.ExpectedVersion < 0 {
 		writeError(ctx, Invalid("invalid_scene", errors.New("expected_version is required")))
+		return
+	}
+	if input.CreationID != "" && (input.Action != "create" || ctx.Param("sceneId") != "" || !regexp.MustCompile(`^scene-created-[a-f0-9-]{36}$`).MatchString(input.CreationID)) {
+		writeError(ctx, Invalid("invalid_scene", errors.New("invalid creation_id")))
 		return
 	}
 	atomic, ok := s.Repo.(project.AtomicRepository)
@@ -38,6 +44,11 @@ func (s ProjectService) WriteScene(ctx *gin.Context) {
 			return findErr
 		}
 		result = *d
+		// A retry after a lost response must recover the original scene even if
+		// later edits have advanced the draft version or changed its name.
+		if input.CreationID != "" && d.HasScene(input.CreationID) {
+			return nil
+		}
 		if d.Version != *input.ExpectedVersion {
 			return project.ErrVersionConflict
 		}
@@ -48,6 +59,7 @@ func (s ProjectService) WriteScene(ctx *gin.Context) {
 			if sceneID != "" {
 				return errors.New("create must not have scene id")
 			}
+			changes.ID = input.CreationID
 			if err := d.Story.AddScene(changes); err != nil {
 				return err
 			}

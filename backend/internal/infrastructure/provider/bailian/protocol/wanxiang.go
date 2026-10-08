@@ -10,6 +10,7 @@ type WanxiangVideoRequest struct {
 		} `json:"media"`
 	} `json:"input"`
 	Parameters struct {
+		Ratio      string `json:"ratio,omitempty"`
 		Resolution string `json:"resolution,omitempty"`
 		Duration   int    `json:"duration,omitempty"`
 	} `json:"parameters"`

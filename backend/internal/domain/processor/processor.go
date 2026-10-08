@@ -160,7 +160,7 @@ func (p *Processor) processModel(ctx context.Context, item *task.Task, progress 
 				refs = append(refs, provider.ImageReference{URL: url, EntityID: e.EntityID, Label: r.Label})
 			}
 		}
-		if item.Kind == task.KindVideo && len(refs) == 1 {
+		if item.Kind == task.KindVideo && snap.Path != "reference_video" && len(refs) == 1 {
 			item.Input.SourceImageURL = refs[0].URL
 		}
 	}
@@ -225,9 +225,15 @@ func (p *Processor) processModel(ctx context.Context, item *task.Task, progress 
 		pollCtx, endPoll := context.WithTimeout(ctx, 20*time.Minute)
 		defer endPoll()
 		if item.RemoteTaskID == "" {
-			source, err := p.videoSource(item.Input.SourceImageURL)
-			if err != nil {
-				return err
+			var source string
+			var videoReferences []provider.ImageReference
+			if item.Snapshot != nil && item.Snapshot.Path == "reference_video" {
+				videoReferences = refs
+			} else {
+				source, err = p.videoSource(item.Input.SourceImageURL)
+				if err != nil {
+					return err
+				}
 			}
 			lastFrame := item.Input.LastFrameURL
 			if lastFrame != "" {
@@ -256,7 +262,7 @@ func (p *Processor) processModel(ctx context.Context, item *task.Task, progress 
 					return err
 				}
 			}
-			result, err := p.ModelClient.GenerateVideo(ctx, connection, model, provider.VideoRequest{Prompt: item.Input.Prompt, Model: model.RemoteID, SourceImageURL: source, LastFrameURL: lastFrame, DrivingAudioURL: audio, Duration: item.Input.Duration, Resolution: item.Input.Resolution, AspectRatio: item.Input.AspectRatio}, options)
+			result, err := p.ModelClient.GenerateVideo(ctx, connection, model, provider.VideoRequest{References: videoReferences, Prompt: item.Input.Prompt, Model: model.RemoteID, SourceImageURL: source, LastFrameURL: lastFrame, DrivingAudioURL: audio, Duration: item.Input.Duration, Resolution: item.Input.Resolution, AspectRatio: item.Input.AspectRatio}, options)
 			if err != nil {
 				return err
 			}

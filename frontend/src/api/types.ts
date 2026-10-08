@@ -49,6 +49,7 @@ export interface TaskEvent {
   at: string;
 }
 export interface Scene {
+	generation_settings?: Schema["ShotGenerationSettings"];
 	entity_bindings?: Schema["ShotEntityBinding"][];
 	prompt_document?: Schema["PromptDocument"];
 	utterances?: Schema["Utterance"][];

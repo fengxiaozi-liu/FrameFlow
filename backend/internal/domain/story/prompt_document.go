@@ -11,6 +11,7 @@ type EntityBinding struct {
 	EntityRevision        int64     `json:"entity_revision"`
 	DescriptionOverride   *string   `json:"description_override,omitempty"`
 	DescriptionSupplement string    `json:"description_supplement,omitempty"`
+	ReferenceMaterialIDs  *[]string `json:"reference_material_ids,omitempty"`
 	SelectedMaterialIDs   *[]string `json:"selected_material_ids,omitempty"`
 	Role                  string    `json:"role"`
 }
@@ -22,6 +23,33 @@ type PromptNode struct {
 type PromptDocument struct {
 	SchemaVersion int          `json:"schema_version"`
 	Nodes         []PromptNode `json:"nodes"`
+}
+
+// MergeDescriptionSupplements keeps legacy shot-specific notes editable in the
+// main prompt. Clear each source after appending so saves/reloads are idempotent.
+func (s *Scene) MergeDescriptionSupplements() bool {
+	changed := false
+	for i := range s.EntityBindings {
+		b := &s.EntityBindings[i]
+		if b.DescriptionSupplement == "" {
+			continue
+		}
+		if s.PromptDocument == nil {
+			s.PromptDocument = &PromptDocument{SchemaVersion: 1, Nodes: []PromptNode{{Type: "text", Text: s.VisualPrompt}}}
+		}
+		nodes := s.PromptDocument.Nodes
+		if len(nodes) > 0 && nodes[len(nodes)-1].Type == "text" {
+			nodes[len(nodes)-1].Text += "\n"
+		} else if len(nodes) > 0 {
+			nodes = append(nodes, PromptNode{Type: "text", Text: "\n"})
+		}
+		s.PromptDocument.Nodes = append(nodes,
+			PromptNode{Type: "entity_ref", BindingID: b.ID},
+			PromptNode{Type: "text", Text: "：" + b.DescriptionSupplement})
+		b.DescriptionSupplement = ""
+		changed = true
+	}
+	return changed
 }
 
 func (d PromptDocument) Render(names map[string]string) (string, error) {
@@ -58,13 +86,15 @@ func ValidateBindings(bindings []EntityBinding) error {
 		if b.Role != "primary" && b.Role != "supplement" && b.Role != "cast" {
 			return errors.New("invalid binding role")
 		}
-		if b.SelectedMaterialIDs != nil {
-			m := map[string]bool{}
-			for _, id := range *b.SelectedMaterialIDs {
-				if id == "" || m[id] {
-					return errors.New("duplicate or empty selected reference")
+		for _, refs := range []*[]string{b.SelectedMaterialIDs, b.ReferenceMaterialIDs} {
+			if refs != nil {
+				m := map[string]bool{}
+				for _, id := range *refs {
+					if id == "" || m[id] {
+						return errors.New("duplicate or empty selected reference")
+					}
+					m[id] = true
 				}
-				m[id] = true
 			}
 		}
 	}

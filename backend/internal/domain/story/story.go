@@ -41,15 +41,16 @@ type CandidateEntity struct {
 }
 
 type Scene struct {
-	EntityBindings  []EntityBinding `json:"entity_bindings,omitempty"`
-	PromptDocument  *PromptDocument `json:"prompt_document,omitempty"`
-	Utterances      []Utterance     `json:"utterances,omitempty"`
-	ID              string          `json:"id"`
-	Order           int             `json:"order"`
-	Title           string          `json:"title"`
-	VisualPrompt    string          `json:"visual_prompt"`
-	Narration       string          `json:"narration"`
-	DurationSeconds int             `json:"duration_seconds"`
+	GenerationSettings *GenerationSettings `json:"generation_settings,omitempty"`
+	EntityBindings     []EntityBinding     `json:"entity_bindings,omitempty"`
+	PromptDocument     *PromptDocument     `json:"prompt_document,omitempty"`
+	Utterances         []Utterance         `json:"utterances,omitempty"`
+	ID                 string              `json:"id"`
+	Order              int                 `json:"order"`
+	Title              string              `json:"title"`
+	VisualPrompt       string              `json:"visual_prompt"`
+	Narration          string              `json:"narration"`
+	DurationSeconds    int                 `json:"duration_seconds"`
 }
 
 func NewSceneID() (string, error) {

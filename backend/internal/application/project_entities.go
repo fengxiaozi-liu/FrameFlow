@@ -66,6 +66,17 @@ func (s ProjectService) WriteEntity(g *gin.Context) {
 		writeError(g, Invalid("invalid_entity", errors.New("entity identity mismatch")))
 		return
 	}
+	if in.Entity.VoiceMaterialID != "" {
+		if s.Materials == nil {
+			writeError(g, errors.New("material repository unavailable"))
+			return
+		}
+		asset, err := s.Materials.Get(g.Request.Context(), in.Entity.VoiceMaterialID)
+		if err != nil || asset.Kind != material.Voice {
+			writeError(g, Invalid("voice_material_missing", errors.New("请选择素材库中可用的配音素材")))
+			return
+		}
+	}
 	for _, r := range in.Entity.References {
 		if s.Materials == nil {
 			writeError(g, errors.New("material repository unavailable"))

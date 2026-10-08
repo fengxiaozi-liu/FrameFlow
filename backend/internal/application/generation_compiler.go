@@ -93,8 +93,12 @@ func (c GenerationCompiler) Compile(ctx context.Context, p project.Project, d pr
 	if s.AspectRatio != "16:9" && s.AspectRatio != "9:16" && s.AspectRatio != "1:1" {
 		return s, errors.New("unsupported aspect ratio")
 	}
-	if in.Path == "reference_image_then_video" {
-		if !m.Supports(provider.Image) || cap.ReferenceImages == 0 {
+	if in.Path == "reference_image_then_video" || in.Path == "reference_video" {
+		directVideo := in.Path == "reference_video"
+		if directVideo && (!m.Supports(provider.Video) || !cap.ReferenceVideo) {
+			return s, errors.New("请选择支持参考图直接生成视频的模型")
+		}
+		if !directVideo && (!m.Supports(provider.Image) || cap.ReferenceImages == 0) {
 			return s, errors.New("choose a verified multi-image model")
 		}
 		count := 0
@@ -108,12 +112,48 @@ func (c GenerationCompiler) Compile(ctx context.Context, p project.Project, d pr
 				}
 				e.References = append(e.References, ref)
 				count++
-				s.Prompt += fmt.Sprintf("\n参考图%d属于%s；视角：%s。", count, b.Entity.Name, r.Label)
+				s.Prompt += fmt.Sprintf("\n图%d属于%s；视角：%s。", count, b.Entity.Name, r.Label)
 			}
 			s.Entities = append(s.Entities, e)
 		}
 		if count > cap.ReferenceImages {
 			return s, fmt.Errorf("reference_image_limit: 已选 %d 张，模型最多支持 %d 张；请移除本镜头多余参考图后重试", count, cap.ReferenceImages)
+		}
+		if directVideo {
+			if count == 0 {
+				return s, errors.New("reference_image_required: 请在引用素材中上传至少一张参考图片")
+			}
+			if s.DurationSeconds == 0 {
+				s.DurationSeconds = scene.DurationSeconds
+			}
+			if s.Resolution == "" {
+				s.Resolution = "720P"
+			}
+			videoCap, _ := provider.VideoCapabilityFor(m.RemoteID)
+			usages := make([]string, count)
+			for i := range usages {
+				usages[i] = "reference_image"
+			}
+			if err := videoCap.ValidateInput(s.DurationSeconds, s.Resolution, usages); err != nil {
+				return s, err
+			}
+			if scene.Narration != "" {
+				s.Prompt += "\n旁白：" + scene.Narration
+			}
+			for _, u := range scene.Utterances {
+				name := u.SpeakerID
+				for _, e := range p.EntityCatalog.Entities {
+					if e.ID == u.SpeakerID && e.Revision == u.SpeakerRevision {
+						name = e.Name
+						break
+					}
+				}
+				s.Prompt += fmt.Sprintf("\n%s说：%s", name, u.Text)
+			}
+			s.Utterances = scene.Utterances
+			if len([]rune(s.Prompt)) > 5000 {
+				return s, errors.New("视频描述与素材描述合计最多5000字，请精简后生成")
+			}
 		}
 	} else if in.Path == "first_frame_video" {
 		for _, take := range d.MediaTakes {

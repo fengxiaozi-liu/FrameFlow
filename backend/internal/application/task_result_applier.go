@@ -25,6 +25,9 @@ func (a TaskResultApplier) Apply(ctx context.Context, item task.Task) error {
 	if err := item.ValidateScope(); err != nil {
 		return err
 	}
+	if item.Kind == task.KindImage && (item.Target == "reference_scene" || item.Target == "reference_character") {
+		return a.saveReferenceImage(ctx, item)
+	}
 	output := project.DraftOutput{
 		TaskID: item.ID,
 		Kind:   string(item.Kind),

@@ -47,7 +47,7 @@ function sceneLink(item: Task) {
   if (!item.project_id || !item.draft_id || !item.scene_id) return "";
   const draft = projects.value.find((value) => value.id === item.project_id)?.drafts.find((value) => value.id === item.draft_id);
   return draft?.story.scenes.some((scene) => scene.id === item.scene_id)
-    ? `/studio/${encodeURIComponent(item.project_id)}/${encodeURIComponent(item.draft_id)}?scene=${encodeURIComponent(item.scene_id)}` : "";
+    ? `/studio/${encodeURIComponent(item.project_id)}/${encodeURIComponent(item.draft_id)}/shots/${encodeURIComponent(item.scene_id)}${item.run_id ? `/runs/${encodeURIComponent(item.run_id)}` : ''}` : "";
 }
 function sceneLabel(item: Task) {
   const scene = projects.value.find((project) => project.id === item.project_id)?.drafts.find((draft) => draft.id === item.draft_id)?.story.scenes.find((value) => value.id === item.scene_id);
