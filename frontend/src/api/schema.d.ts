@@ -240,7 +240,50 @@ export interface paths {
             };
         };
         post?: never;
-        delete?: never;
+        delete: {
+            parameters: {
+                query: {
+                    expected_version: components["parameters"]["ExpectedVersion"];
+                };
+                header?: never;
+                path: {
+                    id: components["parameters"]["ID"];
+                    draftId: components["parameters"]["DraftPathID"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Draft removed; other drafts */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Expected version required */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Draft not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Draft changed or queued/running tasks exist */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
         options?: never;
         head?: never;
         patch?: never;
@@ -1519,14 +1562,14 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
-                /** @description Deleted after models are removed */
+                /** @description Connection and model configurations deleted; credential removed and completed task files retained */
                 204: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content?: never;
                 };
-                /** @description Connection has models */
+                /** @description Connection has queued or running tasks */
                 409: {
                     headers: {
                         [name: string]: unknown;

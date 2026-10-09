@@ -68,6 +68,7 @@ func RegisterRoutes(
 	projectRoutes.POST("/:id/drafts", projects.SaveDraft)
 	projectRoutes.PUT("/:id/drafts/:draftId", projects.SaveDraftRevision)
 	projectRoutes.GET("/:id/drafts/:draftId", projects.GetDraft)
+	projectRoutes.DELETE("/:id/drafts/:draftId", projects.DeleteDraft)
 	projectRoutes.POST("/:id/drafts/:draftId/candidates", tasks.CreateCandidate)
 	projectRoutes.GET("/:id/drafts/:draftId/candidates", projects.ListCandidates)
 	projectRoutes.GET("/:id/drafts/:draftId/candidates/:candidateId", projects.GetCandidate)

@@ -38,6 +38,7 @@ func Open(ctx context.Context, path string) (*TaskRepository, error) {
 		CREATE TABLE IF NOT EXISTS provider_models (id TEXT PRIMARY KEY, connection_id TEXT NOT NULL, payload TEXT NOT NULL);
 		CREATE INDEX IF NOT EXISTS provider_models_connection ON provider_models(connection_id);
 		CREATE TABLE IF NOT EXISTS materials (id TEXT PRIMARY KEY, kind TEXT NOT NULL, payload TEXT NOT NULL);
+		CREATE TABLE IF NOT EXISTS deleted_resources (kind TEXT NOT NULL, owner_id TEXT NOT NULL, id TEXT NOT NULL, PRIMARY KEY(kind,owner_id,id));
 	`); err != nil {
 		_ = db.Close()
 		return nil, err
@@ -234,6 +235,9 @@ func (r *TaskRepository) SaveProject(ctx context.Context, v project.Project) err
 		return err
 	}
 	defer tx.Rollback()
+	if err = checkDeletedDrafts(ctx, tx, v); err != nil {
+		return err
+	}
 	b, err := json.Marshal(v)
 	if err != nil {
 		return err
@@ -276,7 +280,7 @@ func (r *TaskRepository) DeleteProvider(ctx context.Context, id string) error {
 }
 
 func (r *TaskRepository) SaveConnection(ctx context.Context, v provider.Connection) error {
-	return saveJSON(ctx, r.db, "provider_connections", v.ID, v, "", "")
+	return r.saveCatalogRecord(ctx, v.ID, "", v, false)
 }
 func (r *TaskRepository) GetConnection(ctx context.Context, id string) (provider.Connection, error) {
 	return getJSON[provider.Connection](ctx, r.db, "provider_connections", id)
@@ -285,17 +289,10 @@ func (r *TaskRepository) ListConnections(ctx context.Context) ([]provider.Connec
 	return listJSON[provider.Connection](ctx, r.db, "provider_connections", "", "")
 }
 func (r *TaskRepository) DeleteConnection(ctx context.Context, id string) error {
-	models, err := r.ListModels(ctx, id)
-	if err != nil {
-		return err
-	}
-	if len(models) != 0 {
-		return errors.New("remove connection models before deleting connection")
-	}
-	return deleteJSON(ctx, r.db, "provider_connections", id)
+	return r.deleteConnectionCascade(ctx, id)
 }
 func (r *TaskRepository) SaveModel(ctx context.Context, v provider.Model) error {
-	return saveJSON(ctx, r.db, "provider_models", v.ID, v, "connection_id", v.ConnectionID)
+	return r.saveCatalogRecord(ctx, v.ID, v.ConnectionID, v, true)
 }
 func (r *TaskRepository) GetModel(ctx context.Context, id string) (provider.Model, error) {
 	return getJSON[provider.Model](ctx, r.db, "provider_models", id)
@@ -374,6 +371,9 @@ func (r *ProjectRepository) Update(ctx context.Context, id string, change func(*
 	if err = change(&value); err != nil {
 		return value, err
 	}
+	if err = checkDeletedDrafts(ctx, tx, value); err != nil {
+		return value, err
+	}
 	payload, err := json.Marshal(value)
 	if err != nil {
 		return value, err
@@ -445,6 +445,9 @@ func (r *TaskRepository) Save(ctx context.Context, t task.Task) error {
 		return err
 	}
 	defer tx.Rollback()
+	if err = checkTaskDeletion(ctx, tx, t); err != nil {
+		return err
+	}
 	var old string
 	if err = tx.QueryRowContext(ctx, `SELECT payload FROM tasks WHERE id=?`, t.ID).Scan(&old); err == nil {
 		var previous task.Task

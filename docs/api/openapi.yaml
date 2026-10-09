@@ -13,6 +13,9 @@ paths:
   /api/projects/{id}/drafts:
     post: {parameters: [{$ref: '#/components/parameters/ID'}], responses: {'200': {description: Draft saved}}}
   /api/projects/{id}/drafts/{draftId}:
+    delete:
+      parameters: [{$ref: '#/components/parameters/ID'}, {$ref: '#/components/parameters/DraftPathID'}, {$ref: '#/components/parameters/ExpectedVersion'}]
+      responses: {'204': {description: Draft removed; other drafts, shared materials and completed task files retained}, '400': {description: Expected version required}, '404': {description: Draft not found}, '409': {description: Draft changed or queued/running tasks exist}}
     get: {parameters: [{$ref: '#/components/parameters/ID'}, {$ref: '#/components/parameters/DraftPathID'}], responses: {'200': {description: Scoped draft including revision and saved candidate state, content: {application/json: {schema: {$ref: '#/components/schemas/Draft'}}}}, '404': {description: Draft not found}}}
     put:
       parameters: [{$ref: '#/components/parameters/ID'}, {$ref: '#/components/parameters/DraftPathID'}]
@@ -158,7 +161,7 @@ paths:
     post: {requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ConnectionInput'}}}}, responses: {'201': {description: Vendor connection created}}}
   /api/connections/{id}:
     put: {parameters: [{$ref: '#/components/parameters/ID'}], requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ConnectionInput'}}}}, responses: {'200': {description: Vendor connection updated}}}
-    delete: {parameters: [{$ref: '#/components/parameters/ID'}], responses: {'204': {description: Deleted after models are removed}, '409': {description: Connection has models}}}
+    delete: {parameters: [{$ref: '#/components/parameters/ID'}], responses: {'204': {description: Connection and model configurations deleted; credential removed and completed task files retained}, '409': {description: Connection has queued or running tasks}}}
   /api/connections/{id}/test:
     post: {parameters: [{$ref: '#/components/parameters/ID'}], responses: {'200': {description: Model discovery endpoint reachable}, '422': {description: Authentication or discovery failed}}}
   /api/connections/{id}/models:

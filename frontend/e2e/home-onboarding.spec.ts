@@ -46,10 +46,10 @@ test("home carousel, keyboard guide, example handoff and new blank creation", as
     (await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).analyze())
       .violations,
   ).toEqual([]);
-  const trigger = page.getByRole("button", { name: "查看第2步：组织分镜" });
+  const trigger = page.getByRole("button", { name: "查看第3步：生成分镜" });
   await trigger.click();
   const guide = page.getByRole("dialog");
-  await expect(guide.getByRole("heading", { name: "组织分镜" })).toBeVisible();
+  await expect(guide.getByRole("heading", { name: "生成分镜" })).toBeVisible();
   await expect(
     guide.getByRole("button", { name: "关闭入门指南" }),
   ).toBeFocused();
@@ -59,7 +59,7 @@ test("home carousel, keyboard guide, example handoff and new blank creation", as
   await expect(guide).toHaveCount(0);
   await expect(trigger).toBeFocused();
   await page.getByRole("button", { name: "查看入门指南" }).click();
-  await expect(guide.getByRole("heading", { name: "写下故事" })).toBeVisible();
+  await expect(guide.getByRole("heading", { name: "配置模型" })).toBeVisible();
   await page.screenshot({
     path: testInfo.outputPath("home-guide-desktop.png"),
   });
@@ -82,7 +82,7 @@ test("home carousel, keyboard guide, example handoff and new blank creation", as
     path: testInfo.outputPath("home-mobile.png"),
     fullPage: true,
   });
-  await page.getByRole("button", { name: "查看第3步：生成视频" }).click();
+  await page.getByRole("button", { name: "查看第2步：故事联想" }).click();
   await guide.getByRole("button", { name: "使用示例想法" }).click();
   await expect(page).toHaveURL(/\/studio\/new$/);
   await page.getByRole("button", { name: "故事联想", exact: true }).click();

@@ -13,3 +13,7 @@ type AtomicRepository interface {
 	Repository
 	Update(context.Context, string, func(*Project) error) (Project, error)
 }
+
+type DraftDeletionRepository interface {
+	DeleteDraft(context.Context, string, string, int64) error
+}

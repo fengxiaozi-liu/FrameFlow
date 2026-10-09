@@ -8,6 +8,30 @@ const projects = ref<Project[]>([]),
   projectsLoading = ref(true),
   projectsError = ref(""),
   showAll = ref(false);
+const deleting = ref(""),
+  deleteError = ref(""),
+  notice = ref("");
+async function removeDraft(project: Project, draft: Draft) {
+  if (
+    deleting.value ||
+    !confirm(
+      `删除草稿“${draft.name}”？其正文、分镜和草稿内版本记录将被删除，无法恢复。其他草稿、项目素材与已完成任务文件会保留。`,
+    )
+  )
+    return;
+  deleting.value = `${project.id}/${draft.id}`;
+  deleteError.value = "";
+  notice.value = "";
+  try {
+    await api.deleteDraft(project.id, draft.id, draft.version || 0);
+    project.drafts = project.drafts.filter((item) => item.id !== draft.id);
+    notice.value = `草稿“${draft.name}”已删除。`;
+  } catch (error) {
+    deleteError.value = (error as Error).message;
+  } finally {
+    deleting.value = "";
+  }
+}
 function stamp(draft: Draft) {
   return (
     Date.parse(
@@ -29,6 +53,7 @@ const displayed = computed(() =>
 );
 let alive = true;
 async function loadProjects() {
+  deleteError.value = '';
   projectsLoading.value = true;
   projectsError.value = "";
   try {
@@ -61,6 +86,11 @@ onBeforeUnmount(() => {
       </div>
       <button class="primary" @click="start">＋ 新建创作</button>
     </header>
+    <p v-if="notice" class="notice" role="status">{{ notice }}</p>
+    <div v-if="deleteError" class="notice error" role="alert">
+      {{ deleteError }}
+      <button type="button" @click="loadProjects">刷新草稿列表</button>
+    </div>
     <section
       v-if="projectsLoading || projectsError || recent.length"
       class="workbench-projects"
@@ -87,28 +117,72 @@ onBeforeUnmount(() => {
         <button type="button" @click="loadProjects">重新加载草稿</button>
       </div>
       <div v-else class="workbench-project-grid">
-        <RouterLink
+        <article
           v-for="({ project, draft }, index) in displayed"
           :key="project.id"
-          class="workbench-project-card"
-          :to="`/studio/${encodeURIComponent(project.id)}/${encodeURIComponent(draft.id)}`"
+          class="workbench-project-item"
         >
-          <span class="workbench-project-cover" aria-hidden="true"
-            ><span>草稿</span
-            ><b>{{ String(index + 1).padStart(2, "0") }}</b></span
+          <RouterLink
+            class="workbench-project-card"
+            :to="`/studio/${encodeURIComponent(project.id)}/${encodeURIComponent(draft.id)}`"
           >
-          <span class="workbench-project-info"
-            ><strong>{{ project.name }}</strong
-            ><span>{{ draft.name }}</span
-            ><small
-              >{{ project.drafts.length }} 个草稿 ·
-              {{ draft.story.scenes?.length || 0 }} 个分镜</small
-            ></span
+            <span class="workbench-project-cover" aria-hidden="true"
+              ><span>草稿</span
+              ><b>{{ String(index + 1).padStart(2, "0") }}</b></span
+            >
+            <span class="workbench-project-info"
+              ><strong>{{ project.name }}</strong
+              ><span>{{ draft.name }}</span
+              ><small
+                >{{ project.drafts.length }} 个草稿 ·
+                {{ draft.story.scenes?.length || 0 }} 个分镜</small
+              ></span
+            >
+            <span class="workbench-project-continue"
+              >继续编辑 <span aria-hidden="true">→</span></span
+            >
+          </RouterLink>
+          <div class="workbench-draft-actions">
+            <button
+              class="quiet delete-action"
+              :disabled="!!deleting"
+              :aria-label="`删除草稿 ${draft.name}`"
+              @click="removeDraft(project, draft)"
+            >
+              {{
+                deleting === `${project.id}/${draft.id}`
+                  ? "删除中…"
+                  : "删除草稿"
+              }}
+            </button>
+          </div>
+          <details
+            v-if="project.drafts.length > 1"
+            class="workbench-other-drafts"
           >
-          <span class="workbench-project-continue"
-            >继续编辑 <span aria-hidden="true">→</span></span
-          >
-        </RouterLink>
+            <summary>其他草稿（{{ project.drafts.length - 1 }}）</summary>
+            <div
+              v-for="item in project.drafts.filter(
+                (item) => item.id !== draft.id,
+              )"
+              :key="item.id"
+              class="workbench-draft-row"
+            >
+              <RouterLink
+                :to="`/studio/${encodeURIComponent(project.id)}/${encodeURIComponent(item.id)}`"
+                >{{ item.name }}</RouterLink
+              >
+              <button
+                class="quiet delete-action"
+                :disabled="!!deleting"
+                :aria-label="`删除草稿 ${item.name}`"
+                @click="removeDraft(project, item)"
+              >
+                删除
+              </button>
+            </div>
+          </details>
+        </article>
       </div>
     </section>
 
@@ -123,6 +197,49 @@ onBeforeUnmount(() => {
   </main>
 </template>
 <style scoped>
+.workbench-project-item {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: white;
+  overflow: hidden;
+}
+.workbench-project-item .workbench-project-card {
+  border: 0;
+  border-radius: 0;
+}
+.workbench-draft-actions {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0 12px 8px;
+}
+.workbench-project-item .delete-action {
+  color: var(--danger);
+  font-size: 12px;
+  padding: 4px 8px;
+}
+.workbench-other-drafts {
+  margin: 0 12px 12px;
+  border-top: 1px solid var(--line);
+  padding-top: 8px;
+}
+.workbench-other-drafts summary {
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--muted);
+}
+.workbench-draft-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-top: 8px;
+  font-size: 12px;
+}
+.workbench-draft-row a {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
 .workbench-section-heading {
   display: flex;
   align-items: center;

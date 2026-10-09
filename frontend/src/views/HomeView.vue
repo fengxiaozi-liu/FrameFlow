@@ -5,6 +5,7 @@ import { api } from "../api/client";
 import HomeGuide from "../components/home/HomeGuide.vue";
 import { examples, steps } from "../components/home/content";
 import "../styles/home.css";
+import "../styles/home-guide.css";
 
 const router = useRouter();
 const slide = ref(0),
@@ -32,7 +33,7 @@ const modelHint = computed(() => {
   if (modelsError.value)
     return "暂时无法读取模型配置，你仍可以先写故事、整理分镜。";
   if (!available.value.length)
-    return "首次使用？先写下故事，需要 AI 生成时再连接对应模型。";
+    return "首次使用？先连接故事与视频模型，再按四步指南开始创作；图片模型可按需配置。";
   if (missing.value.length)
     return `已准备好 ${available.value.map((k) => capabilityNames[k as (typeof capabilities)[number]]).join("、")}；${missing.value.join("、")}可按需配置。`;
   return "故事、参考图和视频模型已配置，可以开始创作了。";
@@ -190,8 +191,8 @@ onBeforeUnmount(() => {
     <section class="home-onboarding" aria-labelledby="home-steps-title">
       <div class="home-section-heading">
         <div>
-          <h2 id="home-steps-title">三步，完成第一支视频</h2>
-          <p>不必一次准备好所有内容，跟着步骤慢慢完善。</p>
+          <h2 id="home-steps-title">四步，完成第一支视频</h2>
+          <p>配置模型 → 故事联想（可跳过）→ 生成分镜 → 合成视频</p>
         </div>
         <span class="home-small-note">从这里开始 ↓</span>
       </div>
@@ -206,34 +207,17 @@ onBeforeUnmount(() => {
         >
           <span class="home-step-text"
             ><span class="home-step-number">0{{ index + 1 }}</span
-            ><strong>{{ step.title }}</strong
+            ><strong
+              >{{ step.title
+              }}<small v-if="step.optional" class="guide-optional"
+                >可跳过</small
+              ></strong
             ><span>{{ step.summary }}</span
             ><span class="home-step-link">查看指南 →</span></span
           >
-          <span
-            :class="['home-step-art', `home-step-art-${index}`]"
-            aria-hidden="true"
-          >
-            <template v-if="index === 0"
-              ><span class="home-paper"
-                ><b>故事的开始</b><i /><i /><i /><em
-                  >一个雨夜，一次相遇。</em
-                ></span
-              ></template
-            >
-            <template v-else-if="index === 1"
-              ><img src="/home/cafe.png" alt="" loading="lazy" /><img
-                src="/home/city.png"
-                alt=""
-                loading="lazy"
-              /><span>01</span><span>02</span></template
-            >
-            <template v-else
-              ><img src="/home/forest.png" alt="" loading="lazy" /><span
-                class="home-film-track"
-                ><i /><i /><i /></span
-            ></template>
-          </span>
+          <span class="home-step-overview" aria-hidden="true">{{
+            ["API → 模型", "想法 → 正文", "正文 → 镜头", "片段 → 成片"][index]
+          }}</span>
         </button>
       </div>
     </section>
@@ -265,7 +249,7 @@ onBeforeUnmount(() => {
       :initial-step="guideStep"
       :example="current"
       @close="guideStep = null"
-      @start="start(current.idea)"
+      @start="start($event ? current.idea : '')"
     />
   </main>
 </template>

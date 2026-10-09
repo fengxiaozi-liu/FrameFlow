@@ -143,10 +143,12 @@ async function removeModel(model: Model) {
   finally { busy.value = false; }
 }
 async function removeConnection() {
-  if (!active.value || !confirm(`删除连接 ${active.value.name}？请先移除其模型。`)) return;
+  if (busy.value || !active.value || !confirm(`删除厂商“${active.value.name}”？会同时删除此连接的全部模型配置和保存的密钥。已完成任务与文件会保留；使用该厂商的草稿之后需重新选择模型。此操作无法恢复。`)) return;
+  const id = active.value.id;
   busy.value = true;
+  message.value = '';
   messageIsError.value = false;
-  try { await api.deleteConnection(active.value.id); selectedID.value = ""; await loadConnections(); }
+  try { await api.deleteConnection(id); selectedID.value = ""; await loadConnections(); message.value = '厂商及其模型配置已删除。'; }
   catch (error) { showError(error); }
   finally { busy.value = false; }
 }
@@ -157,7 +159,7 @@ onMounted(() => { void loadConnections().catch(showError).finally(() => { loadin
   <main class="config-page catalog-page">
     <header class="page-intro">
       <div><span class="eyebrow">MODEL MANAGEMENT</span><h1>模型管理</h1></div>
-      <button class="primary" @click="newConnection">添加厂商连接</button>
+      <button class="primary" :disabled="busy" @click="newConnection">添加厂商连接</button>
     </header>
     <p v-if="message" :class="['notice', { error: messageIsError }]" :role="messageIsError ? 'alert' : 'status'">{{ message }}</p>
     <p v-if="loading" role="status">正在加载厂商连接…</p>
@@ -170,6 +172,7 @@ onMounted(() => { void loadConnections().catch(showError).finally(() => { loadin
       <aside class="catalog-sidebar">
         <h2>厂商连接</h2>
         <button v-for="connection in connections" :key="connection.id"
+          :disabled="busy"
           :class="['catalog-connection', { active: selectedID === connection.id }]"
           @click="selectConnection(connection.id)">
           <strong>{{ connection.name }}</strong>
@@ -183,6 +186,7 @@ onMounted(() => { void loadConnections().catch(showError).finally(() => { loadin
           <header class="catalog-toolbar">
             <div><h2>{{ active.name }}</h2><small>模型列表</small></div>
             <div class="actions">
+              <button class="quiet" style="color:var(--danger)" :disabled="busy" @click="removeConnection">删除厂商</button>
               <button ref="settingsToggle" :aria-expanded="settingsOpen" aria-controls="connection-settings" @click="settingsOpen = !settingsOpen">连接设置</button>
               <button :disabled="busy || !active.credential_set" @click="testConnection">测试连接</button>
               <button :disabled="busy || !active.credential_set" @click="sync">同步模型</button>
@@ -233,7 +237,7 @@ onMounted(() => { void loadConnections().catch(showError).finally(() => { loadin
           <label>厂商<select v-model="draft.vendor" :disabled="!creating"><option value="bailian">阿里云百炼</option></select></label>
           <label v-if="draft.vendor === 'bailian'">API 完整地址<input v-model.trim="draft.base_url" required type="url" placeholder="https://{WorkspaceId}.cn-beijing.maas.aliyuncs.com/compatible-mode/v1/chat/completions" /></label>
           <label>API Key<input v-model="apiKey" type="password" autocomplete="new-password" :placeholder="draft.credential_set ? '已配置，留空表示不修改' : '输入 API Key'" /></label>
-          <div class="catalog-settings-actions"><button class="primary" type="submit" :disabled="busy">保存连接</button><button v-if="creating" type="button" :disabled="busy" @click="selectConnection(connections[0]?.id || '')">取消</button><button v-if="active" type="button" class="quiet" :disabled="busy" @click="removeConnection">删除连接</button></div>
+          <div class="catalog-settings-actions"><button class="primary" type="submit" :disabled="busy">保存连接</button><button v-if="creating" type="button" :disabled="busy" @click="selectConnection(connections[0]?.id || '')">取消</button></div>
         </form>
       </aside>
     </div>

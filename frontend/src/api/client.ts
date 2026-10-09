@@ -50,6 +50,8 @@ export const api = {
     }),
   draft: (projectId: string, draftId: string) =>
     request<Draft>(`/api/projects/${encodeURIComponent(projectId)}/drafts/${encodeURIComponent(draftId)}`),
+  deleteDraft: (projectId: string, draftId: string, version: number) =>
+    request<void>(`/api/projects/${encodeURIComponent(projectId)}/drafts/${encodeURIComponent(draftId)}?expected_version=${version}`, { method: "DELETE" }),
   saveBody: (projectId: string, draftId: string, body: string, expected_version: number, name?: string) =>
     request<Draft>(`/api/projects/${encodeURIComponent(projectId)}/drafts/${encodeURIComponent(draftId)}`, { method: "PUT", body: JSON.stringify({ body, expected_version, name }) }),
   createCandidate: (projectId: string, draftId: string, input: { expected_version: number; target: "story" | "storyboard"; mode?: string; instruction?: string; model_id: string; idempotency_key: string }) =>

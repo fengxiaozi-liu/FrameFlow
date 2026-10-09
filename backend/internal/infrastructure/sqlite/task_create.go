@@ -12,6 +12,9 @@ func (r *TaskRepository) CreateIfAbsent(ctx context.Context, t task.Task) (task.
 		return t, false, err
 	}
 	defer tx.Rollback()
+	if err = checkTaskDeletion(ctx, tx, t); err != nil {
+		return t, false, err
+	}
 	b, err := json.Marshal(t)
 	if err != nil {
 		return t, false, err

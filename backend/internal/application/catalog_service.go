@@ -106,7 +106,7 @@ func (s CatalogService) DeleteConnection(g *gin.Context) {
 	ctx := g.Request.Context()
 	id := g.Param("id")
 	if err := s.Connections.DeleteConnection(ctx, id); err != nil {
-		writeError(g, Conflict("connection_has_models", err))
+		writeError(g, err)
 		return
 	}
 	if s.Vault != nil {

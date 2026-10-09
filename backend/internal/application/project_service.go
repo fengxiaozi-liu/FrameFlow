@@ -3,6 +3,7 @@ package application
 import (
 	"errors"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/material"
@@ -17,6 +18,24 @@ type ProjectService struct {
 	Repo      project.Repository
 	Materials material.Repository
 	Tasks     task.Repository
+}
+
+func (s ProjectService) DeleteDraft(ctx *gin.Context) {
+	version, err := strconv.ParseInt(ctx.Query("expected_version"), 10, 64)
+	if err != nil || version < 0 {
+		writeError(ctx, Invalid("expected_version_required", errors.New("请提供有效的草稿版本")))
+		return
+	}
+	repo, ok := s.Repo.(project.DraftDeletionRepository)
+	if !ok {
+		writeError(ctx, unavailable("draft_delete_unavailable", "草稿删除暂不可用"))
+		return
+	}
+	if err = repo.DeleteDraft(ctx.Request.Context(), ctx.Param("id"), ctx.Param("draftId"), version); err != nil {
+		writeError(ctx, err)
+		return
+	}
+	ctx.Status(http.StatusNoContent)
 }
 
 func (s ProjectService) Create(ctx *gin.Context) {

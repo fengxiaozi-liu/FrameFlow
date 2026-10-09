@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/fault"
 	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/project"
 	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/story"
 	"github.com/gin-gonic/gin"
@@ -19,7 +20,7 @@ func draftByID(value *project.Project, id string) (*project.Draft, error) {
 			return &value.Drafts[i], nil
 		}
 	}
-	return nil, errors.New("draft not found in project")
+	return nil, fault.ErrNotFound
 }
 
 func (s ProjectService) GetDraft(ctx *gin.Context) {
