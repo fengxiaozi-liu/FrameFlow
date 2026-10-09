@@ -7,6 +7,7 @@ import (
 	"github.com/fengxiaozi-liu/FrameFlow/internal/application/modelport"
 	domain "github.com/fengxiaozi-liu/FrameFlow/internal/domain/provider"
 	"github.com/fengxiaozi-liu/FrameFlow/internal/infrastructure/provider/bailian"
+	"github.com/fengxiaozi-liu/FrameFlow/internal/infrastructure/provider/customjson"
 )
 
 // Registry resolves explicit protocol versions independently of vendor and model IDs.
@@ -26,6 +27,8 @@ func NewRegistry(credentials domain.CredentialReader) *Registry {
 	r.Register(domain.ImageProtocol, ProtocolAdapter{Image: client})
 	r.Register(domain.VideoProtocol, ProtocolAdapter{Video: client, Audio: client})
 	r.Register(domain.SpeechProtocol, ProtocolAdapter{Speech: client})
+	custom := customjson.Client{Credentials: credentials}
+	r.Register(domain.CustomProtocol, ProtocolAdapter{Text: custom, Image: custom, Video: custom, Speech: custom})
 	return r
 }
 func (r *Registry) Register(protocol string, adapter ProtocolAdapter) { r.clients[protocol] = adapter }

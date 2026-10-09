@@ -75,6 +75,30 @@ func TestCatalogSyncPreservesManualAndRejectsUnknown(t *testing.T) {
 	if err != nil || !refreshed.Enabled || len(refreshed.Capabilities) != 1 {
 		t.Fatalf("newly recognized model not enabled: %+v %v", refreshed, err)
 	}
+	// A deliberately empty capability selection must survive sync, unlike a
+	// never-classified entry that can adopt newly discovered metadata.
+	request("PATCH", "/connections/beijing/models/beijing:qwen-image", `{"capabilities":[]}`, 200)
+	cleared, err := store.GetModel(ctx, stale.ID)
+	if err != nil || len(cleared.Capabilities) != 0 || cleared.Enabled || cleared.Default {
+		t.Fatal(cleared, err)
+	}
+	request("POST", "/connections/beijing/models/sync-updated", `{}`, 200)
+	cleared, err = store.GetModel(ctx, stale.ID)
+	if err != nil || len(cleared.Capabilities) != 0 || cleared.Enabled || cleared.Supported {
+		t.Fatal("sync restored a deliberately cleared selection", cleared, err)
+	}
+	request("PATCH", "/connections/beijing/models/beijing:qwen-image", `{"capabilities":["image"],"enabled":true,"default":true}`, 200)
+	request("PATCH", "/connections/beijing/models/beijing:qwen-image", `{"default":false}`, 200)
+	toggled, _ := store.GetModel(ctx, stale.ID)
+	if toggled.Default || !toggled.Enabled {
+		t.Fatal("default cancellation not saved", toggled)
+	}
+	request("PATCH", "/connections/beijing/models/beijing:qwen-image", `{"enabled":false}`, 200)
+	request("POST", "/connections/beijing/models/sync-updated", `{}`, 200)
+	toggled, _ = store.GetModel(ctx, stale.ID)
+	if toggled.Enabled || len(toggled.Capabilities) != 1 {
+		t.Fatal("sync restored a disabled model", toggled)
+	}
 	request("PATCH", "/connections/beijing/models/beijing:unknown-model", `{"enabled":true}`, 400)
 	request("PATCH", "/connections/beijing/models/beijing:unknown-model", `{"capabilities":["image"],"enabled":true}`, 200)
 	configured, _ := store.GetModel(ctx, "beijing:unknown-model")

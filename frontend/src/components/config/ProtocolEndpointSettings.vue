@@ -2,90 +2,46 @@
 import { computed } from "vue";
 import type { OperationBinding } from "../../api/types";
 import type { components } from "../../api/schema";
-
 const props = defineProps<{
   modelValue: OperationBinding;
   protocol?: components["schemas"]["ProtocolDescriptor"];
   disabled?: boolean;
 }>();
 const emit = defineEmits<{ "update:modelValue": [OperationBinding] }>();
-const mode = computed(
+const legacy = computed(
   () =>
-    props.modelValue.endpoint_mode ||
-    (props.modelValue.endpoint ? "custom" : "default"),
+    props.modelValue.endpoint_mode !== "default" && !!props.modelValue.endpoint,
 );
 const requestPath = computed(() =>
-  mode.value === "custom"
-    ? props.modelValue.endpoint
-    : props.protocol?.default_path,
+  legacy.value ? props.modelValue.endpoint : props.protocol?.default_path,
 );
-
-function setMode(next: "default" | "custom") {
-  const binding = { ...props.modelValue, endpoint_mode: next };
-  if (next === "default") delete binding.endpoint;
-  emit("update:modelValue", binding);
-}
-function setPath(event: Event) {
-  emit("update:modelValue", {
-    ...props.modelValue,
-    endpoint_mode: "custom",
-    endpoint: (event.target as HTMLInputElement).value.trim(),
-  });
+function restoreDefault() {
+  const next = { ...props.modelValue, endpoint_mode: "default" as const };
+  delete next.endpoint;
+  emit("update:modelValue", next);
 }
 </script>
-
 <template>
   <fieldset class="endpoint-settings" :disabled="disabled">
-    <legend>请求路径</legend>
-    <div class="endpoint-choices">
-      <label
-        ><input
-          type="radio"
-          name="endpoint-mode"
-          :checked="mode === 'default'"
-          @change="setMode('default')"
-        />使用协议默认路径</label
-      >
-      <label
-        ><input
-          type="radio"
-          name="endpoint-mode"
-          :checked="mode === 'custom'"
-          @change="setMode('custom')"
-        />自定义路径</label
-      >
-    </div>
-    <label v-if="mode === 'custom'" class="endpoint-input">
-      自定义请求路径
-      <input
-        aria-label="自定义请求路径"
-        :value="modelValue.endpoint || ''"
-        required
-        placeholder="输入 / 开头的接口路径"
-        @input="setPath"
-      />
-    </label>
-    <div class="endpoint-preview" aria-label="实际请求路径" aria-live="polite">
+    <legend>内置协议请求路径</legend>
+    <div class="endpoint-preview" aria-label="实际请求路径">
       <span>{{ protocol?.polling_path ? "提交任务" : "生成请求" }} · POST</span>
-      <code>{{
-        requestPath ||
-        (mode === "custom" ? "请填写自定义路径" : "协议路径暂不可用")
-      }}</code>
+      <code>{{ requestPath || "协议路径暂不可用" }}</code>
       <template v-if="protocol?.polling_path">
-        <span>查询任务 · GET（协议固定路径）</span>
-        <code>{{ protocol.polling_path }}</code>
+        <span>查询任务 · GET</span><code>{{ protocol.polling_path }}</code>
       </template>
     </div>
-    <p>
-      使用当前厂商连接的域名和密钥。{{
-        mode === "custom"
-          ? "自定义仅替换生成请求路径，请求格式仍遵循所选协议。"
-          : "路径由所选协议提供，无需填写。"
-      }}
+    <template v-if="legacy">
+      <p>
+        历史路径配置：继续使用原路径及所选内置协议的数据格式。需要自定义数据格式时，请在上方选择“自定义接口（JSON）”。
+      </p>
+      <button type="button" @click="restoreDefault">恢复协议默认路径</button>
+    </template>
+    <p v-else>
+      请求格式与路径由内置协议提供，使用当前厂商连接的域名和密钥。其他接口格式请在上方选择“自定义接口（JSON）”。
     </p>
   </fieldset>
 </template>
-
 <style scoped>
 .endpoint-settings {
   min-width: 0;
@@ -96,26 +52,6 @@ function setPath(event: Event) {
   border: 1px solid var(--border, #dbe3ee);
   border-radius: 8px;
 }
-.endpoint-choices {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px 20px;
-}
-.endpoint-choices label {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  cursor: pointer;
-}
-.endpoint-choices input {
-  width: auto;
-  margin: 0;
-}
-.endpoint-input {
-  display: grid;
-  gap: 6px;
-  min-width: 0;
-}
 .endpoint-preview {
   display: grid;
   gap: 6px;
@@ -124,7 +60,8 @@ function setPath(event: Event) {
   border-radius: 6px;
   background: #f4f7fa;
 }
-.endpoint-preview span {
+.endpoint-preview span,
+p {
   color: #53657b;
   font-size: 12px;
 }
@@ -137,10 +74,11 @@ function setPath(event: Event) {
 .endpoint-preview code + span {
   margin-top: 8px;
 }
-.endpoint-settings p {
+p {
   margin: 0;
-  color: #53657b;
-  font-size: 12px;
   line-height: 1.6;
+}
+button {
+  justify-self: start;
 }
 </style>

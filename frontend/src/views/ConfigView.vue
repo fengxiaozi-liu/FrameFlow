@@ -33,6 +33,11 @@ const filteredModels = computed(() => models.value.filter((item) =>
 const visibleModels = computed(() => filteredModels.value.slice(0, shownCount.value));
 const labels: Record<Capability, string> = { story: "文本生成", image: "文生图", video: "图生视频", speech: "语音合成" };
 
+function toggleFilter(value: Capability | "all") {
+  filter.value = filter.value === value ? "all" : value;
+  shownCount.value = 50;
+}
+
 function showError(error: unknown) {
   const detail = (error as Error).message;
   message.value = detail.includes("base_url must be an HTTPS URL")
@@ -130,12 +135,14 @@ async function addModel() {
   } catch (error) { showError(error); }
   finally { busy.value = false; }
 }
-async function changeModel(model: Model, values: { enabled?: boolean; default?: boolean; capabilities?: Capability[] }) {
+async function changeModel(model: Model, values: { enabled?: boolean; default?: boolean; capabilities?: Capability[] }, event: Event) {
+  const checkbox = event.target as HTMLInputElement;
+  const previousChecked = !checkbox.checked;
   busy.value = true;
   message.value = "";
   messageIsError.value = false;
   try { await api.updateModel(model, values); await loadModels(model.connection_id); }
-  catch (error) { showError(error); }
+  catch (error) { checkbox.checked = previousChecked; showError(error); }
   finally { busy.value = false; }
 }
 async function removeModel(model: Model) {
@@ -208,7 +215,7 @@ onMounted(() => { void loadConnections().catch(showError).finally(() => { loadin
           </form>
           <div class="catalog-filters" aria-label="模型类型">
             <button v-for="item in ([['all', '全部'], ['story', '文本生成'], ['image', '文生图'], ['video', '图生视频'], ['speech', '语音合成']] as const)"
-              :key="item[0]" :class="{ active: filter === item[0] }" @click="filter = item[0]">{{ item[1] }}</button>
+              :key="item[0]" :class="{ active: filter === item[0] }" :aria-pressed="filter === item[0]" @click="toggleFilter(item[0])">{{ item[1] }}</button>
           </div>
           <label class="catalog-model-search">查找模型<input v-model="modelQuery" type="search" placeholder="名称或模型 ID" @input="shownCount = 50" /></label>
           <div class="catalog-table-wrap">
@@ -218,12 +225,12 @@ onMounted(() => { void loadConnections().catch(showError).finally(() => { loadin
                 <tr v-for="model in visibleModels" :key="model.id">
                   <td><strong>{{ model.name }}</strong><small>{{ model.remote_id }}</small></td>
                   <td><div class="capability-select" :aria-label="`${model.name} 支持的能力`">
-                    <label v-for="cap in (['story', 'image', 'video', 'speech'] as const)" :key="cap"><input type="checkbox" :checked="model.capabilities?.includes(cap)" :disabled="busy" @change="changeModel(model, { capabilities: model.capabilities?.includes(cap) ? model.capabilities.filter((item) => item !== cap) : [...(model.capabilities || []), cap] })" />{{ labels[cap] }}</label>
+                    <label v-for="cap in (['story', 'image', 'video', 'speech'] as const)" :key="cap"><input type="checkbox" :checked="model.capabilities?.includes(cap)" :disabled="busy" @change="changeModel(model, { capabilities: model.capabilities?.includes(cap) ? model.capabilities.filter((item) => item !== cap) : [...(model.capabilities || []), cap] }, $event)" />{{ labels[cap] }}</label>
                   </div></td>
                   <td><button :disabled="busy" @click="editingModel = model">协议与参数</button><small v-for="cap in model.capabilities" :key="cap">{{ labels[cap] }}：{{ model.availability?.[cap]?.available ? '配置就绪 · 未验证' : model.availability?.[cap]?.reason || '待配置' }}</small></td>
                   <td>{{ model.source === 'manual' ? '手动添加' : '同步' }}</td>
-                  <td><label v-if="model.supported" class="toggle"><input type="checkbox" :checked="model.enabled" :disabled="busy" @change="changeModel(model, { enabled: !model.enabled })" />启用</label><span v-else class="catalog-unsupported">待配置能力</span></td>
-                  <td><input v-if="model.supported" type="checkbox" :checked="model.default" :disabled="busy || !model.enabled" aria-label="设为默认模型" @change="changeModel(model, { default: !model.default })" /></td>
+                  <td><label v-if="model.supported" class="toggle"><input type="checkbox" :checked="model.enabled" :disabled="busy" @change="changeModel(model, { enabled: !model.enabled }, $event)" />启用</label><span v-else class="catalog-unsupported">待配置能力</span></td>
+                  <td><input v-if="model.supported" type="checkbox" :checked="model.default" :disabled="busy || !model.enabled" aria-label="设为默认模型" @change="changeModel(model, { default: !model.default }, $event)" /></td>
                   <td><button class="quiet" :disabled="busy" :aria-label="`删除 ${model.name}`" @click="removeModel(model)">删除</button></td>
                 </tr>
               </tbody>

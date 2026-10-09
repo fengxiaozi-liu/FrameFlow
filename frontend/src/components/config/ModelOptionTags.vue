@@ -4,7 +4,7 @@ import { ref } from "vue";
 const props = defineProps<{
   modelValue: string[];
   label: string;
-  kind: "duration" | "resolution" | "language";
+  kind: "duration" | "resolution" | "language" | "state";
   disabled?: boolean;
 }>();
 const emit = defineEmits<{ "update:modelValue": [string[]] }>();
@@ -17,8 +17,10 @@ function display(value: string) {
   return props.kind === "duration" ? `${value} 秒` : value;
 }
 function contains(value: string) {
-  return props.modelValue.some(
-    (item) => item.toLocaleLowerCase() === value.toLocaleLowerCase(),
+  return props.modelValue.some((item) =>
+    props.kind === "state"
+      ? item === value
+      : item.toLocaleLowerCase() === value.toLocaleLowerCase(),
   );
 }
 function clearError() {
@@ -123,7 +125,9 @@ function onEnter(event: KeyboardEvent) {
             ? '输入秒数'
             : kind === 'resolution'
               ? '自定义，如 1440P'
-              : '语言标识，如 Chinese'
+              : kind === 'state'
+                ? '按接口文档逐个添加状态值'
+                : '语言标识，如 Chinese'
         "
         :disabled="disabled"
         @input="clearError"

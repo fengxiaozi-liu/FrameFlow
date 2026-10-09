@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import ModelOptionTags from "./ModelOptionTags.vue";
+import CustomInterfaceSettings from "./CustomInterfaceSettings.vue";
 import ProtocolEndpointSettings from "./ProtocolEndpointSettings.vue";
 import EntityEditorDrawer from "../studio/EntityEditorDrawer.vue";
 import { modelConfigurationApi } from "../../api/modelConfiguration";
@@ -45,6 +46,26 @@ function chooseProtocol(event: Event) {
     image_sizes: {},
     voices: [],
   };
+  if (protocol === "custom.json.v1") {
+    const body =
+      selected.value === "speech"
+        ? {
+            model: "{{model}}",
+            text: "{{text}}",
+            voice: "{{voice}}",
+            language: "{{language}}",
+          }
+        : selected.value === "story"
+          ? { model: "{{model}}", messages: "{{messages}}" }
+          : { model: "{{model}}", prompt: "{{prompt}}", images: "{{images}}" };
+    bindings.value[selected.value]!.custom = {
+      path: "",
+      body_template: JSON.stringify(body, null, 2),
+      auth_mode: "bearer",
+      mode: "sync",
+      result_pointer: "",
+    };
+  }
 }
 function chooseMode(event: Event) {
   if (!current.value) return;
@@ -150,14 +171,25 @@ onMounted(async () => {
         </select></label
       >
       <p v-if="selected && !loading" class="muted">
-        这里只列出当前能力已实现的协议；请按服务商接口格式选择，兼容 OpenAI
-        的文本接口不代表图片或视频接口也兼容。
+        内置协议提供固定请求格式与路径；其他 JSON
+        接口请选择“自定义接口（JSON）”，按文档配置请求数据和结果提取。
       </p>
       <p v-if="selected && !loading && !choices.length" role="status">
         暂无可用协议，请重新加载或接入对应协议适配器。
       </p>
       <template v-if="current">
+        <CustomInterfaceSettings
+          v-if="current.protocol === 'custom.json.v1' && current.custom"
+          v-model="current.custom"
+          :capability="selected as Capability"
+          :variables="
+            choices.find((p) => p.id === current.protocol)
+              ?.template_variables || []
+          "
+          :disabled="busy"
+        />
         <ProtocolEndpointSettings
+          v-else
           :key="selected + current.protocol"
           v-model="bindings[selected]!"
           :protocol="
@@ -263,7 +295,9 @@ onMounted(async () => {
                 :disabled="busy"
               />允许尾帧</label
             >
-            <label class="operation-check"
+            <label
+              v-if="current.protocol !== 'custom.json.v1'"
+              class="operation-check"
               ><input
                 v-model="current.driving_audio"
                 type="checkbox"

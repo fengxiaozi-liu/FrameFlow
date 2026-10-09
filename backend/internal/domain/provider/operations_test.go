@@ -105,11 +105,35 @@ func TestEndpointModes(t *testing.T) {
 		t.Fatal(updated, err)
 	}
 	for _, p := range Protocols() {
+		if p.ID == CustomProtocol {
+			if p.DefaultPath != "" || len(p.TemplateVariables) < 2 {
+				t.Fatal(p)
+			}
+			continue
+		}
 		if p.DefaultPath == "" {
 			t.Fatal("protocol missing default path", p.ID)
 		}
 		if p.Operation == Video && p.PollingPath != VideoTaskPathPrefix+"{task_id}" {
 			t.Fatal(p)
 		}
+	}
+}
+
+func TestManualCapabilitySelectionRetainsProtocolAndIntent(t *testing.T) {
+	m := Model{Revision: 1, Capabilities: []Capability{Story, Image}, Enabled: true, Supported: true, Default: true, Operations: map[Capability]OperationBinding{Story: {Protocol: ChatProtocol}}}
+	selected, err := m.SelectCapabilities([]Capability{Image, Image})
+	if err != nil || !selected.CapabilitiesConfigured || len(selected.Capabilities) != 1 || !selected.Enabled {
+		t.Fatal(selected, err)
+	}
+	cleared, err := m.Configure(1, m.Operations, []Capability{})
+	if err != nil || !cleared.CapabilitiesConfigured || len(cleared.Capabilities) != 0 || cleared.Enabled || cleared.Default || cleared.Supported {
+		t.Fatal(cleared, err)
+	}
+	if cleared.Operations[Story].Protocol != ChatProtocol {
+		t.Fatal("clearing capability deleted protocol settings")
+	}
+	if len(m.Capabilities) != 2 || m.CapabilitiesConfigured {
+		t.Fatal("changed original aggregate")
 	}
 }

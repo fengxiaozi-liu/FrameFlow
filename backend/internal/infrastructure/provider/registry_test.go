@@ -20,3 +20,18 @@ func TestRegistryUsesProtocolNotVendorOrModel(t *testing.T) {
 		t.Fatal("missing registration accepted")
 	}
 }
+
+func TestCustomJSONIsIndependentlyRegistered(t *testing.T) {
+	r := NewRegistry(nil)
+	custom, ok := r.clients[domain.CustomProtocol]
+	if !ok || custom.Text == nil || custom.Image == nil || custom.Video == nil || custom.Speech == nil {
+		t.Fatal("custom adapter missing operation")
+	}
+	if custom.Audio != nil {
+		t.Fatal("unimplemented upload advertised")
+	}
+	m := domain.Model{RemoteID: "unknown-custom-model", Enabled: true, Capabilities: []domain.Capability{domain.Story}, Operations: map[domain.Capability]domain.OperationBinding{domain.Story: {Protocol: domain.CustomProtocol, Custom: &domain.CustomInterface{Path: "/generate", Mode: "sync", AuthMode: "none", BodyTemplate: `{"model":"{{model}}","prompt":"{{prompt}}"}`, ResultPointer: "/text"}}}}
+	if _, err := r.client(m, domain.Story); err != nil {
+		t.Fatal(err)
+	}
+}

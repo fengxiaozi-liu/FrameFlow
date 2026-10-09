@@ -50,3 +50,49 @@ func TestModelConfigurationRevisionAndFrozenTask(t *testing.T) {
 		t.Fatal(got, e)
 	}
 }
+
+func TestCustomConfigurationPersistsAndFreezes(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "custom.db")
+	r, err := Open(ctx, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := provider.Model{ID: "custom:m", ConnectionID: "custom", RemoteID: "opaque", Enabled: true, Capabilities: []provider.Capability{provider.Story}}
+	if err = r.SaveModel(ctx, m); err != nil {
+		t.Fatal(err)
+	}
+	m, err = r.GetModel(ctx, m.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	config := &provider.CustomInterface{Path: "/generate", BodyTemplate: `{"engine":"{{model}}","question":"{{prompt}}"}`, AuthMode: "none", Mode: "sync", ResultPointer: "/answer"}
+	m, err = r.ConfigureOperations(ctx, m.ID, m.Revision, map[provider.Capability]provider.OperationBinding{provider.Story: {Protocol: provider.CustomProtocol, Custom: config}}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	item := task.New("custom-frozen", task.KindStory, task.Input{Prompt: "test"}, time.Now())
+	item.ModelID = m.ID
+	item.ModelConfig = &m
+	if err = r.Save(ctx, item); err != nil {
+		t.Fatal(err)
+	}
+	config.Path = "/v2/generate"
+	if _, err = r.ConfigureOperations(ctx, m.ID, m.Revision, map[provider.Capability]provider.OperationBinding{provider.Story: {Protocol: provider.CustomProtocol, Custom: config}}, nil); err != nil {
+		t.Fatal(err)
+	}
+	r.Close()
+	r, err = Open(ctx, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Close()
+	current, err := r.GetModel(ctx, m.ID)
+	if err != nil || current.Operations[provider.Story].Custom.Path != "/v2/generate" {
+		t.Fatal(current, err)
+	}
+	frozen, err := r.Get(ctx, item.ID)
+	if err != nil || frozen.ModelConfig.Operations[provider.Story].Custom.Path != "/generate" {
+		t.Fatal(frozen, err)
+	}
+}

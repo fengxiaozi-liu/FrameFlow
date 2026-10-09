@@ -3892,6 +3892,26 @@ export interface components {
             utterance_id?: string;
             video_version_id?: string;
         };
+        CustomInterface: {
+            path: string;
+            body_template: string;
+            auth_header?: string;
+            auth_prefix?: string;
+            result_pointer: string;
+            /** @enum {string} */
+            auth_mode: "none" | "bearer" | "header";
+            /** @enum {string} */
+            mode: "sync" | "async";
+            polling?: components["schemas"]["CustomPolling"];
+        };
+        CustomPolling: {
+            path: string;
+            task_id_pointer: string;
+            status_pointer: string;
+            pending: string[];
+            succeeded: string[];
+            failed: string[];
+        };
         OperationBinding: {
             protocol: string;
             source: string;
@@ -3922,6 +3942,7 @@ export interface components {
              * @enum {string}
              */
             endpoint_mode?: "default" | "custom";
+            custom?: components["schemas"]["CustomInterface"];
         };
         OperationStatus: {
             available: boolean;
@@ -3948,6 +3969,8 @@ export interface components {
             availability?: {
                 [key: string]: components["schemas"]["OperationStatus"];
             };
+            /** @description True after manual capability selection, including clearing every capability. Discovery must preserve this selection. */
+            capabilities_configured?: boolean;
         };
         ModelConfigurationWrite: {
             expected_revision: number;
@@ -3965,6 +3988,7 @@ export interface components {
             default_path: string;
             /** @description Read-only task polling path template; independent of the submission override. */
             polling_path?: string;
+            template_variables?: string[];
         };
     };
     responses: never;

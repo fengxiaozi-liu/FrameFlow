@@ -276,7 +276,8 @@ func (s CatalogService) SyncModels(g *gin.Context) {
 		}
 		wasSupported := m.Supported
 		m.Name = entry.Name
-		if !exists || len(m.Capabilities) == 0 {
+		acceptDiscovery := !exists || (!m.CapabilitiesConfigured && len(m.Capabilities) == 0)
+		if acceptDiscovery {
 			m.Capabilities, err = validCapabilities(entry.Capabilities)
 			if err != nil {
 				writeError(g, Invalid("invalid_capabilities", err))
@@ -284,7 +285,7 @@ func (s CatalogService) SyncModels(g *gin.Context) {
 			}
 		}
 		m.Supported = len(m.Capabilities) > 0
-		if !exists || !wasSupported {
+		if acceptDiscovery && (!exists || !wasSupported) {
 			m.Enabled = m.Supported
 		}
 		m.LastSeen = now
@@ -319,15 +320,10 @@ func (s CatalogService) UpdateModel(g *gin.Context) {
 		return
 	}
 	if input.Capabilities != nil {
-		m.Capabilities, err = validCapabilities(*input.Capabilities)
+		m, err = m.SelectCapabilities(*input.Capabilities)
 		if err != nil {
 			writeError(g, Invalid("invalid_capabilities", err))
 			return
-		}
-		m.Supported = len(m.Capabilities) > 0
-		if !m.Supported {
-			m.Enabled = false
-			m.Default = false
 		}
 	}
 	if input.Enabled != nil {

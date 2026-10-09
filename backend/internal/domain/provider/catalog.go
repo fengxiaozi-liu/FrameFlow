@@ -19,19 +19,20 @@ type Connection struct {
 }
 
 type Model struct {
-	Availability map[Capability]OperationStatus  `json:"availability,omitempty"`
-	Revision     int64                           `json:"revision"`
-	Operations   map[Capability]OperationBinding `json:"operations"`
-	ID           string                          `json:"id"`
-	ConnectionID string                          `json:"connection_id"`
-	RemoteID     string                          `json:"remote_id"`
-	Name         string                          `json:"name"`
-	Capabilities []Capability                    `json:"capabilities"`
-	Source       string                          `json:"source"`
-	Supported    bool                            `json:"supported"`
-	Enabled      bool                            `json:"enabled"`
-	Default      bool                            `json:"default"`
-	LastSeen     time.Time                       `json:"last_seen,omitempty"`
+	CapabilitiesConfigured bool                            `json:"capabilities_configured,omitempty"`
+	Availability           map[Capability]OperationStatus  `json:"availability,omitempty"`
+	Revision               int64                           `json:"revision"`
+	Operations             map[Capability]OperationBinding `json:"operations"`
+	ID                     string                          `json:"id"`
+	ConnectionID           string                          `json:"connection_id"`
+	RemoteID               string                          `json:"remote_id"`
+	Name                   string                          `json:"name"`
+	Capabilities           []Capability                    `json:"capabilities"`
+	Source                 string                          `json:"source"`
+	Supported              bool                            `json:"supported"`
+	Enabled                bool                            `json:"enabled"`
+	Default                bool                            `json:"default"`
+	LastSeen               time.Time                       `json:"last_seen,omitempty"`
 }
 
 func (m Model) Supports(cap Capability) bool { return m.Resolve(cap).Available }

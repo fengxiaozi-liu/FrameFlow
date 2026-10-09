@@ -23,6 +23,7 @@ const (
 // OperationBinding is a versioned, explicit wire contract and its model constraints.
 // RemoteID never participates in capability resolution.
 type OperationBinding struct {
+	Custom           *CustomInterface  `json:"custom,omitempty"`
 	Protocol         string            `json:"protocol"`
 	Source           string            `json:"source"`
 	EndpointMode     string            `json:"endpoint_mode,omitempty"`
@@ -51,26 +52,34 @@ type OperationStatus struct {
 }
 
 type ProtocolDescriptor struct {
-	ID          string     `json:"id"`
-	Operation   Capability `json:"operation"`
-	Name        string     `json:"name"`
-	DefaultPath string     `json:"default_path"`
-	PollingPath string     `json:"polling_path,omitempty"`
+	TemplateVariables []string   `json:"template_variables,omitempty"`
+	ID                string     `json:"id"`
+	Operation         Capability `json:"operation"`
+	Name              string     `json:"name"`
+	DefaultPath       string     `json:"default_path"`
+	PollingPath       string     `json:"polling_path,omitempty"`
 }
 
 // Descriptors describe implemented formats, not provider model families.
 func Protocols() []ProtocolDescriptor {
-	return []ProtocolDescriptor{
+	items := []ProtocolDescriptor{
 		{ID: ChatProtocol, Operation: Story, Name: "OpenAI Chat Completions", DefaultPath: "/compatible-mode/v1/chat/completions"},
 		{ID: ImageProtocol, Operation: Image, Name: "DashScope 多模态图片", DefaultPath: "/api/v1/services/aigc/multimodal-generation/generation"},
 		{ID: VideoProtocol, Operation: Video, Name: "DashScope media 视频（异步）", DefaultPath: "/api/v1/services/aigc/video-generation/video-synthesis", PollingPath: VideoTaskPathPrefix + "{task_id}"},
 		{ID: SpeechProtocol, Operation: Speech, Name: "DashScope 语音合成", DefaultPath: "/api/v1/services/aigc/multimodal-generation/generation"},
 	}
+	for _, op := range []Capability{Story, Image, Video, Speech} {
+		items = append(items, ProtocolDescriptor{ID: CustomProtocol, Operation: op, Name: "自定义接口（JSON）", TemplateVariables: CustomVariables(op)})
+	}
+	return items
 }
 
 // RequestPath is shared by execution and the protocol catalogue shown in the UI.
 // An absent mode preserves legacy endpoint overrides; explicit default ignores them.
 func (b OperationBinding) RequestPath() string {
+	if b.Protocol == CustomProtocol && b.Custom != nil {
+		return b.Custom.Path
+	}
 	if b.EndpointMode == "custom" || (b.EndpointMode == "" && b.Endpoint != "") {
 		return b.Endpoint
 	}
@@ -91,6 +100,38 @@ func (b OperationBinding) Validate(operation Capability) error {
 	}
 	if !found {
 		return errors.New("protocol_unsupported: 请为该能力选择已实现的接口协议")
+	}
+	if b.Protocol == CustomProtocol {
+		if b.Custom == nil {
+			return errors.New("请配置自定义接口格式")
+		}
+		if b.Endpoint != "" || b.EndpointMode == "custom" {
+			return errors.New("自定义接口请使用独立的请求配置，不使用旧路径覆盖")
+		}
+		if err := b.Custom.Validate(operation); err != nil {
+			return err
+		}
+		variables, _ := b.Custom.Variables()
+		if operation == Image && b.MaxReferences > 0 && !variables["images"] {
+			return errors.New("参考图能力需要在请求模板映射 {{images}}")
+		}
+		if operation == Video {
+			required := "first_frame"
+			if b.InputMode == "reference_images" {
+				required = "images"
+			}
+			if !variables[required] {
+				return fmt.Errorf("视频模板需要映射 {{%s}}", required)
+			}
+			if b.LastFrame && !variables["last_frame"] {
+				return errors.New("尾帧能力需要映射 {{last_frame}}")
+			}
+			if b.DrivingAudio {
+				return errors.New("自定义接口暂不支持驱动音频上传")
+			}
+		}
+	} else if b.Custom != nil {
+		return errors.New("内置协议不能附带自定义接口格式")
 	}
 	if b.EndpointMode != "" && b.EndpointMode != "default" && b.EndpointMode != "custom" {
 		return errors.New("请选择协议默认路径或自定义路径")
@@ -263,6 +304,31 @@ type OperationRepository interface {
 	ConfigureOperations(context.Context, string, int64, map[Capability]OperationBinding, []Capability) (Model, error)
 }
 
+// SelectCapabilities records explicit user intent, including an empty selection.
+// Clearing the last capability disables the model without deleting protocol settings.
+func (m Model) SelectCapabilities(capabilities []Capability) (Model, error) {
+	next := m
+	next.Capabilities = []Capability{}
+	for _, capability := range capabilities {
+		switch capability {
+		case Story, Image, Video, Speech:
+		default:
+			return m, fmt.Errorf("未知模型能力：%s", capability)
+		}
+		if !slices.Contains(next.Capabilities, capability) {
+			next.Capabilities = append(next.Capabilities, capability)
+		}
+	}
+	next.Supported = len(next.Capabilities) > 0
+	if !next.Supported {
+		next.Enabled = false
+		next.Default = false
+	}
+	next.CapabilitiesConfigured = true
+	next.Availability = nil
+	return next, nil
+}
+
 // Configure returns a new aggregate revision without aliasing caller-owned maps.
 func (m Model) Configure(expected int64, bindings map[Capability]OperationBinding, capabilities []Capability) (Model, error) {
 	if m.Revision != expected {
@@ -270,21 +336,10 @@ func (m Model) Configure(expected int64, bindings map[Capability]OperationBindin
 	}
 	next := m
 	if capabilities != nil {
-		next.Capabilities = []Capability{}
-		for _, capability := range capabilities {
-			switch capability {
-			case Story, Image, Video, Speech:
-			default:
-				return m, fmt.Errorf("未知模型能力：%s", capability)
-			}
-			if !slices.Contains(next.Capabilities, capability) {
-				next.Capabilities = append(next.Capabilities, capability)
-			}
-		}
-		next.Supported = len(next.Capabilities) > 0
-		if !next.Supported {
-			next.Enabled = false
-			next.Default = false
+		var err error
+		next, err = m.SelectCapabilities(capabilities)
+		if err != nil {
+			return m, err
 		}
 	}
 	next.Availability = nil
