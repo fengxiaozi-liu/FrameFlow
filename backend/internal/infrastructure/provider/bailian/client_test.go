@@ -41,7 +41,7 @@ func TestWan27FirstLastAudioRequest(t *testing.T) {
 		}
 		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"output":{"task_id":"remote"}}`)), Header: make(http.Header)}, nil
 	})}}
-	model := provider.Model{RemoteID: "wan2.7-i2v-2026-04-25", Enabled: true, Supported: true, Capabilities: []provider.Capability{provider.Video}}
+	model := provider.MigrateLegacyModel(provider.Model{RemoteID: "wan2.7-i2v-2026-04-25", Enabled: true, Supported: true, Capabilities: []provider.Capability{provider.Video}})
 	_, err := client.GenerateVideo(context.Background(), provider.Connection{ID: "c", Name: "Test", Vendor: "bailian", BaseURL: "https://example.com/api/v1"}, model, provider.VideoRequest{Prompt: "motion", SourceImageURL: "https://example.com/first.png", LastFrameURL: "https://example.com/last.png", DrivingAudioURL: "https://example.com/voice.mp3", Resolution: "720P", Duration: 10}, provider.RequestOptions{})
 	if err != nil {
 		t.Fatal(err)
@@ -95,11 +95,11 @@ func TestDiscoveryAndClientProtocolSelection(t *testing.T) {
 	})}}
 	connection := provider.Connection{ID: "custom", Name: "Custom", Vendor: "bailian", BaseURL: "https://custom.example.com/"}
 	models, err := client.Discover(context.Background(), connection, "secret")
-	if err != nil || len(models) != 5 || len(models[0].Capabilities) != 1 || models[0].Capabilities[0] != provider.Story || len(models[1].Capabilities) != 1 || models[1].Capabilities[0] != provider.Image || len(models[2].Capabilities) != 1 || models[2].Capabilities[0] != provider.Video || len(models[3].Capabilities) != 0 || len(models[4].Capabilities) != 0 {
+	if err != nil || len(models) != 5 || len(models[0].Capabilities) != 1 || models[0].Capabilities[0] != provider.Story || len(models[1].Capabilities) != 1 || models[1].Capabilities[0] != provider.Image || len(models[2].Capabilities) != 1 || models[2].Capabilities[0] != provider.Video || len(models[3].Capabilities) != 1 || len(models[4].Capabilities) != 0 {
 		t.Fatal(models, err)
 	}
 	model := func(id string, cap provider.Capability) provider.Model {
-		return provider.Model{RemoteID: id, Enabled: true, Supported: true, Capabilities: []provider.Capability{cap}}
+		return provider.MigrateLegacyModel(provider.Model{RemoteID: id, Enabled: true, Supported: true, Capabilities: []provider.Capability{cap}})
 	}
 	text, err := client.GenerateText(context.Background(), connection, model("qwen-plus", provider.Story), provider.StoryRequest{Prompt: "hello"}, provider.RequestOptions{})
 	if err != nil || text.Document != "draft" {
@@ -124,7 +124,7 @@ func TestDiscoveryAndClientProtocolSelection(t *testing.T) {
 	if len(paths) != 5 {
 		t.Fatal(paths)
 	}
-	if _, err := client.GenerateImage(context.Background(), connection, model("unknown", provider.Image), provider.ImageRequest{}, provider.RequestOptions{}); err != provider.ErrUnsupported {
+	if _, err := client.GenerateImage(context.Background(), connection, model("unknown", provider.Image), provider.ImageRequest{}, provider.RequestOptions{}); err == nil {
 		t.Fatal(err)
 	}
 }

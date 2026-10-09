@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -140,11 +141,11 @@ func (c Client) Discover(ctx context.Context, connection provider.Connection, ke
 				if json.Unmarshal(m.Capabilities, &capabilities) == nil {
 					for _, capability := range capabilities {
 						switch {
-						case (capability == "TG" || capability == provider.Story) && chatProtocol(m.Model):
+						case capability == "TG" || capability == provider.Story:
 							entry.Capabilities = append(entry.Capabilities, provider.Story)
-						case (capability == "IG" || capability == provider.Image) && imageProtocol(m.Model):
+						case capability == "IG" || capability == provider.Image:
 							entry.Capabilities = append(entry.Capabilities, provider.Image)
-						case (capability == "VG" || capability == provider.Video) && (strings.HasPrefix(m.Model, "wan2.7-i2v") || strings.HasPrefix(m.Model, "wan2.7-r2v")):
+						case capability == "VG" || capability == provider.Video:
 							entry.Capabilities = append(entry.Capabilities, provider.Video)
 						}
 					}
@@ -160,7 +161,7 @@ func (c Client) Discover(ctx context.Context, connection provider.Connection, ke
 }
 
 func (c Client) GenerateText(ctx context.Context, connection provider.Connection, model provider.Model, input provider.StoryRequest, options provider.RequestOptions) (provider.StoryResult, error) {
-	if !model.Supports(provider.Story) || !chatProtocol(model.RemoteID) {
+	if model.Require(provider.Story, provider.ChatProtocol) != nil {
 		return provider.StoryResult{}, provider.ErrUnsupported
 	}
 	ctx, cancel := provider.WithTimeout(ctx, options)
@@ -181,7 +182,7 @@ func (c Client) GenerateText(ctx context.Context, connection provider.Connection
 		Content string `json:"content"`
 	}{Role: "user", Content: input.Prompt})
 	var response protocol.QianwenChatResponse
-	if err := c.request(ctx, connection, key, http.MethodPost, "/compatible-mode/v1/chat/completions", req, &response, false); err != nil {
+	if err := c.request(ctx, connection, key, http.MethodPost, operationPath(model, provider.Story), req, &response, false); err != nil {
 		return provider.StoryResult{}, err
 	}
 	if len(response.Choices) == 0 {
@@ -190,28 +191,18 @@ func (c Client) GenerateText(ctx context.Context, connection provider.Connection
 	return provider.StoryResult{Document: response.Choices[0].Message.Content}, nil
 }
 
-func chatProtocol(id string) bool {
-	return strings.HasPrefix(id, "qwen-") && !strings.HasPrefix(id, "qwen-image") && !strings.Contains(id, "audio") && !strings.Contains(id, "vl") && !strings.Contains(id, "omni") ||
-		strings.HasPrefix(id, "deepseek-") || strings.HasPrefix(id, "kimi-") || strings.HasPrefix(id, "glm-")
-}
-
-func imageProtocol(id string) bool {
-	return strings.HasPrefix(id, "qwen-image-2.0") || strings.HasPrefix(id, "qwen-image-max") || strings.HasPrefix(id, "qwen-image-plus") || id == "qwen-image"
-}
-
 func (c Client) GenerateImage(ctx context.Context, connection provider.Connection, model provider.Model, input provider.ImageRequest, options provider.RequestOptions) (provider.ImageResult, error) {
 	if !model.Supports(provider.Image) {
 		return provider.ImageResult{}, provider.ErrUnsupported
 	}
+	if err := model.Require(provider.Image, provider.ImageProtocol); err != nil {
+		return provider.ImageResult{}, err
+	}
 	id := model.RemoteID
-	var sizes map[string]string
-	switch {
-	case strings.HasPrefix(id, "qwen-image-2.0"):
-		sizes = map[string]string{"16:9": "2688*1536", "9:16": "1536*2688", "1:1": "2048*2048"}
-	case strings.HasPrefix(id, "qwen-image-max"), strings.HasPrefix(id, "qwen-image-plus"), id == "qwen-image":
-		sizes = map[string]string{"16:9": "1664*928", "9:16": "928*1664", "1:1": "1328*1328"}
-	default:
-		return provider.ImageResult{}, provider.ErrUnsupported
+	binding := model.Operations[provider.Image]
+	sizes := binding.ImageSizes
+	if !slices.Contains(binding.Ratios, input.AspectRatio) {
+		return provider.ImageResult{}, errors.New("unsupported image ratio")
 	}
 	ctx, cancel := provider.WithTimeout(ctx, options)
 	defer cancel()
@@ -223,8 +214,7 @@ func (c Client) GenerateImage(ctx context.Context, connection provider.Connectio
 	req.Parameters.Size = sizes[input.AspectRatio]
 	content := []protocol.ImageContent{}
 	if len(input.References) > 0 {
-		cap, ok := provider.InputCapabilityFor(id)
-		if !ok || len(input.References) > cap.ReferenceImages {
+		if len(input.References) > binding.MaxReferences {
 			return provider.ImageResult{}, errors.New("reference_limit_exceeded")
 		}
 		for _, ref := range input.References {
@@ -237,7 +227,7 @@ func (c Client) GenerateImage(ctx context.Context, connection provider.Connectio
 	content = append(content, protocol.ImageContent{Text: input.Prompt})
 	req.Input.Messages = append(req.Input.Messages, protocol.ImageMessage{Role: "user", Content: content})
 	var response protocol.QianwenImageResponse
-	if err := c.request(ctx, connection, key, http.MethodPost, "/api/v1/services/aigc/multimodal-generation/generation", req, &response, false); err != nil {
+	if err := c.request(ctx, connection, key, http.MethodPost, operationPath(model, provider.Image), req, &response, false); err != nil {
 		return provider.ImageResult{}, err
 	}
 	for _, choice := range response.Output.Choices {
@@ -251,11 +241,11 @@ func (c Client) GenerateImage(ctx context.Context, connection provider.Connectio
 }
 
 func (c Client) GenerateVideo(ctx context.Context, connection provider.Connection, model provider.Model, input provider.VideoRequest, options provider.RequestOptions) (provider.VideoResult, error) {
-	capability, known := provider.VideoCapabilityFor(model.RemoteID)
-	if !model.Supports(provider.Video) || !known {
+	capability, known := model.VideoCapability()
+	if model.Require(provider.Video, provider.VideoProtocol) != nil || !known {
 		return provider.VideoResult{}, provider.ErrUnsupported
 	}
-	referenceMode := capability.ModelPrefix == "wan2.7-r2v"
+	referenceMode := capability.InputMode == "reference_images"
 	if referenceMode {
 		if input.SourceImageURL != "" || input.LastFrameURL != "" || input.DrivingAudioURL != "" {
 			return provider.VideoResult{}, errors.New("reference video only accepts reference images")
@@ -268,7 +258,7 @@ func (c Client) GenerateVideo(ctx context.Context, connection provider.Connectio
 		if input.AspectRatio == "" {
 			input.AspectRatio = "16:9"
 		}
-		if input.AspectRatio != "16:9" && input.AspectRatio != "9:16" && input.AspectRatio != "1:1" {
+		if !slices.Contains(model.Operations[provider.Video].Ratios, input.AspectRatio) {
 			return provider.VideoResult{}, errors.New("unsupported reference video ratio")
 		}
 	} else if len(input.References) > 0 {
@@ -295,10 +285,10 @@ func (c Client) GenerateVideo(ctx context.Context, connection provider.Connectio
 		}
 	}
 	if input.Duration == 0 {
-		input.Duration = 5
+		input.Duration = capability.Durations[0]
 	}
 	if input.Resolution == "" {
-		input.Resolution = "1080P"
+		input.Resolution = capability.Resolutions[0]
 	}
 	usages := []string{"first_frame"}
 	if referenceMode {
@@ -353,7 +343,7 @@ func (c Client) GenerateVideo(ctx context.Context, connection provider.Connectio
 	req.Parameters.Resolution = input.Resolution
 	req.Parameters.Duration = input.Duration
 	var response protocol.WanxiangVideoResponse
-	if err := c.request(ctx, connection, key, http.MethodPost, "/api/v1/services/aigc/video-generation/video-synthesis", req, &response, true); err != nil {
+	if err := c.request(ctx, connection, key, http.MethodPost, operationPath(model, provider.Video), req, &response, true); err != nil {
 		return provider.VideoResult{}, err
 	}
 	if response.Output.TaskID == "" {
@@ -363,8 +353,8 @@ func (c Client) GenerateVideo(ctx context.Context, connection provider.Connectio
 }
 
 func (c Client) PollVideo(ctx context.Context, connection provider.Connection, model provider.Model, id string) (provider.VideoResult, bool, error) {
-	_, known := provider.VideoCapabilityFor(model.RemoteID)
-	if !model.Supports(provider.Video) || !known {
+	_, known := model.VideoCapability()
+	if model.Require(provider.Video, provider.VideoProtocol) != nil || !known {
 		return provider.VideoResult{}, false, provider.ErrUnsupported
 	}
 	key, err := c.key(ctx, connection)
@@ -372,7 +362,7 @@ func (c Client) PollVideo(ctx context.Context, connection provider.Connection, m
 		return provider.VideoResult{}, false, err
 	}
 	var response protocol.WanxiangVideoResponse
-	if err := c.request(ctx, connection, key, http.MethodGet, "/api/v1/tasks/"+url.PathEscape(id), nil, &response, false); err != nil {
+	if err := c.request(ctx, connection, key, http.MethodGet, provider.VideoTaskPathPrefix+url.PathEscape(id), nil, &response, false); err != nil {
 		return provider.VideoResult{}, false, err
 	}
 	switch response.Output.TaskStatus {
@@ -386,4 +376,8 @@ func (c Client) PollVideo(ctx context.Context, connection provider.Connection, m
 	default:
 		return provider.VideoResult{}, false, fmt.Errorf("remote video task %s: %s", id, response.Output.TaskStatus)
 	}
+}
+
+func operationPath(m provider.Model, op provider.Capability) string {
+	return m.Operations[op].RequestPath()
 }

@@ -36,7 +36,7 @@ func TestReferenceVideoRequestAndPolling(t *testing.T) {
 		}
 		return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(body))}, nil
 	})}}
-	model := provider.Model{RemoteID: "wan2.7-r2v", Enabled: true, Supported: true, Capabilities: []provider.Capability{provider.Video}}
+	model := provider.MigrateLegacyModel(provider.Model{RemoteID: "wan2.7-r2v", Enabled: true, Supported: true, Capabilities: []provider.Capability{provider.Video}})
 	connection := provider.Connection{ID: "test", Name: "Test", Vendor: "bailian", BaseURL: "https://example.com"}
 	input := provider.VideoRequest{Prompt: "motion", References: refs, Duration: 6, Resolution: "720P", AspectRatio: "9:16"}
 	result, err := client.GenerateVideo(context.Background(), connection, model, input, provider.RequestOptions{})

@@ -7,7 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"github.com/fengxiaozi-liu/FrameFlow/internal/interfaces/websocket"
+
 	"log"
 	"os"
 	"path/filepath"
@@ -19,6 +19,13 @@ import (
 	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/story"
 	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/task"
 )
+
+type EventPublisher interface {
+	PublishTask(context.Context, task.Event)
+}
+type discardEvents struct{}
+
+func (discardEvents) PublishTask(context.Context, task.Event) {}
 
 type Worker interface {
 	Enqueue(context.Context, task.Task) error
@@ -35,7 +42,7 @@ type Processor struct {
 	MediaDir            string
 	Worker              Worker
 	Task                task.Repository
-	Connections         *websocket.Hub
+	Connections         EventPublisher
 	Results             interface {
 		Apply(context.Context, task.Task) error
 	}
@@ -47,7 +54,7 @@ func New(worker Worker, store task.Repository) *Processor {
 	return &Processor{
 		Worker:      worker,
 		Task:        store,
-		Connections: websocket.Connections,
+		Connections: discardEvents{},
 	}
 }
 
@@ -105,9 +112,22 @@ func (p *Processor) processModel(ctx context.Context, item *task.Task, progress 
 	if p.Models == nil || p.ProviderConnections == nil || p.ModelClient == nil {
 		return errors.New("model execution is not configured")
 	}
-	model, err := p.Models.GetModel(ctx, item.ModelID)
-	if err != nil {
-		return err
+	var model provider.Model
+	var err error
+	if item.ModelConfig != nil {
+		model = *item.ModelConfig
+	} else {
+		// Versioned compatibility boundary for pre-snapshot tasks. Persist before I/O.
+		model, err = p.Models.GetModel(ctx, item.ModelID)
+		if err != nil {
+			return err
+		}
+		item.ModelConfig = &model
+		if item.ID != "" {
+			if err = p.Task.Save(ctx, *item); err != nil {
+				return err
+			}
+		}
 	}
 	connection, err := p.ProviderConnections.GetConnection(ctx, model.ConnectionID)
 	if err != nil {
@@ -125,6 +145,10 @@ func (p *Processor) processModel(ctx context.Context, item *task.Task, progress 
 	}
 	progress(20, task.StagePreparing)
 	options := provider.RequestOptions{Timeout: 5 * time.Minute}
+	imageLimit := provider.MaxLocalImageBytes
+	if item.Kind == task.KindVideo && model.Operations[provider.Video].MaxImageBytes > 0 {
+		imageLimit = model.Operations[provider.Video].MaxImageBytes
+	}
 	refs := []provider.ImageReference{}
 	if item.Snapshot != nil {
 		snap := item.Snapshot
@@ -153,14 +177,14 @@ func (p *Processor) processModel(ctx context.Context, item *task.Task, progress 
 				if hex.EncodeToString(hash[:]) != r.ContentHash {
 					return errors.New("reference content changed since submission")
 				}
-				url, err := p.videoSource(r.URL)
+				url, err := p.videoSource(r.URL, imageLimit)
 				if err != nil {
 					return err
 				}
 				refs = append(refs, provider.ImageReference{URL: url, EntityID: e.EntityID, Label: r.Label})
 			}
 		}
-		if item.Kind == task.KindVideo && snap.Path != "reference_video" && len(refs) == 1 {
+		if item.Kind == task.KindVideo && model.Operations[provider.Video].InputMode == "first_frame" && len(refs) == 1 {
 			item.Input.SourceImageURL = refs[0].URL
 		}
 	}
@@ -227,17 +251,17 @@ func (p *Processor) processModel(ctx context.Context, item *task.Task, progress 
 		if item.RemoteTaskID == "" {
 			var source string
 			var videoReferences []provider.ImageReference
-			if item.Snapshot != nil && item.Snapshot.Path == "reference_video" {
+			if item.Snapshot != nil && model.Operations[provider.Video].InputMode == "reference_images" {
 				videoReferences = refs
 			} else {
-				source, err = p.videoSource(item.Input.SourceImageURL)
+				source, err = p.videoSource(item.Input.SourceImageURL, imageLimit)
 				if err != nil {
 					return err
 				}
 			}
 			lastFrame := item.Input.LastFrameURL
 			if lastFrame != "" {
-				lastFrame, err = p.videoSource(lastFrame)
+				lastFrame, err = p.videoSource(lastFrame, imageLimit)
 				if err != nil {
 					return err
 				}
@@ -319,7 +343,7 @@ func (p *Processor) processModel(ctx context.Context, item *task.Task, progress 
 	return nil
 }
 
-func (p *Processor) videoSource(source string) (string, error) {
+func (p *Processor) videoSource(source string, limits ...int64) (string, error) {
 	if !strings.HasPrefix(source, "/media/") {
 		return source, nil
 	}
@@ -343,8 +367,12 @@ func (p *Processor) videoSource(source string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("read source image: %w", err)
 	}
-	if info.Size() > 10<<20 || info.Size() == 0 {
-		return "", errors.New("source image must be between 1 byte and 10 MB")
+	limit := provider.MaxLocalImageBytes
+	if len(limits) > 0 && limits[0] > 0 && limits[0] < limit {
+		limit = limits[0]
+	}
+	if info.Size() > limit || info.Size() == 0 {
+		return "", fmt.Errorf("source image exceeds configured limit %d bytes", limit)
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -399,7 +427,7 @@ func (p *Processor) Execute(ctx context.Context, item task.Task) {
 		log.Printf("save task %s: %v", item.ID, err)
 		return
 	}
-	p.Connections.Broadcast(ctx, task.Event{
+	p.Connections.PublishTask(ctx, task.Event{
 		TaskID:    item.ID,
 		ProjectID: item.ProjectID,
 		DraftID:   item.DraftID,
@@ -409,10 +437,7 @@ func (p *Processor) Execute(ctx context.Context, item task.Task) {
 		At:        item.UpdatedAt,
 	})
 	var err error
-	attempts := 3
-	if item.Snapshot != nil {
-		attempts = 1
-	}
+	attempts := 1 // Never automatically resubmit a possibly accepted paid request.
 	for attempt := 0; attempt < attempts; attempt++ {
 		if !p.active(ctx, item) || ctx.Err() != nil {
 			return
@@ -428,7 +453,7 @@ func (p *Processor) Execute(ctx context.Context, item task.Task) {
 				saved = false
 				return
 			}
-			p.Connections.Broadcast(ctx, task.Event{
+			p.Connections.PublishTask(ctx, task.Event{
 				TaskID:    item.ID,
 				ProjectID: item.ProjectID,
 				DraftID:   item.DraftID,
@@ -475,7 +500,7 @@ func (p *Processor) Execute(ctx context.Context, item task.Task) {
 		log.Printf("save task %s: %v", item.ID, err)
 		return
 	}
-	p.Connections.Broadcast(ctx, task.Event{
+	p.Connections.PublishTask(ctx, task.Event{
 		TaskID:    item.ID,
 		ProjectID: item.ProjectID,
 		DraftID:   item.DraftID,

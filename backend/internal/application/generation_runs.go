@@ -54,9 +54,9 @@ func (s TaskService) CreateGenerationRun(g *gin.Context) {
 		}
 	}
 	model, modelErr := s.Providers.Catalog.Models.GetModel(g.Request.Context(), in.VideoModelID)
-	cap, known := provider.InputCapabilityFor(model.RemoteID)
+	cap, known := model.InputCapability()
 	directVideo := in.Path == "reference_video"
-	if modelErr != nil || !known || !model.Enabled || !model.Supported || !model.Supports(provider.Video) || (directVideo && !cap.ReferenceVideo) || (!directVideo && !cap.FirstFrame) {
+	if modelErr != nil || !known || !model.Enabled || !model.Supported || !model.Supports(provider.Video) || (directVideo && !cap.ReferenceVideo && !cap.FirstFrame) || (!directVideo && !cap.FirstFrame) {
 		writeError(g, Invalid("invalid_video_model", errors.New("请选择支持当前生成方式的视频模型")))
 		return
 	}
@@ -89,7 +89,7 @@ func (s TaskService) CreateGenerationRun(g *gin.Context) {
 		return
 	}
 	now := time.Now().UTC()
-	run := task.GenerationRun{ID: id, SceneID: g.Param("sceneId"), State: "preparing", SnapshotID: snap.ID, RequestHash: hash, VideoModelID: in.VideoModelID, DurationSeconds: duration, Resolution: resolution, Plan: []task.GenerationSnapshot{snap}, TaskIDs: []string{}, CreatedAt: &now, UpdatedAt: &now, Selection: &task.RunSelection{SpeechTakeIDs: map[string]string{}}}
+	run := task.GenerationRun{VideoModelConfig: &model, ID: id, SceneID: g.Param("sceneId"), State: "preparing", SnapshotID: snap.ID, RequestHash: hash, VideoModelID: in.VideoModelID, DurationSeconds: duration, Resolution: resolution, Plan: []task.GenerationSnapshot{snap}, TaskIDs: []string{}, CreatedAt: &now, UpdatedAt: &now, Selection: &task.RunSelection{SpeechTakeIDs: map[string]string{}}}
 	for _, scene := range d.Story.Scenes {
 		if scene.ID == run.SceneID && !directVideo {
 			r, err := ResolveBindings(p.EntityCatalog, scene, true)
@@ -261,6 +261,7 @@ func (s TaskService) advanceRun(ctx context.Context, pID, dID, rID string) error
 		item.ProjectID, item.DraftID, item.SceneID = pID, dID, run.SceneID
 		item.RunID = run.ID
 		item.ModelID = snap.ModelID
+		item.ModelConfig = snap.ModelConfig
 		item.Snapshot = &snap
 		item.InputHash = snap.InputHash
 		item.InputVersion = snap.DraftVersion

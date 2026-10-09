@@ -1,14 +1,14 @@
 # FrameFlow 开发与架构指南
 
-日期：2026-10-09。状态：开发基线已制定；下述目标架构尚未完成代码迁移。
+日期：2026-10-09。状态：统一模型协议接入已实施；其余历史用例按本指南渐进迁移。
 
-入口规则见 [AGENTS.md](../AGENTS.md)，方案取舍见 [架构治理决策](../specs/architecture-governance/design.md)。本轮只建立守则与设计基线，后续再拆解和实施模型体系改造。
+入口规则见 [AGENTS.md](../AGENTS.md)，方案取舍见 [架构治理决策](../specs/architecture-governance/design.md)。模型协议改造见 [实施记录](../specs/model-protocol-integration/plan.md) 和 [模型配置指南](model-protocols.md)。
 
 ## 一、现状与目标
 
 现状：后端已使用 `domain / application / infrastructure / interfaces` 目录、Go + Gin 和 SQLite，前端为 Vue 3 + TypeScript。已有厂商注册表、任务持久化、版本检查和输入快照，优先演进这些资产。
 
-实际边界仍存在偏差：应用层包含 Gin handler；`domain/processor` 直接引用 WebSocket 并协调 I/O；文本、图片、视频、语音使用模型名或 ID 判断支持范围。管理页的能力勾选与执行端的判断不一致。
+本次已将 `domain/processor` 移至 `application/execution`，通过任务事件端口通知 WebSocket；四类生成按显式协议和参数配置执行，模型名仅用于配置预设与发现推荐。新增模型配置用例及 HTTP handler 分层。历史 application 中的 Gin handler、部分文件读取与旧聚合 ModelClient 接口仍是迁移债务，不宣称已全面完成 DDD 改造。
 
 目标：以业务规则为核心的模块化单体。通用协议与模型配置分离，同协议新增模型无需修改执行代码，陌生协议通过明确扩展点接入。可阅读性、可测试性、数据兼容优先于抽象数量。
 
@@ -158,4 +158,4 @@ UI 展示具体不可用原因和处理入口。暂时读取失败可重试，�
 
 ## 八、下一阶段的进入条件
 
-本轮交付止于指南和守则。下一阶段先为统一模型接入编写规格、协议支持范围和实施计划，明确首批实际协议、每项能力的数据结构与旧数据处理，再开始代码修改。未知厂商协议参数必须有文档或契约测试证据，不能通过猜测填补。
+统一模型接入规格和实施记录已落在 `specs/model-protocol-integration/`。继续扩展时，先记录 wire format、参数与生命周期契约，再增加协议描述、窄端口适配器和测试；不要恢复模型名判断。未知厂商参数须有文档或契约证据，不能猜测。

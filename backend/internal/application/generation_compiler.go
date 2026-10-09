@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -33,9 +34,10 @@ type GenerationRequest struct {
 }
 
 type GenerationCompiler struct {
-	Models    provider.ModelRepository
-	Materials material.Repository
-	Directory string
+	Models            provider.ModelRepository
+	Materials         material.Repository
+	Directory         string
+	MaxReferenceBytes int64
 }
 
 func (c GenerationCompiler) Compile(ctx context.Context, p project.Project, d project.Draft, scene story.Scene, in GenerationRequest) (task.GenerationSnapshot, error) {
@@ -50,10 +52,15 @@ func (c GenerationCompiler) Compile(ctx context.Context, p project.Project, d pr
 	if err != nil {
 		return s, err
 	}
-	cap, ok := provider.InputCapabilityFor(m.RemoteID)
+	cap, ok := m.InputCapability()
 	if !ok || !m.Enabled || !m.Supported {
 		return s, errors.New("model input capability unavailable")
 	}
+	c.MaxReferenceBytes = provider.MaxLocalImageBytes
+	if in.Path == "reference_video" || in.Path == "first_frame_video" {
+		c.MaxReferenceBytes = m.Operations[provider.Video].MaxImageBytes
+	}
+	s.ModelConfig = &m
 	s.CapabilityVersion = cap.Version
 	s.DependencyHash = dependencyHash(p.EntityCatalog, scene, in.Path, in.UtteranceID)
 	resolved, err := ResolveBindings(p.EntityCatalog, scene, in.Path == "speech")
@@ -95,11 +102,18 @@ func (c GenerationCompiler) Compile(ctx context.Context, p project.Project, d pr
 	}
 	if in.Path == "reference_image_then_video" || in.Path == "reference_video" {
 		directVideo := in.Path == "reference_video"
-		if directVideo && (!m.Supports(provider.Video) || !cap.ReferenceVideo) {
+		if directVideo && (!m.Supports(provider.Video) || (!cap.ReferenceVideo && !cap.FirstFrame)) {
 			return s, errors.New("请选择支持参考图直接生成视频的模型")
 		}
-		if !directVideo && (!m.Supports(provider.Image) || cap.ReferenceImages == 0) {
+		if !directVideo && (!m.Supports(provider.Image) || m.Operations[provider.Image].MaxReferences == 0) {
 			return s, errors.New("choose a verified multi-image model")
+		}
+		operation := provider.Image
+		if directVideo {
+			operation = provider.Video
+		}
+		if !slices.Contains(m.Operations[operation].Ratios, s.AspectRatio) {
+			return s, errors.New("unsupported aspect ratio for configured model")
 		}
 		count := 0
 		for _, b := range resolved.Entities {
@@ -116,8 +130,8 @@ func (c GenerationCompiler) Compile(ctx context.Context, p project.Project, d pr
 			}
 			s.Entities = append(s.Entities, e)
 		}
-		if count > cap.ReferenceImages {
-			return s, fmt.Errorf("reference_image_limit: 已选 %d 张，模型最多支持 %d 张；请移除本镜头多余参考图后重试", count, cap.ReferenceImages)
+		if count > m.Operations[operation].MaxReferences {
+			return s, fmt.Errorf("reference_image_limit: 已选 %d 张，模型最多支持 %d 张；请移除本镜头多余参考图后重试", count, m.Operations[operation].MaxReferences)
 		}
 		if directVideo {
 			if count == 0 {
@@ -129,10 +143,13 @@ func (c GenerationCompiler) Compile(ctx context.Context, p project.Project, d pr
 			if s.Resolution == "" {
 				s.Resolution = "720P"
 			}
-			videoCap, _ := provider.VideoCapabilityFor(m.RemoteID)
+			videoCap, _ := m.VideoCapability()
 			usages := make([]string, count)
 			for i := range usages {
 				usages[i] = "reference_image"
+				if cap.FirstFrame {
+					usages[i] = "first_frame"
+				}
 			}
 			if err := videoCap.ValidateInput(s.DurationSeconds, s.Resolution, usages); err != nil {
 				return s, err
@@ -248,8 +265,12 @@ func (c GenerationCompiler) reference(ctx context.Context, id, label string) (ta
 	if err != nil {
 		return r, err
 	}
-	if info.Size() == 0 || info.Size() > 10<<20 {
-		return r, errors.New("reference image must be between 1 byte and 10 MB")
+	limit := c.MaxReferenceBytes
+	if limit <= 0 {
+		limit = provider.MaxLocalImageBytes
+	}
+	if info.Size() == 0 || info.Size() > limit {
+		return r, fmt.Errorf("reference image exceeds configured limit %d bytes", limit)
 	}
 	b, err := os.ReadFile(filepath.Join(c.Directory, name))
 	if err != nil {

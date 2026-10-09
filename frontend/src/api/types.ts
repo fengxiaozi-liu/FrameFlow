@@ -159,24 +159,16 @@ export interface DraftOutput {
 export interface ProviderConnection {
   id: string;
   name: string;
-  vendor: "bailian";
+  vendor: string;
   region: string;
   workspace_id?: string;
   base_url: string;
   credential_set: boolean;
 }
-export interface Model {
-  id: string;
-  connection_id: string;
-  remote_id: string;
-  name: string;
-  capabilities: Capability[];
-  source: "manual" | "discovered";
-  supported: boolean;
-  enabled: boolean;
-  default: boolean;
-  last_seen?: string;
-}
+export type Model = import("./schema").components["schemas"]["ModelDefinition"];
+export type OperationBinding = import("./schema").components["schemas"]["OperationBinding"];
+export type OperationStatus = import("./schema").components["schemas"]["OperationStatus"];
+
 export type MaterialKind = "scene" | "character" | "prop" | "voice" | "music" | "visual" | "frame";
 export interface Material {
   reference_only?: boolean;

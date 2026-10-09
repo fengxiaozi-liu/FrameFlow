@@ -46,7 +46,7 @@ func (s TaskService) validateVideoScene(g *gin.Context, projectID, draftID, scen
 		add("model_id", "请选择可用的视频模型")
 		return issues
 	}
-	capability, known := provider.VideoCapabilityFor(model.RemoteID)
+	capability, known := model.VideoCapability()
 	if !known {
 		add("model_id", "该模型的输入能力尚未确认")
 		return issues
@@ -80,7 +80,9 @@ func (s TaskService) validateVideoScene(g *gin.Context, projectID, draftID, scen
 		add("scene_id", "镜头不存在或时长无效")
 		return issues
 	}
-	if strings.TrimSpace(visualPrompt)=="" {add("visual_prompt","画面描述不能为空")}
+	if strings.TrimSpace(visualPrompt) == "" {
+		add("visual_prompt", "画面描述不能为空")
+	}
 	usages := []string{}
 	for _, binding := range d.Bindings {
 		if binding.SceneID != sceneID {

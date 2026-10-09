@@ -10,6 +10,7 @@ import (
 	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/provider"
 	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/task"
 	"github.com/gin-gonic/gin"
+	"slices"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -71,6 +72,10 @@ func (s TaskService) CreateReferenceImage(g *gin.Context) {
 		writeError(g, Invalid("unsupported_model", errors.New("请选择可用的生图模型")))
 		return
 	}
+	if !slices.Contains(model.Operations[provider.Image].Ratios, in.AspectRatio) {
+		writeError(g, Invalid("invalid_ratio", errors.New("该图片模型未配置此比例")))
+		return
+	}
 	item := task.New(id, task.KindImage, task.Input{Prompt: in.Prompt, AspectRatio: in.AspectRatio, MaterialName: in.Name}, time.Now().UTC())
 	item.ProjectID = p.ID
 	item.DraftID = g.Param("draftId")
@@ -78,6 +83,10 @@ func (s TaskService) CreateReferenceImage(g *gin.Context) {
 	item.Target = "reference_" + in.Kind
 	item.IdempotencyKey = in.IdempotencyKey
 	item.RequestHash = fingerprint
+	if err := freezeTaskModel(ctx, s.Providers.Catalog.Models, &item); err != nil {
+		writeError(g, Invalid("model_configuration", err))
+		return
+	}
 	repo, ok := s.Store.(interface {
 		CreateIfAbsent(context.Context, task.Task) (task.Task, bool, error)
 	})

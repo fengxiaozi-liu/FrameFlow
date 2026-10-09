@@ -19,29 +19,22 @@ type Connection struct {
 }
 
 type Model struct {
-	ID           string       `json:"id"`
-	ConnectionID string       `json:"connection_id"`
-	RemoteID     string       `json:"remote_id"`
-	Name         string       `json:"name"`
-	Capabilities []Capability `json:"capabilities"`
-	Source       string       `json:"source"`
-	Supported    bool         `json:"supported"`
-	Enabled      bool         `json:"enabled"`
-	Default      bool         `json:"default"`
-	LastSeen     time.Time    `json:"last_seen,omitempty"`
+	Availability map[Capability]OperationStatus  `json:"availability,omitempty"`
+	Revision     int64                           `json:"revision"`
+	Operations   map[Capability]OperationBinding `json:"operations"`
+	ID           string                          `json:"id"`
+	ConnectionID string                          `json:"connection_id"`
+	RemoteID     string                          `json:"remote_id"`
+	Name         string                          `json:"name"`
+	Capabilities []Capability                    `json:"capabilities"`
+	Source       string                          `json:"source"`
+	Supported    bool                            `json:"supported"`
+	Enabled      bool                            `json:"enabled"`
+	Default      bool                            `json:"default"`
+	LastSeen     time.Time                       `json:"last_seen,omitempty"`
 }
 
-func (m Model) Supports(cap Capability) bool {
-	if !m.Enabled || !m.Supported {
-		return false
-	}
-	for _, c := range m.Capabilities {
-		if c == cap {
-			return true
-		}
-	}
-	return false
-}
+func (m Model) Supports(cap Capability) bool { return m.Resolve(cap).Available }
 
 func ModelID(connectionID, remoteID string) string {
 	return connectionID + ":" + remoteID
@@ -58,10 +51,7 @@ func (c Connection) Validate() error {
 			}
 		}
 	}
-	if c.Vendor != "bailian" {
-		return errors.New("unsupported vendor")
-	}
-	if c.Vendor == "bailian" {
+	{
 		u, err := url.Parse(strings.TrimSpace(c.BaseURL))
 		if err != nil || u.Scheme != "https" || u.Hostname() == "" || u.Opaque != "" || u.User != nil || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" {
 			return errors.New("bailian base_url must be an HTTPS URL without credentials, query or fragment")

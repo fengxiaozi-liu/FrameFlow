@@ -1094,7 +1094,7 @@ export interface paths {
                         project_id: string;
                         draft_id: string;
                         /** @enum {string} */
-                        kind?: "story" | "image" | "video";
+                        kind?: "story" | "image" | "video" | "speech";
                         prompt: string;
                         /** @description Model selected from a provider connection; defaults to the operation default when omitted */
                         model_id?: string;
@@ -1668,7 +1668,7 @@ export interface paths {
                 };
             };
             responses: {
-                /** @description Model added; unknown models are not executable */
+                /** @description Model registered; configure explicit protocols before execution */
                 201: {
                     headers: {
                         [name: string]: unknown;
@@ -1784,7 +1784,7 @@ export interface paths {
         get: {
             parameters: {
                 query?: {
-                    capability?: "story" | "image" | "video";
+                    capability?: "story" | "image" | "video" | "speech";
                     connection_id?: string;
                 };
                 header?: never;
@@ -1793,12 +1793,16 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
-                /** @description Model list */
+                /** @description Models with resolved operation availability */
                 200: {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": {
+                            models: components["schemas"]["ModelDefinition"][];
+                        };
+                    };
                 };
             };
         };
@@ -1828,7 +1832,7 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
-                /** @description Verified model input limits or unsupported reason */
+                /** @description Configured model input limits or unavailable reason */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -3287,6 +3291,98 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/model-protocols": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Implemented protocol formats */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            protocols: components["schemas"]["ProtocolDescriptor"][];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/models/{model}/operations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    model: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["ModelConfigurationWrite"];
+                };
+            };
+            responses: {
+                /** @description Success */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ModelDefinition"];
+                    };
+                };
+                /** @description Configuration revision conflict */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Incomplete or incompatible operation configuration */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -3297,8 +3393,7 @@ export interface components {
         ConnectionInput: {
             id: string;
             name: string;
-            /** @enum {string} */
-            vendor: "bailian";
+            vendor: string;
             /**
              * Format: uri
              * @description Complete HTTPS Bailian API endpoint (for example, /compatible-mode/v1/chat/completions); other supported operations use the same workspace host with their documented endpoints
@@ -3309,7 +3404,7 @@ export interface components {
         ManualModel: {
             model_id: string;
             name?: string;
-            capabilities?: ("story" | "image" | "video")[];
+            capabilities?: ("story" | "image" | "video" | "speech")[];
         };
         DraftRevisionWrite: {
             expected_version: number;
@@ -3526,6 +3621,7 @@ export interface components {
             created_at?: string;
             /** Format: date-time */
             updated_at?: string;
+            model_config?: components["schemas"]["ModelDefinition"];
         };
         ReferenceImage: {
             material_id: string;
@@ -3684,6 +3780,7 @@ export interface components {
                 instructions?: string;
             }[];
             dependency_hash?: string;
+            model_config?: components["schemas"]["ModelDefinition"];
         };
         BindingIssue: {
             code: string;
@@ -3735,6 +3832,7 @@ export interface components {
             updated_at?: string;
             selection?: components["schemas"]["RunSelection"];
             steps?: components["schemas"]["Task"][];
+            video_model_config?: components["schemas"]["ModelDefinition"];
         };
         ModelInputCapability: {
             version: string;
@@ -3750,6 +3848,11 @@ export interface components {
                 name: string;
                 languages: string[];
             }[];
+            operations?: {
+                [key: string]: components["schemas"]["OperationStatus"];
+            };
+            ratios?: string[];
+            image_ratios?: string[];
         };
         BindingError: {
             /** @enum {string} */
@@ -3788,6 +3891,80 @@ export interface components {
             take_id?: string;
             utterance_id?: string;
             video_version_id?: string;
+        };
+        OperationBinding: {
+            protocol: string;
+            source: string;
+            endpoint?: string;
+            /** @enum {string} */
+            input_mode?: "first_frame" | "reference_images";
+            ratios?: string[];
+            durations?: number[];
+            resolutions?: string[];
+            image_sizes?: {
+                [key: string]: string;
+            };
+            max_references?: number;
+            max_image_bytes?: number;
+            voices?: {
+                id: string;
+                name: string;
+                languages: string[];
+            }[];
+            max_text_length?: number;
+            last_frame?: boolean;
+            driving_audio?: boolean;
+            max_audio_bytes?: number;
+            min_audio_duration?: number;
+            max_audio_duration?: number;
+            /**
+             * @description Default uses protocol path and ignores endpoint. Custom requires endpoint. Absent mode preserves legacy override behavior.
+             * @enum {string}
+             */
+            endpoint_mode?: "default" | "custom";
+        };
+        OperationStatus: {
+            available: boolean;
+            code: string;
+            reason: string;
+            binding: components["schemas"]["OperationBinding"];
+        };
+        ModelDefinition: {
+            id: string;
+            connection_id: string;
+            remote_id: string;
+            name: string;
+            capabilities: ("story" | "image" | "video" | "speech")[];
+            /** @enum {string} */
+            source: "manual" | "discovered";
+            enabled: boolean;
+            supported: boolean;
+            default: boolean;
+            last_seen?: string;
+            revision?: number;
+            operations?: {
+                [key: string]: components["schemas"]["OperationBinding"];
+            };
+            availability?: {
+                [key: string]: components["schemas"]["OperationStatus"];
+            };
+        };
+        ModelConfigurationWrite: {
+            expected_revision: number;
+            operations: {
+                [key: string]: components["schemas"]["OperationBinding"];
+            };
+            /** @description Optional capability declarations saved atomically with operation bindings. Omit to preserve existing declarations; does not enable the model. */
+            capabilities?: ("story" | "image" | "video" | "speech")[];
+        };
+        ProtocolDescriptor: {
+            id: string;
+            name: string;
+            /** @enum {string} */
+            operation: "story" | "image" | "video" | "speech";
+            default_path: string;
+            /** @description Read-only task polling path template; independent of the submission override. */
+            polling_path?: string;
         };
     };
     responses: never;

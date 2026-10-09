@@ -7,6 +7,7 @@ import (
 	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/story"
 	"github.com/gin-gonic/gin"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 )
@@ -45,14 +46,14 @@ func (s ProjectService) WriteShotContext(g *gin.Context) {
 		}
 		if in.Settings.ImageModelID != "" {
 			image, e := s.Models.GetModel(g.Request.Context(), in.Settings.ImageModelID)
-			ic, known := provider.InputCapabilityFor(image.RemoteID)
+			ic, known := image.InputCapability()
 			if e != nil || !known || !image.Enabled || !image.Supported || !image.Supports(provider.Image) || ic.ReferenceImages == 0 {
 				writeError(g, Invalid("invalid_generation_settings", errors.New("分镜图模型不可用")))
 				return
 			}
 		}
 		video, e := s.Models.GetModel(g.Request.Context(), in.Settings.VideoModelID)
-		vc, known := provider.InputCapabilityFor(video.RemoteID)
+		vc, known := video.InputCapability()
 		validDuration, validResolution := false, false
 		for _, v := range vc.Durations {
 			validDuration = validDuration || v == in.Settings.DurationSeconds
@@ -60,7 +61,7 @@ func (s ProjectService) WriteShotContext(g *gin.Context) {
 		for _, v := range vc.Resolutions {
 			validResolution = validResolution || v == in.Settings.Resolution
 		}
-		if e != nil || !known || !video.Enabled || !video.Supported || !video.Supports(provider.Video) || (!vc.FirstFrame && !vc.ReferenceVideo) || !validDuration || !validResolution {
+		if e != nil || !known || !video.Enabled || !video.Supported || !video.Supports(provider.Video) || (!vc.FirstFrame && !vc.ReferenceVideo) || !validDuration || !validResolution || !slices.Contains(vc.Ratios, in.Settings.AspectRatio) {
 			writeError(g, Invalid("invalid_generation_settings", errors.New("视频模型、时长或清晰度不可用")))
 			return
 		}

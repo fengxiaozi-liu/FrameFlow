@@ -29,7 +29,7 @@ func (s ProjectService) WriteVoice(g *gin.Context) {
 		writeError(g, Invalid("voice_unavailable", errors.New("语音模型或连接不可用")))
 		return
 	}
-	cap, known := provider.InputCapabilityFor(m.RemoteID)
+	cap, known := m.InputCapability()
 	valid := false
 	if known {
 		for _, v := range cap.Voices {
@@ -68,11 +68,7 @@ func (s CatalogService) InputCapability(g *gin.Context) {
 		writeError(g, err)
 		return
 	}
-	c, ok := provider.InputCapabilityFor(m.RemoteID)
-	if !ok || !m.Enabled || !m.Supported {
-		writeError(g, Invalid("capability_unsupported", errors.New("模型输入能力尚未验证")))
-		return
-	}
+	c, _ := m.InputCapability()
 	c.ModelID = m.ID
 	g.JSON(200, c)
 }

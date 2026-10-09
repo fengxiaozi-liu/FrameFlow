@@ -29,7 +29,7 @@ const runs=ref<components['schemas']['GenerationRun'][]>((props.draft.generation
 const runLabels:Record<string,string>={preparing:'准备首帧与配音',generating:'生成首帧与配音',awaiting_selection:'请选用首帧及每句配音',generating_video:'正在生成视频',awaiting_video_selection:'请选用视频版本',awaiting_composition:'请前往「成片」合成',completed:'成片已完成',cancelled:'已取消',failed:'子任务失败，可按原输入重试'};
 async function startRun(){if(generationBusy.value)return;generationBusy.value=true;try{if(!await editor.flush())return;if(dirty.value)return;const r=await bindingsApi.run(props.projectId,props.draft.id,props.scene.id,{...input('reference_image_then_video',imageModel.value),video_model_id:videoModel.value});runs.value.push(r);await refreshResults()}catch(e){notice.value=(e as Error).message}finally{generationBusy.value=false}}
 async function refreshRuns(){for(let i=0;i<runs.value.length;i++){const r=runs.value[i]!;if(!['completed','cancelled'].includes(r.state))try{runs.value[i]=await bindingsApi.getRun(props.projectId,props.draft.id,props.scene.id,r.id)}catch(e){notice.value=(e as Error).message}}}
-const imageModels=computed(()=>props.models.filter(m=>m.enabled&&m.supported&&m.capabilities.includes('image'))),videoModels=computed(()=>props.models.filter(m=>m.enabled&&m.supported&&m.capabilities.includes('video')));
+const imageModels=computed(()=>props.models.filter(m=>m.availability?.image?.available === true)),videoModels=computed(()=>props.models.filter(m=>m.availability?.video?.available === true));
 const refCount=computed(()=>groups.value.reduce((n,g)=>n+(g.binding.selected_material_ids||g.entity?.references.map(r=>r.material_id)||[]).length,0));
 const audioUrls=computed(()=>Object.fromEntries(takes.value.filter(t=>t.kind==='speech'&&props.materials.some(m=>m.id===t.material_id&&m.url)&&selected.value[props.scene.id+':speech:'+t.utterance_id]===t.id).map(t=>[t.utterance_id!,api.mediaUrl(props.materials.find(m=>m.id===t.material_id)?.url||'')])));
 const selectedImage=computed(()=>props.materials.find(m=>m.id===takes.value.find(t=>t.id===selected.value[props.scene.id+':image'])?.material_id)?.url);
@@ -58,7 +58,7 @@ const missingGroups=computed(()=>groups.value.filter(g=>!g.entity));
 const mentionOptions=computed(()=>groups.value.filter(g=>g.entity).map(g=>({id:g.binding.id,name:g.entity!.name,kind:g.entity!.kind})));
 const voices=computed(()=>catalog.value.voice_profiles||[]);
 const mappedMaterials=computed(()=>props.materials.map(m=>({...m,url:api.mediaUrl(m.url)})));
-const speechModels=computed(()=>props.models.filter(m=>m.enabled&&m.supported&&m.capabilities.includes('speech')));
+const speechModels=computed(()=>props.models.filter(m=>m.availability?.speech?.available === true));
 const copy=<T,>(v:T):T=>JSON.parse(JSON.stringify(v));
 function changeBinding(b:ShotEntityBinding){editor.change({entity_bindings:state.value.entity_bindings.map(x=>x.id===b.id?b:x)})}
 function remove(id:string){editor.change({entity_bindings:state.value.entity_bindings.filter(b=>b.id!==id),prompt_document:{schema_version:1,nodes:state.value.prompt_document.nodes.filter(n=>n.type!=='entity_ref'||n.binding_id!==id)}})}
@@ -79,7 +79,7 @@ async function upload(files:File[]){uploads.value.push(...files.map(file=>({file
 async function retryUploads(){if(!form.value)return;busy.value=true;for(const item of uploads.value){if(item.status==='已上传')continue;try{item.error='';item.status='上传中';const m=await api.uploadMaterial(item.file,form.value.kind==='character'?'character':'scene',n=>item.status=`上传中 ${n}%`);emit('material',m);form.value.references.push({material_id:m.id,order:form.value.references.length,label:item.file.name.replace(/\.[^.]+$/,'')});item.status='已上传'}catch(e){item.status='失败';item.error=(e as Error).message}}busy.value=false}
 function refs(ids:string[]){if(form.value)form.value.references=ids.map((id,i)=>({material_id:id,order:i,label:form.value!.references.find(r=>r.material_id===id)?.label||''}))}
 function cardUpload(e:EntityVersion,b:string,files:File[]){edit(e,b);void upload(files)}
-onMounted(async()=>{try{catalog.value=await bindingsApi.catalog(props.projectId);imageModel.value=imageModels.value.find(m=>m.remote_id==='qwen-image-2.0-pro')?.id||'';videoModel.value=videoModels.value.find(m=>m.remote_id==='wan2.7-i2v')?.id||'';await refreshResults();refreshTimer=setInterval(()=>{void refreshResults();void refreshRuns()},4000)}catch(e){notice.value=(e as Error).message}});
+onMounted(async()=>{try{catalog.value=await bindingsApi.catalog(props.projectId);imageModel.value=imageModels.value.find(m=>(m.availability?.image?.binding.max_references || 0)>0)?.id||'';videoModel.value=videoModels.value.find(m=>m.availability?.video?.binding.input_mode==='first_frame')?.id||'';await refreshResults();refreshTimer=setInterval(()=>{void refreshResults();void refreshRuns()},4000)}catch(e){notice.value=(e as Error).message}});
 async function flushAll(){for(let i=0;i<5;i++){if(!await editor.flush())return false;if(!dirty.value)return true}return false}
 defineExpose({flush:flushAll});
 </script>

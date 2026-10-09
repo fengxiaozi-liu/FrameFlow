@@ -5,7 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"github.com/fengxiaozi-liu/FrameFlow/internal/application"
-	domainprocessor "github.com/fengxiaozi-liu/FrameFlow/internal/domain/processor"
+	domainprocessor "github.com/fengxiaozi-liu/FrameFlow/internal/application/execution"
 	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/project"
 	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/provider"
 	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/task"
@@ -42,11 +42,15 @@ func testServer(t *testing.T) (testServices, func()) {
 	}
 	for _, cap := range []provider.Capability{provider.Story, provider.Image, provider.Video} {
 		model := provider.Model{ID: provider.ModelID(conn.ID, string(cap)), ConnectionID: conn.ID, RemoteID: string(cap), Name: string(cap), Capabilities: []provider.Capability{cap}, Supported: true, Enabled: true, Default: true}
+		presetID := map[provider.Capability]string{provider.Story: "qwen-plus", provider.Image: "qwen-image-2.0-pro", provider.Video: "wan2.7-i2v"}[cap]
+		model.Operations = provider.MigrateLegacyModel(provider.Model{RemoteID: presetID, Capabilities: []provider.Capability{cap}}).Operations
+		model.Revision = 1
 		if err := db.SaveModel(context.Background(), model); err != nil {
 			t.Fatal(err)
 		}
 	}
 	processor := domainprocessor.New(worker, db)
+	processor.Connections = ws.Connections
 	processor.Models, processor.ProviderConnections, processor.ModelClient = db, db, testModelClient{}
 	processor.Results = application.TaskResultApplier{Projects: projectRepo}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -73,6 +77,7 @@ func (testModelClient) PollVideo(context.Context, provider.Connection, provider.
 }
 func testProcessor(s testServices) *domainprocessor.Processor {
 	p := domainprocessor.New(queue.NewWorker(), s.TaskService.Store)
+	p.Connections = ws.Connections
 	p.Models, p.ProviderConnections, p.ModelClient = s.Providers.Catalog.Models, s.Providers.Catalog.Connections, testModelClient{}
 	p.Results = application.TaskResultApplier{Projects: s.Projects.Repo}
 	return p

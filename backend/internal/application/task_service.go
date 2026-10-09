@@ -142,6 +142,10 @@ func (s TaskService) Create(g *gin.Context) {
 	}
 	t.ProviderCode = providerCode
 	t.ModelID = modelID
+	if err := freezeTaskModel(ctx, s.Providers.Catalog.Models, &t); err != nil {
+		writeError(g, Invalid("model_configuration", err))
+		return
+	}
 	if err := s.Store.Save(ctx, t); err != nil {
 		writeError(g, err)
 		return

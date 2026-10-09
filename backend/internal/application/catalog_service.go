@@ -28,7 +28,7 @@ func (s CatalogService) VideoCapability(g *gin.Context) {
 		writeError(g, err)
 		return
 	}
-	capability, known := provider.VideoCapabilityFor(model.RemoteID)
+	capability, known := model.VideoCapability()
 	if !known || !model.Supports(provider.Video) {
 		g.JSON(http.StatusOK, gin.H{"supported": false, "reason": "该模型的视频输入能力尚未确认"})
 		return
@@ -167,6 +167,10 @@ func (s CatalogService) ListModels(g *gin.Context) {
 		}
 		items = filtered
 	}
+	for i := range items {
+		caps, _ := items[i].InputCapability()
+		items[i].Availability = caps.Operations
+	}
 	g.JSON(http.StatusOK, gin.H{"models": items})
 }
 
@@ -188,7 +192,7 @@ func (s CatalogService) AddModel(g *gin.Context) {
 		return
 	}
 	input.ModelID = strings.TrimSpace(input.ModelID)
-	if input.ModelID == "" || strings.ContainsAny(input.ModelID, "/\\?# ") {
+	if input.ModelID == "" || strings.ContainsAny(input.ModelID, "\r\n\x00") {
 		writeError(g, Invalid("invalid_model", errors.New("invalid model id")))
 		return
 	}
@@ -210,6 +214,7 @@ func (s CatalogService) AddModel(g *gin.Context) {
 		return
 	}
 	m := provider.Model{ID: modelID, ConnectionID: id, RemoteID: input.ModelID, Name: name, Source: "manual", Capabilities: capabilities, Supported: len(capabilities) > 0, Enabled: len(capabilities) > 0}
+	m = provider.MigrateLegacyModel(m)
 	if err := s.Models.SaveModel(ctx, m); err != nil {
 		writeError(g, err)
 		return
@@ -283,6 +288,7 @@ func (s CatalogService) SyncModels(g *gin.Context) {
 			m.Enabled = m.Supported
 		}
 		m.LastSeen = now
+		m = provider.MigrateLegacyModel(m)
 		if err := s.Models.SaveModel(ctx, m); err != nil {
 			writeError(g, fmt.Errorf("save discovered model: %w", err))
 			return
@@ -364,6 +370,7 @@ func (s CatalogService) UpdateModel(g *gin.Context) {
 	if !m.Enabled {
 		m.Default = false
 	}
+	m = provider.MigrateLegacyModel(m)
 	if err := s.Models.SaveModel(ctx, m); err != nil {
 		writeError(g, err)
 		return

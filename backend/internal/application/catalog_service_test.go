@@ -72,18 +72,18 @@ func TestCatalogSyncPreservesManualAndRejectsUnknown(t *testing.T) {
 	}
 	request("POST", "/connections/beijing/models/sync-updated", `{}`, 200)
 	refreshed, err := store.GetModel(ctx, stale.ID)
-	if err != nil || !refreshed.Supports(provider.Image) {
+	if err != nil || !refreshed.Enabled || len(refreshed.Capabilities) != 1 {
 		t.Fatalf("newly recognized model not enabled: %+v %v", refreshed, err)
 	}
 	request("PATCH", "/connections/beijing/models/beijing:unknown-model", `{"enabled":true}`, 400)
 	request("PATCH", "/connections/beijing/models/beijing:unknown-model", `{"capabilities":["image"],"enabled":true}`, 200)
 	configured, _ := store.GetModel(ctx, "beijing:unknown-model")
-	if !configured.Supports(provider.Image) {
+	if !configured.Enabled || len(configured.Capabilities) != 1 || configured.Resolve(provider.Image).Code != "configuration_missing" {
 		t.Fatal("capability selection not persisted")
 	}
 	request("POST", "/connections/beijing/models/sync", `{}`, 200)
 	configured, _ = store.GetModel(ctx, "beijing:unknown-model")
-	if !configured.Supports(provider.Image) {
+	if !configured.Enabled || len(configured.Capabilities) != 1 || configured.Resolve(provider.Image).Code != "configuration_missing" {
 		t.Fatal("sync removed manually selected capabilities")
 	}
 	request("PATCH", "/connections/beijing/models/beijing:unknown-model", `{"capabilities":["invalid"]}`, 400)

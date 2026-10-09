@@ -28,7 +28,7 @@ func (g *failingGenerator) GenerateVideo(context.Context, provider.Connection, p
 
 func TestExecuteOwnsRetriesAndPreservesCancellation(t *testing.T) {
 	for _, cancel := range []bool{false, true} {
-		name := "retry exhaustion"
+		name := "no blind resubmission"
 		if cancel {
 			name = "cancel during generation"
 		}
@@ -67,7 +67,7 @@ func TestExecuteOwnsRetriesAndPreservesCancellation(t *testing.T) {
 				if got.Status != task.StatusCancelled || generator.calls != 1 {
 					t.Fatalf("cancel overwritten: %+v, calls=%d", got, generator.calls)
 				}
-			} else if got.Status != task.StatusFailed || got.RetryCount != 3 || generator.calls != 3 {
+			} else if got.Status != task.StatusFailed || got.RetryCount != 1 || generator.calls != 1 {
 				t.Fatalf("retry policy failed: %+v, calls=%d", got, generator.calls)
 			}
 		})

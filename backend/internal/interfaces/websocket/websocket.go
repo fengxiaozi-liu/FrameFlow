@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/task"
 	"log"
 	"net/http"
 	"net/url"
@@ -147,3 +148,5 @@ func (h *Hub) Handler(c *gin.Context) {
 func Handler(c *gin.Context) {
 	Connections.Handler(c)
 }
+
+func (h *Hub) PublishTask(ctx context.Context, event task.Event) { h.Broadcast(ctx, event) }

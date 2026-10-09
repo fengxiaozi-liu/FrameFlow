@@ -3,7 +3,7 @@ package provider
 import "testing"
 
 func TestWan27VideoCapability(t *testing.T) {
-	c, ok := VideoCapabilityFor("wan2.7-i2v-2026-04-25")
+	c, ok := legacyVideoPreset("wan2.7-i2v-2026-04-25")
 	if !ok || c.MinDuration != 2 || c.MaxDuration != 15 || c.MaxImageBytes != 20<<20 || c.MaxAudioBytes != 15<<20 {
 		t.Fatalf("unexpected capability: %+v, %v", c, ok)
 	}
@@ -33,7 +33,7 @@ func TestWan27VideoCapability(t *testing.T) {
 }
 
 func TestUnknownVideoModelIsUnsupported(t *testing.T) {
-	if _, ok := VideoCapabilityFor("other-video-model"); ok {
+	if _, ok := legacyVideoPreset("other-video-model"); ok {
 		t.Fatal("unknown model must not acquire an implicit capability")
 	}
 }

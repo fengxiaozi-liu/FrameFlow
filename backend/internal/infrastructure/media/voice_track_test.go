@@ -11,7 +11,10 @@ func TestVoiceTrackTimingAndOverflow(t *testing.T) {
 	if os.Getenv("FRAMEFLOW_FFMPEG_PATH") == "" {
 		t.Skip("requires configured ffmpeg/ffprobe integration runtime")
 	}
-	source := filepath.Join("..", "..", "..", "..", "specs", "scene-character-binding", "evidence", "tts-probe.wav")
+	source := filepath.Join(t.TempDir(), "voice.wav")
+	if err := runFFmpeg(context.Background(), "-y", "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000", "-t", "2", source); err != nil {
+		t.Fatal(err)
+	}
 	probe, err := Probe(context.Background(), source)
 	if err != nil {
 		t.Fatal(err)

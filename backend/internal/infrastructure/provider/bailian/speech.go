@@ -9,14 +9,14 @@ import (
 )
 
 func (c Client) Voices(m provider.Model) []provider.Voice {
-	cap, ok := provider.InputCapabilityFor(m.RemoteID)
+	cap, ok := m.InputCapability()
 	if !ok || !cap.Speech {
 		return nil
 	}
 	return cap.Voices
 }
 func (c Client) GenerateSpeech(ctx context.Context, connection provider.Connection, m provider.Model, input provider.SpeechRequest, options provider.RequestOptions) (provider.SpeechResult, error) {
-	if !m.Supports(provider.Speech) {
+	if m.Require(provider.Speech, provider.SpeechProtocol) != nil {
 		return provider.SpeechResult{}, provider.ErrUnsupported
 	}
 	valid := false
@@ -29,7 +29,7 @@ func (c Client) GenerateSpeech(ctx context.Context, connection provider.Connecti
 			}
 		}
 	}
-	if !valid || strings.TrimSpace(input.Text) == "" || len([]rune(input.Text)) > 600 {
+	if !valid || strings.TrimSpace(input.Text) == "" || len([]rune(input.Text)) > m.Operations[provider.Speech].MaxTextLength {
 		return provider.SpeechResult{}, errors.New("voice, language or text unsupported")
 	}
 	if input.Instructions != "" {
@@ -49,7 +49,7 @@ func (c Client) GenerateSpeech(ctx context.Context, connection provider.Connecti
 			} `json:"audio"`
 		} `json:"output"`
 	}
-	if err = c.request(ctx, connection, key, http.MethodPost, "/api/v1/services/aigc/multimodal-generation/generation", body, &out, false); err != nil {
+	if err = c.request(ctx, connection, key, http.MethodPost, operationPath(m, provider.Speech), body, &out, false); err != nil {
 		return provider.SpeechResult{}, err
 	}
 	if out.Output.Audio.URL == "" {
@@ -68,17 +68,7 @@ func (c Client) discoverCompatible(ctx context.Context, connection provider.Conn
 	}
 	values := []provider.DiscoveredModel{}
 	for _, m := range out.Data {
-		caps := []provider.Capability{}
-		switch {
-		case m.ID == "qwen3-tts-flash":
-			caps = append(caps, provider.Speech)
-		case imageProtocol(m.ID):
-			caps = append(caps, provider.Image)
-		case m.ID == "wan2.7-i2v" || m.ID == "wan2.7-i2v-2026-04-25" || m.ID == "wan2.7-r2v" || m.ID == "wan2.7-r2v-2026-06-12":
-			caps = append(caps, provider.Video)
-		case chatProtocol(m.ID):
-			caps = append(caps, provider.Story)
-		}
+		caps := provider.SuggestedCapabilities(m.ID)
 		values = append(values, provider.DiscoveredModel{ID: m.ID, Name: m.ID, Capabilities: caps})
 	}
 	return values, nil

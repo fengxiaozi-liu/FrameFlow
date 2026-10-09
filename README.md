@@ -26,3 +26,5 @@ irm https://raw.githubusercontent.com/fengxiaozi-liu/FrameFlow/main/scripts/inst
 4. 点击生成按钮后离开页面也不会中断任务；故事生成完成后会自动回填所属草稿的策划正文。
 5. 在任务中心按项目和草稿查看进度；任务完成后下载结果，失败时可以重试。升级前创建、无法判断归属的任务会显示在“未归属任务”中。
 6. 在配置中心新增厂商连接、填写模型和 API Key，并测试连接。角色和首尾帧共用生图接口。
+
+模型接入与扩展见 [模型协议配置指南](docs/model-protocols.md)。

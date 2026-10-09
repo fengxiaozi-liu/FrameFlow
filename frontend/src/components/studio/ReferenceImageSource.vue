@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { api } from "../../api/client";
 import { bindingsApi, type EntityVersion } from "../../api/bindings";
 import type { Material, Model, Task } from "../../api/types";
@@ -38,7 +38,7 @@ const uploadsInLibrary = computed(
 defineExpose({ hasPendingUpload: () => uploads.value.length > 0 });
 const models = computed(() =>
   props.models.filter(
-    (m) => m.enabled && m.supported && m.capabilities.includes("image"),
+    (m) => m.availability?.image?.available === true,
   ),
 );
 const model = ref(
@@ -48,6 +48,10 @@ const prompt = ref(""),
   aspect = ref<Request["aspect_ratio"]>(
     props.entity.kind === "character" ? "1:1" : "16:9",
   );
+const imageRatios = computed(() => models.value.find(m => m.id === model.value)?.availability?.image?.binding.ratios || []);
+watch([model, imageRatios], () => {
+ if (!imageRatios.value.includes(aspect.value)) aspect.value = (imageRatios.value[0] || '') as Request['aspect_ratio'];
+}, { immediate: true });
 const busy = ref(false),
   error = ref(""),
   current = ref<Task>(),
@@ -478,8 +482,9 @@ onBeforeUnmount(() => {
     >
       <h4>生成{{ kind === "scene" ? "场景" : "人物" }}参考图</h4>
       <p v-if="!models.length" class="muted">
-        暂无可用生图模型，请先在模型管理中添加并启用生图模型。
+        暂无配置就绪的生图模型，请在模型管理配置协议、图片尺寸并启用。
       </p>
+      <p v-for="m in props.models.filter(m => m.capabilities.includes('image') && !m.availability?.image?.available)" :key="m.id" class="muted">{{ m.name }}：{{ m.availability?.image?.reason || '能力尚未读取' }} <RouterLink to="/config">配置模型</RouterLink></p>
       <div class="reference-image-settings">
         <label
           >生图模型<select v-model="model" :disabled="locked">
@@ -490,9 +495,7 @@ onBeforeUnmount(() => {
           </select></label
         ><label
           >图片画幅<select v-model="aspect" :disabled="locked">
-            <option value="16:9">16:9 横向</option>
-            <option value="1:1">1:1 方形</option>
-            <option value="9:16">9:16 竖向</option>
+            <option v-for="ratio in imageRatios" :key="ratio" :value="ratio">{{ ratio }}</option>
           </select></label
         >
       </div>

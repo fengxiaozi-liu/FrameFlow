@@ -33,11 +33,11 @@ func TestMultiImageAndSpeechWireRequests(t *testing.T) {
 		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(out)), Header: http.Header{}}, nil
 	})}}
 	conn := provider.Connection{ID: "c", Name: "test", Vendor: "bailian", BaseURL: "https://example.com/compatible-mode/v1/chat/completions"}
-	_, err := c.GenerateImage(context.Background(), conn, provider.Model{RemoteID: "qwen-image-2.0-pro", Enabled: true, Supported: true, Capabilities: []provider.Capability{provider.Image}}, provider.ImageRequest{Prompt: "first person and second place", AspectRatio: "1:1", References: []provider.ImageReference{{URL: "https://example.com/a.png"}, {URL: "https://example.com/b.png"}}}, provider.RequestOptions{})
+	_, err := c.GenerateImage(context.Background(), conn, provider.MigrateLegacyModel(provider.Model{RemoteID: "qwen-image-2.0-pro", Enabled: true, Supported: true, Capabilities: []provider.Capability{provider.Image}}), provider.ImageRequest{Prompt: "first person and second place", AspectRatio: "1:1", References: []provider.ImageReference{{URL: "https://example.com/a.png"}, {URL: "https://example.com/b.png"}}}, provider.RequestOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	m := provider.Model{RemoteID: "qwen3-tts-flash", Enabled: true, Supported: true, Capabilities: []provider.Capability{provider.Speech}}
+	m := provider.MigrateLegacyModel(provider.Model{RemoteID: "qwen3-tts-flash", Enabled: true, Supported: true, Capabilities: []provider.Capability{provider.Speech}})
 	if _, err = c.GenerateSpeech(context.Background(), conn, m, provider.SpeechRequest{Text: "Hello", Voice: "Ethan", Language: "English"}, provider.RequestOptions{}); err != nil {
 		t.Fatal(err)
 	}

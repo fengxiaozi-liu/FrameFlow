@@ -1,10 +1,13 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref } from "vue";
+import ModelOperationEditor from "../components/config/ModelOperationEditor.vue";
 import { api } from "../api/client";
 import type { Capability, Model, ProviderConnection } from "../api/types";
 
 const connections = ref<ProviderConnection[]>([]);
 const models = ref<Model[]>([]);
+const editingModel = ref<Model>();
+async function modelConfigured(model: Model) { editingModel.value = undefined; await loadModels(model.connection_id); message.value = "协议与参数已保存，尚未进行真实生成验证"; messageIsError.value = false; }
 const selectedID = ref("");
 const draft = ref<ProviderConnection>(blankConnection());
 const creating = ref(false);
@@ -122,7 +125,8 @@ async function addModel() {
     modelName.value = "";
     modelCapabilities.value = [];
     addingModel.value = false;
-    message.value = model.supported ? "模型已添加" : "模型已登记，请配置能力后启用";
+    editingModel.value = model;
+    message.value = "模型已添加，请配置接口协议与参数。";
   } catch (error) { showError(error); }
   finally { busy.value = false; }
 }
@@ -209,13 +213,14 @@ onMounted(() => { void loadConnections().catch(showError).finally(() => { loadin
           <label class="catalog-model-search">查找模型<input v-model="modelQuery" type="search" placeholder="名称或模型 ID" @input="shownCount = 50" /></label>
           <div class="catalog-table-wrap">
             <table class="catalog-table">
-              <thead><tr><th>模型</th><th>操作</th><th>来源</th><th>状态</th><th>默认</th><th></th></tr></thead>
+              <thead><tr><th>模型</th><th>操作</th><th>接入配置</th><th>来源</th><th>状态</th><th>默认</th><th></th></tr></thead>
               <tbody>
                 <tr v-for="model in visibleModels" :key="model.id">
                   <td><strong>{{ model.name }}</strong><small>{{ model.remote_id }}</small></td>
                   <td><div class="capability-select" :aria-label="`${model.name} 支持的能力`">
                     <label v-for="cap in (['story', 'image', 'video', 'speech'] as const)" :key="cap"><input type="checkbox" :checked="model.capabilities?.includes(cap)" :disabled="busy" @change="changeModel(model, { capabilities: model.capabilities?.includes(cap) ? model.capabilities.filter((item) => item !== cap) : [...(model.capabilities || []), cap] })" />{{ labels[cap] }}</label>
                   </div></td>
+                  <td><button :disabled="busy" @click="editingModel = model">协议与参数</button><small v-for="cap in model.capabilities" :key="cap">{{ labels[cap] }}：{{ model.availability?.[cap]?.available ? '配置就绪 · 未验证' : model.availability?.[cap]?.reason || '待配置' }}</small></td>
                   <td>{{ model.source === 'manual' ? '手动添加' : '同步' }}</td>
                   <td><label v-if="model.supported" class="toggle"><input type="checkbox" :checked="model.enabled" :disabled="busy" @change="changeModel(model, { enabled: !model.enabled })" />启用</label><span v-else class="catalog-unsupported">待配置能力</span></td>
                   <td><input v-if="model.supported" type="checkbox" :checked="model.default" :disabled="busy || !model.enabled" aria-label="设为默认模型" @change="changeModel(model, { default: !model.default })" /></td>
@@ -234,12 +239,13 @@ onMounted(() => { void loadConnections().catch(showError).finally(() => { loadin
         <div class="catalog-settings-heading"><h2>{{ creating ? '添加连接' : '连接设置' }}</h2><button v-if="!creating" class="quiet" aria-label="收起连接设置" @click="closeSettings">收起</button></div>
         <form @submit.prevent="saveConnection">
           <label>名称<input v-model="draft.name" required placeholder="例如 百炼 · 北京" /></label>
-          <label>厂商<select v-model="draft.vendor" :disabled="!creating"><option value="bailian">阿里云百炼</option></select></label>
-          <label v-if="draft.vendor === 'bailian'">API 完整地址<input v-model.trim="draft.base_url" required type="url" placeholder="https://{WorkspaceId}.cn-beijing.maas.aliyuncs.com/compatible-mode/v1/chat/completions" /></label>
+          <label>厂商<select v-model="draft.vendor" :disabled="!creating"><option value="bailian">阿里云百炼</option><option value="custom">其他兼容服务商</option></select></label>
+          <label>API 完整地址<input v-model.trim="draft.base_url" required type="url" placeholder="https://{WorkspaceId}.cn-beijing.maas.aliyuncs.com/compatible-mode/v1/chat/completions" /></label>
           <label>API Key<input v-model="apiKey" type="password" autocomplete="new-password" :placeholder="draft.credential_set ? '已配置，留空表示不修改' : '输入 API Key'" /></label>
           <div class="catalog-settings-actions"><button class="primary" type="submit" :disabled="busy">保存连接</button><button v-if="creating" type="button" :disabled="busy" @click="selectConnection(connections[0]?.id || '')">取消</button></div>
         </form>
       </aside>
     </div>
+    <ModelOperationEditor v-if="editingModel" :key="editingModel.id" :model="editingModel" @close="editingModel = undefined" @saved="modelConfigured" />
   </main>
 </template>

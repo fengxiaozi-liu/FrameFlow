@@ -292,16 +292,23 @@ func (r *TaskRepository) DeleteConnection(ctx context.Context, id string) error 
 	return r.deleteConnectionCascade(ctx, id)
 }
 func (r *TaskRepository) SaveModel(ctx context.Context, v provider.Model) error {
+	v = provider.MigrateLegacyModel(v)
 	return r.saveCatalogRecord(ctx, v.ID, v.ConnectionID, v, true)
 }
 func (r *TaskRepository) GetModel(ctx context.Context, id string) (provider.Model, error) {
-	return getJSON[provider.Model](ctx, r.db, "provider_models", id)
+	m, err := getJSON[provider.Model](ctx, r.db, "provider_models", id)
+	return provider.MigrateLegacyModel(m), err
 }
 func (r *TaskRepository) ListModels(ctx context.Context, connectionID string) ([]provider.Model, error) {
-	if connectionID == "" {
-		return listJSON[provider.Model](ctx, r.db, "provider_models", "", "")
+	column := ""
+	if connectionID != "" {
+		column = "connection_id"
 	}
-	return listJSON[provider.Model](ctx, r.db, "provider_models", "connection_id", connectionID)
+	items, err := listJSON[provider.Model](ctx, r.db, "provider_models", column, connectionID)
+	for i := range items {
+		items[i] = provider.MigrateLegacyModel(items[i])
+	}
+	return items, err
 }
 func (r *TaskRepository) DeleteModel(ctx context.Context, id string) error {
 	return deleteJSON(ctx, r.db, "provider_models", id)
@@ -453,6 +460,13 @@ func (r *TaskRepository) Save(ctx context.Context, t task.Task) error {
 		var previous task.Task
 		if err = json.Unmarshal([]byte(old), &previous); err != nil {
 			return err
+		}
+		if previous.ModelConfig != nil {
+			a, _ := json.Marshal(previous.ModelConfig)
+			b, _ := json.Marshal(t.ModelConfig)
+			if string(a) != string(b) {
+				return errors.New("model configuration snapshot is immutable")
+			}
 		}
 		if previous.Snapshot != nil {
 			a, _ := json.Marshal(previous.Snapshot)

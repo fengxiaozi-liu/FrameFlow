@@ -2,11 +2,14 @@ package provider
 
 import (
 	"fmt"
+	"slices"
 )
 
 // VideoCapability describes inputs verified for one provider protocol. A model
 // without an explicit entry is not executable for scene video generation.
 type VideoCapability struct {
+	InputMode        string         `json:"input_mode"`
+	Durations        []int          `json:"durations,omitempty"`
 	ModelPrefix      string         `json:"model_prefix"`
 	MinDuration      int            `json:"min_duration"`
 	MaxDuration      int            `json:"max_duration"`
@@ -18,32 +21,12 @@ type VideoCapability struct {
 	MaxAudioDuration int            `json:"max_audio_duration"`
 }
 
-func VideoCapabilityFor(remoteModelID string) (VideoCapability, bool) {
-	if remoteModelID == "wan2.7-r2v" || remoteModelID == "wan2.7-r2v-2026-06-12" {
-		return VideoCapability{ModelPrefix: "wan2.7-r2v", MinDuration: 2, MaxDuration: 15, Resolutions: []string{"720P", "1080P"}, AllowedMedia: map[string]int{"reference_image": 5}, MaxImageBytes: 10 << 20}, true
-	}
-	if remoteModelID != "wan2.7-i2v" && remoteModelID != "wan2.7-i2v-2026-04-25" {
-		return VideoCapability{}, false
-	}
-	return VideoCapability{
-		ModelPrefix:      "wan2.7-i2v",
-		MinDuration:      2,
-		MaxDuration:      15,
-		Resolutions:      []string{"720P", "1080P"},
-		AllowedMedia:     map[string]int{"first_frame": 1, "last_frame": 1, "driving_audio": 1},
-		MaxImageBytes:    20 << 20,
-		MaxAudioBytes:    15 << 20,
-		MinAudioDuration: 2,
-		MaxAudioDuration: 30,
-	}, true
-}
-
 // ValidateInput rejects unknown and unsupported media instead of dropping them.
 func (c VideoCapability) ValidateInput(duration int, resolution string, usages []string) error {
 	if c.ModelPrefix == "" {
 		return fmt.Errorf("video model capability is unknown")
 	}
-	if duration < c.MinDuration || duration > c.MaxDuration {
+	if duration < c.MinDuration || duration > c.MaxDuration || len(c.Durations) > 0 && !slices.Contains(c.Durations, duration) {
 		return fmt.Errorf("duration must be %d-%d seconds", c.MinDuration, c.MaxDuration)
 	}
 	validResolution := false
@@ -67,7 +50,7 @@ func (c VideoCapability) ValidateInput(duration int, resolution string, usages [
 			return fmt.Errorf("media usage %q exceeds limit %d", usage, limit)
 		}
 	}
-	if c.ModelPrefix == "wan2.7-r2v" {
+	if c.InputMode == "reference_images" {
 		if counts["reference_image"] == 0 {
 			return fmt.Errorf("at least one reference_image is required")
 		}

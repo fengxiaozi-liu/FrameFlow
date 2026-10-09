@@ -47,7 +47,7 @@ async function loadModels() {
     if (alive)
       available.value = capabilities.filter((k) =>
         data.models.some(
-          (m) => m.enabled && m.supported && m.capabilities.includes(k),
+          (m) => m.availability?.[k]?.available === true,
         ),
       );
   } catch {

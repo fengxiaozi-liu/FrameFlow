@@ -1,0 +1,19 @@
+package application
+
+import (
+	"context"
+	"fmt"
+	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/provider"
+)
+
+// ModelConfiguration coordinates one aggregate update; HTTP/SQL stay outside.
+type ModelConfiguration struct{ Repository provider.OperationRepository }
+
+func (s ModelConfiguration) Configure(ctx context.Context, id string, expected int64, bindings map[provider.Capability]provider.OperationBinding, capabilities []provider.Capability) (provider.Model, error) {
+	for op, b := range bindings {
+		if err := b.Validate(op); err != nil {
+			return provider.Model{}, fmt.Errorf("%s: %w", op, err)
+		}
+	}
+	return s.Repository.ConfigureOperations(ctx, id, expected, bindings, capabilities)
+}

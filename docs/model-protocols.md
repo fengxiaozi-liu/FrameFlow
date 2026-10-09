@@ -1,0 +1,43 @@
+# 模型协议与参数配置
+
+适用版本：2026-10-09 本次工作区改造。
+
+## 使用方法
+
+1. 在模型管理中添加连接，同步或手动添加模型。同步仅返回模型 ID 时，可以直接进入「协议与参数」配置能力。
+2. 点击该模型的「协议与参数」，选择文本、图片、视频或语音能力。协议列表随能力切换；未选择能力时不会默认展示文本协议。按服务商文档选择接口格式，必要时填写同一域名下的请求路径。
+3. 视频配置单图首帧或多图参考、比例、离散时长、清晰度、图片数量与大小；图片配置各比例对应尺寸；语音配置音色 ID、语言、文字上限。
+4. 保存会在一次版本校验和事务中提交能力声明及协议参数；取消或保存失败不会部分修改模型。原本未启用的模型仍需在列表勾选「启用」。随后返回分镜详情选择模型，时长、清晰度和比例随模型配置变化。首帧模式使用唯一引用图片；不会静默挑选或丢弃多余引用。
+
+「配置就绪」只表示本地配置可执行，不等于厂商连接成功或真实生成验证成功。模型能力勾选和启用不会自动推断接口格式、时长或清晰度。
+
+## 已实现的协议
+
+| ID | 请求与响应格式 | 默认路径 |
+| --- | --- | --- |
+| openai.chat.v1 | messages → choices.message.content，同步文本 | /compatible-mode/v1/chat/completions |
+| dashscope.image.v1 | 多模态 messages/content、parameters.size → output.choices 图片 | /api/v1/services/aigc/multimodal-generation/generation |
+| dashscope.media-video.v1 | input.media、parameters → task_id；轮询 task_status/video_url | /api/v1/services/aigc/video-generation/video-synthesis；轮询 /api/v1/tasks/{id} |
+| dashscope.speech.v1 | text/voice/language_type → output.audio.url | /api/v1/services/aigc/multimodal-generation/generation |
+
+所有协议使用连接的 HTTPS 域名及 Bearer 凭据。文本兼容服务可将请求路径设为 `/v1/chat/completions`。改变路径不能改变报文字段、鉴权或轮询协议；不同 wire format 需要新适配器。厂商同步/连接测试仍沿用现有百炼发现实现；其他兼容服务优先手动登记模型，连接测试不代表生成能力验证。
+
+画布当前支持 16:9、9:16、1:1；本地图片传输上限 20 MB，视频模型配置必须收窄到实际限制。驱动音频还依赖现有对象存储配置；音频指令控制当前协议不支持。
+
+## 架构扩展
+
+- 领域：`provider.Model` 持有按操作划分的 `OperationBinding`；`Resolve` 返回能力状态及原因，`Configure` 校验并生成新修订。
+- 用例：`application.ModelConfiguration` 协调模型配置；新 handler 位于 `interfaces/http`。
+- 协议：Registry 按显式协议版本查找适配器，文本/图片/视频/语音使用窄操作接口，不按厂商名或模型名前缀分派。
+- 同协议新模型：只新增配置，RemoteID 原样提交。新协议：增加协议描述与校验、窄接口适配器、组合注册及契约测试。初版支持编译期注册，不提供动态脚本插件。
+- 既有 ModelClient 作为旧执行器兼容接口保留；旧 handler 的完全迁移不属于本次改造。
+
+## 数据兼容与任务
+
+SQLite JSON 增加 `revision`、`operations`。旧模型通过幂等的 `legacy-preset.v1` 读时兼容转换，下次保存持久化；未知 ID 保留但提示待配置。已显式保存的配置（含空配置）不会被预设覆盖。
+
+任务及生成运行保存创建时模型、协议、参数规格快照和素材快照，不包含密钥。配置更新使用预期修订；过期配置保存返回冲突。执行、重试使用冻结的模型配置；没有快照的历史任务在首次恢复执行前解析并保存兼容快照，无法恢复提交时的未知配置历史。
+
+取消、幂等和远端任务 ID 沿用原有流程。执行器不自动重复提交失败请求；重启时无远端任务 ID 且无结果的运行中生成任务标记失败，提示检查远端状态后再手动处理，避免自动重复计费。凭据轮换仍按连接 ID 读取；连接地址目前未独立冻结。
+
+升级前按 release.md 备份数据库、媒体和 vault。没有破坏性表结构迁移；旧程序不识别新协议配置及快照，回滚应恢复升级前备份，不用旧程序继续新配置下的待处理任务。

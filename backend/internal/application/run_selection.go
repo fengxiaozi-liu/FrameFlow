@@ -217,7 +217,10 @@ func (s TaskService) frozenRunVideo(ctx context.Context, d project.Draft, r task
 	if err != nil {
 		return base, err
 	}
-	cap, ok := provider.InputCapabilityFor(model.RemoteID)
+	if r.VideoModelConfig != nil {
+		model = *r.VideoModelConfig
+	}
+	cap, ok := model.InputCapability()
 	if !ok || !model.Enabled || !model.Supported || !model.Supports(provider.Video) || !cap.FirstFrame {
 		return base, errors.New("视频模型不可用")
 	}
@@ -237,6 +240,7 @@ func (s TaskService) frozenRunVideo(ctx context.Context, d project.Draft, r task
 		base.ID = ""
 		base.InputHash = ""
 		base.ModelID = r.VideoModelID
+		base.ModelConfig = &model
 		base.CapabilityVersion = cap.Version
 		base.Path = "first_frame_video"
 		base.Resolution = r.Resolution

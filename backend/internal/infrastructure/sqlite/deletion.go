@@ -7,6 +7,7 @@ import (
 	"errors"
 	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/fault"
 	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/project"
+	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/provider"
 	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/task"
 )
 
@@ -134,6 +135,22 @@ func (r *TaskRepository) saveCatalogRecord(ctx context.Context, id, connectionID
 	}
 	if err = checkDeleted(ctx, tx, "connection", "", owner); err != nil {
 		return err
+	}
+	if model {
+		var raw string
+		if e := tx.QueryRowContext(ctx, "SELECT payload FROM provider_models WHERE id=?", id).Scan(&raw); e == nil {
+			var old provider.Model
+			if e = json.Unmarshal([]byte(raw), &old); e != nil {
+				return e
+			}
+			old = provider.MigrateLegacyModel(old)
+			next := value.(provider.Model)
+			if next.Revision != old.Revision {
+				return provider.ErrRevisionConflict
+			}
+		} else if !errors.Is(e, sql.ErrNoRows) {
+			return e
+		}
 	}
 	b, err := json.Marshal(value)
 	if err != nil {

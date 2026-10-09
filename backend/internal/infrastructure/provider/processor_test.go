@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/fengxiaozi-liu/FrameFlow/internal/application"
-	domainprocessor "github.com/fengxiaozi-liu/FrameFlow/internal/domain/processor"
+	domainprocessor "github.com/fengxiaozi-liu/FrameFlow/internal/application/execution"
 	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/project"
 	domain "github.com/fengxiaozi-liu/FrameFlow/internal/domain/provider"
 	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/task"
@@ -109,7 +109,7 @@ func TestAllProviderKindsCompleteThroughWorker(t *testing.T) {
 	}
 	for _, capability := range []domain.Capability{domain.Story, domain.Image, domain.Video} {
 		code := string(capability) + "-test"
-		if err = store.SaveModel(context.Background(), domain.Model{ID: "test:" + code, ConnectionID: connection.ID, RemoteID: code, Capabilities: []domain.Capability{capability}, Supported: true, Enabled: true}); err != nil {
+		if err = store.SaveModel(context.Background(), domain.Model{ID: "test:" + code, ConnectionID: connection.ID, Operations: domain.MigrateLegacyModel(domain.Model{RemoteID: map[domain.Capability]string{domain.Story: "qwen-plus", domain.Image: "qwen-image-2.0-pro", domain.Video: "wan2.7-i2v"}[capability], Capabilities: []domain.Capability{capability}}).Operations, RemoteID: code, Capabilities: []domain.Capability{capability}, Supported: true, Enabled: true}); err != nil {
 			t.Fatal(err)
 		}
 	}

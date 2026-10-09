@@ -10,6 +10,8 @@ import (
 )
 
 func UseMiddleware(engine *gin.Engine, token string, rateLimit int) {
+	engine.UseRawPath = true
+	engine.UnescapePathValues = true
 	engine.Use(audit(), requestContext(), limitJSONBody(), cors(), newLimiter(rateLimit).middleware(), auth(token))
 	engine.HandleMethodNotAllowed = true
 }
@@ -108,6 +110,8 @@ func RegisterRoutes(
 	api.GET("/models/:model/input-capability", providers.Catalog.InputCapability)
 	api.GET("/models/:model/voices", providers.Catalog.InputCapability)
 	api.GET("/models", providers.Catalog.ListModels)
+	api.GET("/model-protocols", modelProtocols)
+	api.PUT("/models/:model/operations", configureModel(providers.Catalog.Models))
 	api.GET("/models/:model/video-capability", providers.Catalog.VideoCapability)
 
 	materialRoutes := api.Group("/materials")

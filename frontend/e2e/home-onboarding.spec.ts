@@ -127,6 +127,7 @@ test("home stays focused on guidance; workbench project failures recover and pre
             models: [
               {
                 id: "ready",
+                availability: { story: { available: true, code: "configured", reason: "", binding: { protocol: "openai.chat.v1", source: "manual" } } },
                 enabled: true,
                 supported: true,
                 capabilities: ["story"],

@@ -1,20 +1,22 @@
 package provider
 
 import (
-	"context"
-	"strings"
-	"testing"
-
 	domain "github.com/fengxiaozi-liu/FrameFlow/internal/domain/provider"
+	"testing"
 )
 
-func TestRegistryRegistersBailianAndRejectsUnknownVendor(t *testing.T) {
+func TestRegistryUsesProtocolNotVendorOrModel(t *testing.T) {
 	r := NewRegistry(nil)
-	if _, err := r.client(domain.Connection{Vendor: "bailian"}); err != nil {
+	m := domain.MigrateLegacyModel(domain.Model{RemoteID: "qwen-plus", Enabled: true, Capabilities: []domain.Capability{domain.Story}})
+	m.RemoteID = "custom-unknown"
+	if _, err := r.client(m, domain.Story); err != nil {
 		t.Fatal(err)
 	}
-	_, err := r.GenerateImage(context.Background(), domain.Connection{Vendor: "unknown"}, domain.Model{}, domain.ImageRequest{}, domain.RequestOptions{})
-	if err == nil || !strings.Contains(err.Error(), "not registered") {
-		t.Fatal(err)
+	if _, err := r.client(m, domain.Image); err == nil {
+		t.Fatal("unconfigured operation accepted")
+	}
+	r.clients = map[string]ProtocolAdapter{}
+	if _, err := r.client(m, domain.Story); err == nil {
+		t.Fatal("missing registration accepted")
 	}
 }

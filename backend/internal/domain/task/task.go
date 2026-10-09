@@ -2,6 +2,7 @@ package task
 
 import (
 	"errors"
+	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/provider"
 	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/story"
 	"strings"
 	"time"
@@ -106,6 +107,7 @@ func (i Input) Validate() error {
 }
 
 type Task struct {
+	ModelConfig           *provider.Model     `json:"model_config,omitempty"`
 	RequestHash           string              `json:"request_hash,omitempty"`
 	Snapshot              *GenerationSnapshot `json:"snapshot,omitempty"`
 	RunID                 string              `json:"run_id,omitempty"`

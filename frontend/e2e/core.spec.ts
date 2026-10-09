@@ -238,7 +238,7 @@ test("provider switching and responsive layout", async ({ page }) => {
   }
 });
 
-test("configuration center adds a model without exposing protocol selection", async ({
+test("configuration center offers a preset and keeps unknown models pending configuration", async ({
   page,
 }) => {
   await page.goto("/config");
@@ -258,6 +258,8 @@ test("configuration center adds a model without exposing protocol selection", as
     .getByLabel("文生图")
     .check();
   await page.getByRole("button", { name: "添加", exact: true }).click();
+  await expect(page.getByRole("dialog").getByLabel("接口协议", {exact:true})).toHaveValue("dashscope.image.v1");
+  await page.getByRole("dialog").getByRole("button", {name:"取消",exact:true}).click();
   await expect(
     page
       .locator(".catalog-table tbody tr")
@@ -266,6 +268,8 @@ test("configuration center adds a model without exposing protocol selection", as
   await page.getByRole("button", { name: "手动添加" }).click();
   await page.getByLabel("模型 ID").fill("unknown-model");
   await page.getByRole("button", { name: "添加", exact: true }).click();
+  await expect(page.getByRole("dialog").getByLabel("配置能力", { exact: true })).toHaveValue("");
+  await page.getByRole("dialog").getByRole("button", { name: "取消", exact: true }).click();
   await expect(
     page.locator(".catalog-table").getByText("待配置能力"),
   ).toBeVisible();
