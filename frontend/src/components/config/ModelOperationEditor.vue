@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
+import ModelOptionTags from "./ModelOptionTags.vue";
 import ProtocolEndpointSettings from "./ProtocolEndpointSettings.vue";
 import EntityEditorDrawer from "../studio/EntityEditorDrawer.vue";
 import { modelConfigurationApi } from "../../api/modelConfiguration";
@@ -23,12 +24,6 @@ const protocols = ref<components["schemas"]["ProtocolDescriptor"][]>([]);
 const busy = ref(false),
   error = ref(""),
   loading = ref(true);
-const durationText = ref<Record<string, string>>({}),
-  resolutionText = ref<Record<string, string>>({});
-for (const [key, binding] of Object.entries(bindings.value)) {
-  durationText.value[key] = binding.durations?.join(", ") || "";
-  resolutionText.value[key] = binding.resolutions?.join(", ") || "";
-}
 const current = computed(() => bindings.value[selected.value]);
 const choices = computed(() =>
   protocols.value.filter((p) => p.operation === selected.value),
@@ -50,8 +45,6 @@ function chooseProtocol(event: Event) {
     image_sizes: {},
     voices: [],
   };
-  durationText.value[selected.value] = "";
-  resolutionText.value[selected.value] = "";
 }
 function chooseMode(event: Event) {
   if (!current.value) return;
@@ -76,12 +69,6 @@ function setImageMB(event: Event) {
     current.value.max_image_bytes =
       Number((event.target as HTMLInputElement).value) * 1024 * 1024;
 }
-function split(value: string) {
-  return value
-    .split(/[,，\s]+/)
-    .map((v) => v.trim())
-    .filter(Boolean);
-}
 async function save() {
   busy.value = true;
   error.value = "";
@@ -90,14 +77,6 @@ async function save() {
       string,
       OperationBinding
     >;
-    for (const [operation, binding] of Object.entries(next)) {
-      if (operation === "video") {
-        binding.durations = split(durationText.value[operation] || "").map(
-          Number,
-        );
-        binding.resolutions = split(resolutionText.value[operation] || "");
-      }
-    }
     emit(
       "saved",
       await modelConfigurationApi.configure(
@@ -233,18 +212,22 @@ onMounted(async () => {
             </select></label
           >
           <div class="operation-grid">
-            <label
-              >可选时长（秒）<input
-                v-model="durationText[selected]"
-                :disabled="busy"
-                placeholder="按文档填写，例如 4, 6, 8"
-            /></label>
-            <label
-              >可选清晰度<input
-                v-model="resolutionText[selected]"
-                :disabled="busy"
-                placeholder="按文档填写，例如 720P, 1080P"
-            /></label>
+            <ModelOptionTags
+              :key="current.protocol + '-durations'"
+              label="可选时长"
+              kind="duration"
+              :model-value="(current.durations || []).map(String)"
+              :disabled="busy"
+              @update:model-value="current.durations = $event.map(Number)"
+            />
+            <ModelOptionTags
+              :key="current.protocol + '-resolutions'"
+              label="可选清晰度"
+              kind="resolution"
+              :model-value="current.resolutions || []"
+              :disabled="busy"
+              @update:model-value="current.resolutions = $event"
+            />
             <label
               >最多参考图片数<input
                 v-model.number="current.max_references"
@@ -328,16 +311,13 @@ onMounted(async () => {
             <legend>音色 {{ index + 1 }}</legend>
             <label>音色 ID<input v-model.trim="voice.id" /></label
             ><label>显示名称<input v-model.trim="voice.name" /></label>
-            <label
-              >语言（逗号分隔）<input
-                :value="voice.languages.join(', ')"
-                placeholder="例如 Chinese, English"
-                @input="
-                  voice.languages = split(
-                    ($event.target as HTMLInputElement).value,
-                  )
-                "
-            /></label>
+            <ModelOptionTags
+              label="音色语言"
+              kind="language"
+              :model-value="voice.languages"
+              :disabled="busy"
+              @update:model-value="voice.languages = $event"
+            />
             <button type="button" @click="current.voices?.splice(index, 1)">
               移除此音色
             </button>

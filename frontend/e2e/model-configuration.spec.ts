@@ -40,8 +40,35 @@ test("manual unknown video model uses explicit protocol and parameter choices", 
   await drawer
     .getByLabel("图片输入方式", { exact: true })
     .selectOption("first_frame");
-  await drawer.getByLabel("可选时长（秒）", { exact: true }).fill("4, 8");
-  await drawer.getByLabel("可选清晰度", { exact: true }).fill("720P, 1080P");
+  const durations = drawer.getByRole("group", {
+    name: "可选时长",
+    exact: true,
+  });
+  const resolutions = drawer.getByRole("group", {
+    name: "可选清晰度",
+    exact: true,
+  });
+  for (const seconds of ["8", "4", "4"]) {
+    await durations.getByLabel("添加可选时长", { exact: true }).fill(seconds);
+    await durations.getByLabel("添加可选时长", { exact: true }).press("Enter");
+  }
+  await expect(durations.getByRole("listitem").locator("span")).toHaveText(["4 秒", "8 秒"]);
+  await resolutions.getByRole("button", { name: "720P", exact: true }).click();
+  await resolutions.getByRole("button", { name: "1080P", exact: true }).click();
+  await resolutions.getByLabel("添加可选清晰度", { exact: true }).fill("1440p");
+  await resolutions
+    .getByRole("button", { name: "添加可选清晰度值", exact: true })
+    .click();
+  await expect(
+    resolutions.getByRole("button", { name: "移除1440P", exact: true }),
+  ).toBeVisible();
+  await resolutions
+    .getByRole("button", { name: "移除1440P", exact: true })
+    .click();
+  await expect(resolutions.getByRole("listitem").locator("span")).toHaveText([
+    "720P",
+    "1080P",
+  ]);
   await drawer.getByLabel("单张图片上限（MB）", { exact: true }).fill("10");
   await page.screenshot({
     path: testInfo.outputPath("model-protocol-desktop.png"),
@@ -57,11 +84,32 @@ test("manual unknown video model uses explicit protocol and parameter choices", 
     path: testInfo.outputPath("model-protocol-mobile.png"),
     fullPage: true,
   });
+  await durations.scrollIntoViewIfNeeded();
+  await page.screenshot({
+    path: testInfo.outputPath("model-option-tags-mobile.png"),
+  });
   await drawer.getByRole("button", { name: "保存配置", exact: true }).click();
   await expect(drawer).toHaveCount(0);
   await expect(
     page.getByRole("row").filter({ hasText: "自定义视频" }),
   ).toContainText("配置就绪");
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page
+    .getByRole("row")
+    .filter({ hasText: "自定义视频" })
+    .getByRole("button", { name: "协议与参数" })
+    .click();
+  await expect(durations.getByRole("listitem").locator("span")).toHaveText(["4 秒", "8 秒"]);
+  await expect(resolutions.getByRole("listitem").locator("span")).toHaveText([
+    "720P",
+    "1080P",
+  ]);
+  await durations.scrollIntoViewIfNeeded();
+  await page.screenshot({
+    path: testInfo.outputPath("model-option-tags-desktop.png"),
+  });
+  await drawer.getByRole("button", { name: "取消", exact: true }).click();
+
   const project = await (
     await request.post("/api/projects", { data: { name: "自定义模型测试" } })
   ).json();
@@ -201,4 +249,75 @@ test("model without declared capabilities can be configured directly in the draw
   await row.getByRole("button", { name: "协议与参数" }).click();
   await expect(capability).toHaveValue("image");
   await expect(protocol).toHaveValue("dashscope.image.v1");
+});
+
+test("protocol path modes persist and default clears a custom override", async ({
+  page,
+  request,
+}, testInfo) => {
+  const id = randomUUID();
+  await request.post("/api/connections", {
+    data: {
+      id,
+      name: `路径测试 ${id}`,
+      vendor: "custom",
+      base_url: "https://example.com/v1",
+    },
+  });
+  await request.post(`/api/connections/${id}/models`, {
+    data: { model_id: "qwen-plus", capabilities: ["story"] },
+  });
+  await page.goto("/config");
+  await page.getByRole("button", { name: `路径测试 ${id}` }).click();
+  const row = page.getByRole("row").filter({ hasText: "qwen-plus" });
+  await row.getByRole("button", { name: "协议与参数" }).click();
+  const drawer = page.getByRole("dialog");
+  await expect(
+    drawer.getByLabel("使用协议默认路径", { exact: true }),
+  ).toBeChecked();
+  await expect(
+    drawer.getByLabel("实际请求路径", { exact: true }),
+  ).toContainText("/compatible-mode/v1/chat/completions");
+  await expect(
+    drawer.getByLabel("自定义请求路径", { exact: true }),
+  ).toHaveCount(0);
+  await page.screenshot({
+    path: testInfo.outputPath("protocol-default-path.png"),
+    fullPage: true,
+  });
+  await drawer.getByLabel("自定义路径", { exact: true }).check();
+  await drawer
+    .getByLabel("自定义请求路径", { exact: true })
+    .fill("/v1/custom/chat");
+  await drawer.getByRole("button", { name: "保存配置", exact: true }).click();
+  await expect(drawer).toHaveCount(0);
+  await row.getByRole("button", { name: "协议与参数" }).click();
+  await expect(drawer.getByLabel("自定义路径", { exact: true })).toBeChecked();
+  await expect(
+    drawer.getByLabel("自定义请求路径", { exact: true }),
+  ).toHaveValue("/v1/custom/chat");
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBeTruthy();
+  await page.screenshot({
+    path: testInfo.outputPath("protocol-custom-path-mobile.png"),
+    fullPage: true,
+  });
+  await drawer.getByLabel("使用协议默认路径", { exact: true }).check();
+  await drawer.getByRole("button", { name: "保存配置", exact: true }).click();
+  await expect(drawer).toHaveCount(0);
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await row.getByRole("button", { name: "协议与参数" }).click();
+  await expect(
+    drawer.getByLabel("使用协议默认路径", { exact: true }),
+  ).toBeChecked();
+  const result = await (await request.get("/api/models")).json();
+  const model = result.models.find(
+    (m: { connection_id: string }) => m.connection_id === id,
+  );
+  expect(model.operations.story.endpoint_mode).toBe("default");
+  expect(model.operations.story.endpoint).toBeUndefined();
 });
