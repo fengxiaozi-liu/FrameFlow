@@ -2,6 +2,10 @@
 
 FrameFlow 是一个通用的 AI 视频创作工作台。你可以从一个创意开始，编辑故事和脚本，管理分镜、角色、首尾帧、配音和音乐，选择对应的 AI 接口后提交视频生成任务。生成过程在后台异步执行，可以在任务中心查看进度、取消任务、失败重试和下载结果。
 
+## 开发指南
+
+开始开发前请阅读 [项目开发守则](AGENTS.md)、[DDD 与工程指南](docs/development-guide.md) 和 [架构治理决策](specs/architecture-governance/design.md)。这些文件区分现有实现与目标架构；模型接入体系的后续改造将按此基线进行。
+
 ## 一键安装
 
 在 Windows PowerShell 中执行下面一条命令。脚本会从 GitHub Releases 下载最新版本并立即启动：
