@@ -7,13 +7,49 @@ import {
   ref,
   watch,
 } from "vue";
-import { useRouter } from "vue-router";
-import { steps, type HomeExample } from "./content";
+import { useRoute, useRouter } from "vue-router";
+import { steps, examples, type HomeExample } from "./content";
 import GuideIllustration from "./GuideIllustration.vue";
 import { guideImageUrl, type GuideImage } from "./guideImages";
-const props = defineProps<{ initialStep: number; example: HomeExample }>();
+import { rememberGuideStep } from "./guideProgress";
+import "../../styles/home.css";
+import "../../styles/home-guide.css";
+const props = withDefaults(
+  defineProps<{
+    initialStep: number;
+    example?: HomeExample;
+    contextual?: boolean;
+  }>(),
+  { example: () => examples[0]! },
+);
 const emit = defineEmits<{ close: []; start: [useExample: boolean] }>();
 const router = useRouter();
+const route = useRoute();
+const draftPath = computed(() =>
+  props.contextual && route.params.projectId && route.params.draftId
+    ? `/studio/${encodeURIComponent(String(route.params.projectId))}/${encodeURIComponent(String(route.params.draftId))}`
+    : "",
+);
+const destination = computed(() => {
+  if (!draftPath.value || step.value === 0) return current.value.destination;
+  if (step.value === 1) return draftPath.value;
+  if (step.value === 5) return `${draftPath.value}?tab=video`;
+  if (step.value >= 3 && route.params.sceneId)
+    return `${draftPath.value}/shots/${encodeURIComponent(String(route.params.sceneId))}`;
+  return `${draftPath.value}/shots`;
+});
+const actionLabel = computed(() =>
+  draftPath.value && step.value > 0
+    ? [
+        "",
+        "返回当前正文",
+        "查看当前分镜列表",
+        "配置当前分镜素材",
+        "查看当前分镜任务",
+        "查看当前成片",
+      ][step.value]
+    : current.value.action,
+);
 const step = ref(Math.max(0, Math.min(props.initialStep, steps.length - 1)));
 const current = computed(() => steps[step.value]);
 const dialog = ref<HTMLDialogElement>();
@@ -42,6 +78,7 @@ watch(
   step,
   () => {
     if (body.value) body.value.scrollTop = 0;
+    rememberGuideStep(step.value);
   },
   { flush: "post" },
 );
@@ -70,14 +107,15 @@ function trapFocus(event: KeyboardEvent) {
   }
 }
 function proceed() {
-  if (step.value === 1) {
+  if (step.value === 1 && !draftPath.value) {
     emit("start", true);
     return;
   }
   emit("close");
-  void router.push(current.value.destination);
+  void router.push(destination.value);
 }
 onMounted(() => {
+  rememberGuideStep(step.value);
   previous = document.activeElement as HTMLElement;
   overflow = document.body.style.overflow;
   document.body.style.overflow = "hidden";
@@ -127,7 +165,10 @@ onBeforeUnmount(() => {
       </nav>
       <div v-show="!preview" ref="body" class="home-guide-body">
         <article :key="step" class="guide-instructions">
-          <span class="home-eyebrow">STEP 0{{ step + 1 }} / 04</span>
+          <span class="home-eyebrow"
+            >STEP 0{{ step + 1 }} /
+            {{ String(steps.length).padStart(2, "0") }}</span
+          >
           <h3>
             {{ current.title }}
             <span v-if="current.optional" class="guide-optional"
@@ -154,7 +195,7 @@ onBeforeUnmount(() => {
               </div>
             </li>
           </ol>
-          <section v-if="step === 1" class="guide-story-paths">
+          <section v-if="step === 1 && !draftPath" class="guide-story-paths">
             <h4>已有故事？直接开始写作</h4>
             <p>跳过 AI 联想，在正文页输入、粘贴或导入故事，再继续生成分镜。</p>
             <button type="button" @click="emit('start', false)">
@@ -183,11 +224,7 @@ onBeforeUnmount(() => {
         <aside class="guide-side">
           <GuideIllustration :step="step" @zoom="openImage" />
           <p class="guide-route-note">
-            {{
-              step < 2
-                ? "可以随时打开对应页面开始操作，再回到首页继续阅读。"
-                : "先在工作台选择已有项目，再按本步指引继续制作。"
-            }}
+            阅读位置会保存在当前浏览器。可随时从侧栏「操作指南」打开当前页面对应的步骤；关闭后继续操作。
           </p>
         </aside>
       </div>
@@ -234,7 +271,7 @@ onBeforeUnmount(() => {
           <button type="button" :disabled="step === 0" @click="step--">
             上一步</button
           ><button type="button" class="primary" @click="proceed">
-            {{ current.action }}</button
+            {{ actionLabel }}</button
           ><button v-if="step < steps.length - 1" type="button" @click="step++">
             下一步</button
           ><button v-else type="button" @click="emit('close')">完成阅读</button>

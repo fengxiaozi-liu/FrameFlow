@@ -46,10 +46,10 @@ test("home carousel, keyboard guide, example handoff and new blank creation", as
     (await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).analyze())
       .violations,
   ).toEqual([]);
-  const trigger = page.getByRole("button", { name: "查看第3步：生成分镜" });
+  const trigger = page.getByRole("button", { name: "查看第3步：创建分镜" });
   await trigger.click();
   const guide = page.getByRole("dialog");
-  await expect(guide.getByRole("heading", { name: "生成分镜" })).toBeVisible();
+  await expect(guide.getByRole("heading", { name: "创建分镜" })).toBeVisible();
   await expect(
     guide.getByRole("button", { name: "关闭入门指南" }),
   ).toBeFocused();
@@ -59,7 +59,7 @@ test("home carousel, keyboard guide, example handoff and new blank creation", as
   await expect(guide).toHaveCount(0);
   await expect(trigger).toBeFocused();
   await page.getByRole("button", { name: "查看入门指南" }).click();
-  await expect(guide.getByRole("heading", { name: "配置模型" })).toBeVisible();
+  await expect(guide.getByRole("heading", { name: "创建分镜" })).toBeVisible();
   await page.screenshot({
     path: testInfo.outputPath("home-guide-desktop.png"),
   });
@@ -82,7 +82,7 @@ test("home carousel, keyboard guide, example handoff and new blank creation", as
     path: testInfo.outputPath("home-mobile.png"),
     fullPage: true,
   });
-  await page.getByRole("button", { name: "查看第2步：故事联想" }).click();
+  await page.getByRole("button", { name: "查看第2步：准备故事" }).click();
   await guide.getByRole("button", { name: "使用示例想法" }).click();
   await expect(page).toHaveURL(/\/studio\/new$/);
   await page.getByRole("button", { name: "故事联想", exact: true }).click();
@@ -101,7 +101,9 @@ test("home stays focused on guidance; workbench project failures recover and pre
   await page.emulateMedia({ reducedMotion: "reduce" });
   let fail = true;
   let projectRequests = 0;
-  page.on("request", request => {if(new URL(request.url()).pathname === "/api/projects") projectRequests++;});
+  page.on("request", (request) => {
+    if (new URL(request.url()).pathname === "/api/projects") projectRequests++;
+  });
   const draft = (id: string, date: string) => ({
     id,
     name: `草稿 ${id}`,
@@ -127,7 +129,14 @@ test("home stays focused on guidance; workbench project failures recover and pre
             models: [
               {
                 id: "ready",
-                availability: { story: { available: true, code: "configured", reason: "", binding: { protocol: "openai.chat.v1", source: "manual" } } },
+                availability: {
+                  story: {
+                    available: true,
+                    code: "configured",
+                    reason: "",
+                    binding: { protocol: "openai.chat.v1", source: "manual" },
+                  },
+                },
                 enabled: true,
                 supported: true,
                 capabilities: ["story"],
@@ -143,7 +152,7 @@ test("home stays focused on guidance; workbench project failures recover and pre
         }),
   );
   await page.goto("/");
-  await expect(page.getByRole("heading", {name:"继续创作"})).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "继续创作" })).toHaveCount(0);
   await expect(page.locator(".home-model-hint")).toContainText("暂时无法读取");
   await expect(
     page.getByRole("button", { name: "开始创作", exact: true }),
@@ -155,13 +164,19 @@ test("home stays focused on guidance; workbench project failures recover and pre
     "已准备好 故事辅助；参考图生成、视频生成可按需配置",
   );
   expect(projectRequests).toBe(0);
-  await page.screenshot({path:testInfo.outputPath('home-without-projects.png'),fullPage:true});
+  await page.screenshot({
+    path: testInfo.outputPath("home-without-projects.png"),
+    fullPage: true,
+  });
   fail = true;
-  await page.getByRole('navigation',{name:'全局导航'}).getByRole('link',{name:'创作工作台',exact:true}).click();
+  await page
+    .getByRole("navigation", { name: "全局导航" })
+    .getByRole("link", { name: "创作工作台", exact: true })
+    .click();
   await expect(page).toHaveURL(/\/studio$/);
-  await expect(page.getByText('暂时无法加载草稿，请重试。')).toBeVisible();
+  await expect(page.getByText("暂时无法加载草稿，请重试。")).toBeVisible();
   fail = false;
-  await page.getByRole('button',{name:'重新加载草稿'}).click();
+  await page.getByRole("button", { name: "重新加载草稿" }).click();
   await expect(page.locator(".workbench-project-card")).toHaveCount(4);
   await expect(page.locator(".workbench-project-card").first()).toHaveAttribute(
     "href",
@@ -187,17 +202,26 @@ test("home stays focused on guidance; workbench project failures recover and pre
   await page.route("**/api/projects/home-0", (route) =>
     route.fulfill({ json: projects[0] }),
   );
-  await page.screenshot({path:testInfo.outputPath('workbench-projects-mobile.png'),fullPage:true});
-  expect((await new AxeBuilder({page}).withTags(['wcag2a','wcag2aa']).analyze()).violations).toEqual([]);
+  await page.screenshot({
+    path: testInfo.outputPath("workbench-projects-mobile.png"),
+    fullPage: true,
+  });
+  expect(
+    (await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).analyze())
+      .violations,
+  ).toEqual([]);
   await page.locator(".workbench-project-card").first().click();
   await expect(page).toHaveURL(/\/studio\/home-0\/latest$/);
   await expect(page.getByLabel("故事正文")).toHaveValue("已保存的正文");
   await page.reload();
   await expect(page.getByLabel("故事正文")).toHaveValue("已保存的正文");
-  await page.getByRole('navigation',{name:'全局导航'}).getByRole('link',{name:'创作工作台',exact:true}).click();
-  await page.getByRole('button',{name:'＋ 新建创作',exact:true}).click();
+  await page
+    .getByRole("navigation", { name: "全局导航" })
+    .getByRole("link", { name: "创作工作台", exact: true })
+    .click();
+  await page.getByRole("button", { name: "＋ 新建创作", exact: true }).click();
   await expect(page).toHaveURL(/\/studio\/new$/);
-  await expect(page.getByLabel('故事正文')).toHaveValue('');
+  await expect(page.getByLabel("故事正文")).toHaveValue("");
 });
 
 test("carousel respects pause, focus and reduced motion without background writes", async ({
@@ -232,16 +256,26 @@ test("carousel respects pause, focus and reduced motion without background write
   await expect(title).toHaveText("雨夜咖啡馆");
 });
 
-test('empty workbench offers creation without writing a project on navigation', async ({page})=>{
-  let writes=0;
-  page.on('request',request=>{if(request.method()!=='GET')writes++;});
-  await page.route('**/api/projects',route=>route.fulfill({json:{projects:[]}}));
-  await page.goto('/studio');
-  await expect(page.getByRole('heading',{name:'开始你的第一个故事'})).toBeVisible();
+test("empty workbench offers creation without writing a project on navigation", async ({
+  page,
+}) => {
+  let writes = 0;
+  page.on("request", (request) => {
+    if (request.method() !== "GET") writes++;
+  });
+  await page.route("**/api/projects", (route) =>
+    route.fulfill({ json: { projects: [] } }),
+  );
+  await page.goto("/studio");
+  await expect(
+    page.getByRole("heading", { name: "开始你的第一个故事" }),
+  ).toBeVisible();
   await page.reload();
-  await expect(page.getByRole('heading',{name:'开始你的第一个故事'})).toBeVisible();
-  await page.getByRole('button',{name:'开始创作',exact:true}).click();
+  await expect(
+    page.getByRole("heading", { name: "开始你的第一个故事" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "开始创作", exact: true }).click();
   await expect(page).toHaveURL(/\/studio\/new$/);
-  await expect(page.getByLabel('故事正文')).toHaveValue('');
+  await expect(page.getByLabel("故事正文")).toHaveValue("");
   expect(writes).toBe(0);
 });

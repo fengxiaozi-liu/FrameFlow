@@ -11,6 +11,20 @@ test("capture annotated guide images from the application", async ({
   await page.emulateMedia({ reducedMotion: "reduce" });
   const story =
     "雨夜，林夏撑伞走过安静的街道。咖啡馆的暖光映在积水里，她推开玻璃门，看见窗边等候的老朋友。两人相视一笑，在雨声中开始交谈。";
+  const videoBinding = {
+    protocol: "dashscope.media-video.v1",
+    source: "manual",
+    endpoint_mode: "default",
+    input_modes: ["first_frame", "reference_images"],
+    last_frame: true,
+    ratios: ["16:9", "9:16"],
+    durations: [4, 5, 6],
+    duration_min: 4,
+    duration_max: 6,
+    resolutions: ["720P", "1080P"],
+    max_references: 5,
+    max_image_bytes: 10485760,
+  };
   const models = [
     ["qwen-plus", "故事模型", "story"],
     ["qwen-image-2.0", "图片模型", "image"],
@@ -24,6 +38,24 @@ test("capture annotated guide images from the application", async ({
     enabled: true,
     supported: true,
     default: true,
+    operations: {
+      [cap]:
+        cap === "video"
+          ? videoBinding
+          : {
+              protocol:
+                cap === "story"
+                  ? "openai.chat.v1"
+                  : "dashscope.multimodal-image.v1",
+              ratios: ["16:9", "1:1"],
+            },
+    },
+    availability: {
+      [cap]: {
+        available: true,
+        binding: cap === "video" ? videoBinding : { ratios: ["16:9", "1:1"] },
+      },
+    },
   }));
   const scene = {
     id: "shot",
@@ -42,6 +74,9 @@ test("capture annotated guide images from the application", async ({
       },
     ],
     generation_settings: {
+      video_input_mode: "first_frame",
+      first_frame_material_id: "photo",
+      last_frame_material_id: "photo-end",
       video_model_id: "wan2.7-r2v",
       aspect_ratio: "16:9",
       resolution: "720P",
@@ -75,13 +110,29 @@ test("capture annotated guide images from the application", async ({
     base_url: "https://example.com",
     credential_set: true,
   };
+  let showProgress = false;
   await page.routeWebSocket(/\/ws(?:\?|$)/, () => {});
   await page.route("**/api/**", (route) => {
     const url = new URL(route.request().url()),
       path = url.pathname;
     if (!path.startsWith("/api/")) return route.continue();
+    if (route.request().method() !== "GET")
+      throw new Error(`Unexpected write during capture: ${path}`);
     let json: unknown = {};
     if (path === "/api/connections") json = { connections: [connection] };
+    else if (path === "/api/model-protocols")
+      json = {
+        protocols: [
+          {
+            id: "dashscope.media-video.v1",
+            name: "DashScope 视频生成",
+            operation: "video",
+            default_path:
+              "/api/v1/services/aigc/video-generation/video-synthesis",
+            polling_path: "/api/v1/tasks/{task_id}",
+          },
+        ],
+      };
     else if (path.endsWith("/input-capability"))
       json = {
         reference_video: true,
@@ -107,7 +158,10 @@ test("capture annotated guide images from the application", async ({
             name: "雨夜咖啡馆",
             description: "雨夜街角的咖啡馆，暖黄色灯光，大面积玻璃窗。",
             revision: 1,
-            references: [{ material_id: "photo", order: 0 }],
+            references: [
+              { material_id: "photo", order: 0 },
+              { material_id: "photo-end", order: 1 },
+            ],
           },
         ],
         voice_profiles: [],
@@ -115,6 +169,13 @@ test("capture annotated guide images from the application", async ({
     else if (path === "/api/materials")
       json = {
         materials: [
+          {
+            id: "photo-end",
+            kind: "scene",
+            name: "结束画面参考图",
+            url: "/home/city.png",
+            tags: [],
+          },
           {
             id: "photo",
             kind: "scene",
@@ -154,7 +215,28 @@ test("capture annotated guide images from the application", async ({
           },
         ],
       };
-    else if (path.endsWith("/generation-runs")) json = { runs: [] };
+    else if (path.endsWith("/generation-runs"))
+      json = {
+        runs: showProgress
+          ? [
+              {
+                id: "run",
+                scene_id: "shot",
+                state: "generating_video",
+                created_at: "2026-10-10T08:00:00Z",
+                plan: [{ path: "reference_video" }],
+                steps: [
+                  {
+                    id: "video-task",
+                    kind: "video",
+                    status: "running",
+                    progress: 45,
+                  },
+                ],
+              },
+            ]
+          : [],
+      };
     else if (path === "/api/tasks") json = { tasks: [], total: 0 };
     else if (path.endsWith("/video-versions"))
       json = { versions: draft.video_versions };
@@ -174,7 +256,8 @@ test("capture annotated guide images from the application", async ({
       }, i + 1);
     }
     // Number labels sit outside controls, so original labels remain readable.
-    await page.evaluate(() => {
+    const frameBox = await frame.boundingBox();
+    await page.evaluate((frameLeft) => {
       for (const el of document.querySelectorAll("[data-guide-mark]")) {
         const r = el.getBoundingClientRect(),
           badge = document.createElement("span"),
@@ -185,7 +268,7 @@ test("capture annotated guide images from the application", async ({
         badge.textContent = el.getAttribute("data-guide-mark");
         Object.assign(badge.style, {
           position: "absolute",
-          left: `${r.left - (origin?.left || 0) + (modal?.scrollLeft || scrollX) - 10}px`,
+          left: `${Math.max(r.left - 10, frameLeft + 3) - (origin?.left || 0) + (modal?.scrollLeft || scrollX)}px`,
           top: `${r.top - (origin?.top || 0) + (modal?.scrollTop || scrollY) - 12}px`,
           background: "#a93613",
           color: "white",
@@ -201,7 +284,7 @@ test("capture annotated guide images from the application", async ({
         });
         parent.append(badge);
       }
-    });
+    }, frameBox?.x || 0);
     await frame.screenshot({
       path: `public/guide/${name}.png`,
       animations: "disabled",
@@ -239,9 +322,26 @@ test("capture annotated guide images from the application", async ({
     page.getByRole("button", { name: "同步模型", exact: true }),
     page.locator(".catalog-main table").first(),
   ]);
+  await page
+    .getByRole("row")
+    .filter({ hasText: "视频模型" })
+    .getByRole("button", { name: "协议与参数" })
+    .click();
+  await expect(page.getByRole("dialog").getByLabel("接口协议")).toHaveValue(
+    "dashscope.media-video.v1",
+  );
+  await capture("protocol", page.getByRole("dialog"), [
+    page.getByLabel("配置能力"),
+    page.getByLabel("接口协议"),
+    page.getByRole("group", { name: "内置协议请求路径" }),
+  ]);
   const base = "/studio/demo/draft";
   await page.setViewportSize({ width: 1280, height: 560 });
   await page.goto(base);
+  await capture("manual-story", page.locator(".editor-card"), [
+    page.getByRole("button", { name: "导入文本", exact: true }),
+    page.getByLabel("故事正文"),
+  ]);
   await page.getByRole("button", { name: "故事联想", exact: true }).click();
   await page
     .getByLabel("你的想法或修改要求")
@@ -287,6 +387,11 @@ test("capture annotated guide images from the application", async ({
   ]);
   draft.candidates = [];
   await page.setViewportSize({ width: 1280, height: 1000 });
+  await page.goto(`${base}/shots`);
+  await capture("shot-list", page.locator("main.shot-workspace"), [
+    page.getByRole("button", { name: "＋ 新增分镜" }),
+    page.getByRole("link", { name: "进入详情 →" }),
+  ]);
   await page.goto(`${base}/shots/shot`);
   await page.getByRole("button", { name: "＋ 添加场景", exact: true }).click();
   await page
@@ -302,14 +407,39 @@ test("capture annotated guide images from the application", async ({
     page.getByRole("button", { name: "文生图", exact: true }),
     page.getByRole("button", { name: "保存并引用", exact: true }),
   ]);
+  await page
+    .getByLabel("上传参考图片", { exact: true })
+    .setInputFiles("public/home/cafe.png");
+  await capture("upload", page.locator(".reference-pending-upload"), [
+    page.getByRole("button", { name: "上传到素材库", exact: true }),
+    page.getByRole("button", { name: "使用这张图片", exact: true }),
+  ]);
+  await page.getByRole("button", { name: "取消上传", exact: true }).click();
   await page.getByRole("button", { name: "取消", exact: true }).click();
   await expect(
     page.getByRole("button", { name: "生成视频", exact: true }),
   ).toBeEnabled();
-  await capture("shot", page.locator(".shot-configuration"), [
-    page.getByLabel("镜头描述文本"),
+  await capture(
+    "shot",
+    page.getByRole("region", { name: "场景描述", exact: true }),
+    [page.getByLabel("镜头描述文本")],
+  );
+  await capture("frames", page.getByRole("region", { name: "视频设置" }), [
     page.getByRole("combobox", { name: "视频模型", exact: true }),
-    page.getByRole("button", { name: "生成视频", exact: true }),
+    page.getByLabel("首帧图片", { exact: true }),
+    page.getByLabel("尾帧图片", { exact: true }),
+  ]);
+  scene.generation_settings.video_input_mode = "reference_images";
+  await page.goto(`${base}/shots/shot`);
+  await capture("smart", page.getByRole("region", { name: "视频设置" }), [
+    page.getByRole("button", { name: "智能参考模式", exact: false }),
+    page.locator(".video-reference-strip"),
+  ]);
+  showProgress = true;
+  await page.goto(`${base}/shots/shot`);
+  await capture("progress", page.getByRole("region", { name: "任务结构" }), [
+    page.locator(".run-video-progress"),
+    page.getByRole("link", { name: "进入任务 →" }),
   ]);
   await page.goto(`${base}/shots/shot/runs/run`);
   // Poster is explicitly illustrative; no fabricated playable result is presented.
@@ -318,7 +448,8 @@ test("capture annotated guide images from the application", async ({
     el.removeAttribute("src");
     el.setAttribute("preload", "none");
   });
-  await capture("result", page.getByRole("region", { name: "生成记录" }), [
+  await capture("result", page.locator("main.shot-workspace"), [
+    page.getByRole("link", { name: "返回分镜", exact: true }),
     page.getByRole("button", { name: "选用此结果", exact: true }),
   ]);
   draft.selected_versions = { shot: "version" };

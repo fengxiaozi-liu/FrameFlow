@@ -1,5 +1,6 @@
 import { defineStore } from "pinia";
 import { ref } from "vue";
+import { projectDisplayName } from "../utils/projectDisplayName";
 import { api } from "../api/client";
 import type { Draft, Project, Scene } from "../api/types";
 
@@ -21,6 +22,7 @@ export const useWorkspaceStore = defineStore("workspace", () => {
   const idea = ref("");
   const projectId = ref("");
   const projectName = ref("");
+  const projectDraftCount = ref(0);
   const storyProvider = ref("");
   const imageProvider = ref("");
   const videoProvider = ref("");
@@ -35,12 +37,14 @@ export const useWorkspaceStore = defineStore("workspace", () => {
   function startNew(initialIdea = "") {
     projectId.value = "";
     projectName.value = "";
+    projectDraftCount.value = 0;
     idea.value = initialIdea;
     draft.value = blankDraft();
   }
 
   function applyDraft(value: Draft, preserveBody?: string) {
     draft.value = structuredClone(value);
+    if (projectDraftCount.value === 1) projectName.value = value.name;
     draft.value.outputs ||= [];
     if (preserveBody !== undefined) draft.value.story.body = preserveBody;
   }
@@ -58,7 +62,8 @@ export const useWorkspaceStore = defineStore("workspace", () => {
     const selected = value.drafts.find((item) => item.id === draftID);
     if (!selected) throw new Error("项目中不存在指定草稿");
     projectId.value = value.id;
-    projectName.value = value.name;
+    projectDraftCount.value = value.drafts.length;
+    projectName.value = projectDisplayName(value);
     applyDraft(selected);
     return value;
   }
@@ -71,7 +76,8 @@ export const useWorkspaceStore = defineStore("workspace", () => {
     }
     draft.value.story.updated_at = new Date().toISOString();
     const project = await api.saveDraft(projectId.value, draft.value);
-    projectName.value = project.name;
+    projectDraftCount.value = project.drafts.length;
+    projectName.value = projectDisplayName(project);
     const saved = project.drafts.find((item) => item.id === draft.value.id);
     if (saved) applyDraft(saved);
     return project;

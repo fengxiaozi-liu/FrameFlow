@@ -3,7 +3,36 @@ import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { api } from "../api/client";
 import type { Draft, Project } from "../api/types";
+import { projectDisplayName } from "../utils/projectDisplayName";
 const router = useRouter();
+async function removeProject(project: Project) {
+  const name = projectDisplayName(project);
+  if (
+    deleting.value ||
+    !confirm(
+      `删除项目“${name}”？项目及全部 ${project.drafts.length} 个草稿、分镜、设定与项目内版本记录将被删除，无法恢复。素材库内容与已完成任务文件会保留。`,
+    )
+  )
+    return;
+  deleting.value = project.id;
+  deleteError.value = "";
+  notice.value = "";
+  try {
+    await api.deleteProject(project.id, {
+      expected_name: project.name,
+      expected_catalog_version: project.catalog_version || 0,
+      expected_draft_versions: Object.fromEntries(
+        project.drafts.map((draft) => [draft.id, draft.version || 0]),
+      ),
+    });
+    projects.value = projects.value.filter((item) => item.id !== project.id);
+    notice.value = `项目“${name}”已删除。`;
+  } catch (error) {
+    deleteError.value = (error as Error).message;
+  } finally {
+    deleting.value = "";
+  }
+}
 const projects = ref<Project[]>([]),
   projectsLoading = ref(true),
   projectsError = ref(""),
@@ -45,20 +74,27 @@ const recent = computed(() =>
       project,
       draft: [...(project.drafts || [])].sort((a, b) => stamp(b) - stamp(a))[0],
     }))
-    .filter((item) => item.draft)
-    .sort((a, b) => stamp(b.draft) - stamp(a.draft)),
+    .sort(
+      (a, b) =>
+        (b.draft
+          ? stamp(b.draft)
+          : Date.parse(b.project.created_at || "") || 0) -
+        (a.draft
+          ? stamp(a.draft)
+          : Date.parse(a.project.created_at || "") || 0),
+    ),
 );
 const displayed = computed(() =>
   showAll.value ? recent.value : recent.value.slice(0, 4),
 );
 let alive = true;
 async function loadProjects() {
-  deleteError.value = '';
+  deleteError.value = "";
   projectsLoading.value = true;
   projectsError.value = "";
   try {
     const data = await api.projects();
-    if (alive) projects.value = data.projects || [];
+    if (alive) projects.value = (data.projects || []).map(project => ({ ...project, drafts: project.drafts || [] }));
   } catch {
     if (alive) projectsError.value = "暂时无法加载草稿，请重试。";
   } finally {
@@ -89,7 +125,7 @@ onBeforeUnmount(() => {
     <p v-if="notice" class="notice" role="status">{{ notice }}</p>
     <div v-if="deleteError" class="notice error" role="alert">
       {{ deleteError }}
-      <button type="button" @click="loadProjects">刷新草稿列表</button>
+      <button type="button" @click="loadProjects">刷新项目列表</button>
     </div>
     <section
       v-if="projectsLoading || projectsError || recent.length"
@@ -111,7 +147,7 @@ onBeforeUnmount(() => {
           {{ showAll ? "收起项目" : `全部项目（${recent.length}）` }}
         </button>
       </div>
-      <p v-if="projectsLoading" role="status">正在加载草稿…</p>
+      <p v-if="projectsLoading" role="status">正在加载项目…</p>
       <div v-else-if="projectsError" class="workbench-load-error">
         <p role="alert">{{ projectsError }}</p>
         <button type="button" @click="loadProjects">重新加载草稿</button>
@@ -123,16 +159,18 @@ onBeforeUnmount(() => {
           class="workbench-project-item"
         >
           <RouterLink
+            v-if="draft"
             class="workbench-project-card"
             :to="`/studio/${encodeURIComponent(project.id)}/${encodeURIComponent(draft.id)}`"
           >
             <span class="workbench-project-cover" aria-hidden="true"
-              ><span>草稿</span
+              ><span>项目</span
               ><b>{{ String(index + 1).padStart(2, "0") }}</b></span
             >
             <span class="workbench-project-info"
-              ><strong>{{ project.name }}</strong
-              ><span>{{ draft.name }}</span
+              ><strong>{{ projectDisplayName(project) }}</strong
+              ><span v-if="project.drafts.length > 1"
+                >当前草稿：{{ draft.name }}</span
               ><small
                 >{{ project.drafts.length }} 个草稿 ·
                 {{ draft.story.scenes?.length || 0 }} 个分镜</small
@@ -142,18 +180,20 @@ onBeforeUnmount(() => {
               >继续编辑 <span aria-hidden="true">→</span></span
             >
           </RouterLink>
+          <div v-else class="workbench-project-card">
+            <span class="workbench-project-info"
+              ><strong>{{ projectDisplayName(project) }}</strong
+              ><small>暂无草稿</small></span
+            >
+          </div>
           <div class="workbench-draft-actions">
             <button
               class="quiet delete-action"
               :disabled="!!deleting"
-              :aria-label="`删除草稿 ${draft.name}`"
-              @click="removeDraft(project, draft)"
+              :aria-label="`删除项目 ${projectDisplayName(project)}`"
+              @click="removeProject(project)"
             >
-              {{
-                deleting === `${project.id}/${draft.id}`
-                  ? "删除中…"
-                  : "删除草稿"
-              }}
+              {{ deleting === project.id ? "删除中…" : "删除项目" }}
             </button>
           </div>
           <details

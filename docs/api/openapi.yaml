@@ -9,6 +9,19 @@ paths:
     get: {responses: {'200': {description: Project list}}}
     post: {requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/CreateProject'}}}}, responses: {'201': {description: Created}}}
   /api/projects/{id}:
+    delete:
+      summary: Delete a project and all drafts, retaining library media and completed task files
+      parameters: [{$ref: '#/components/parameters/ID'}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/DeleteProject'}
+      responses:
+        '204': {description: Project and all drafts deleted}
+        '400': {description: Missing or invalid project version expectation}
+        '404': {description: Project not found}
+        '409': {description: Project changed or queued/running tasks exist; refresh and confirm again}
     get: {parameters: [{$ref: '#/components/parameters/ID'}], responses: {'200': {description: Project}, '404': {description: Not found}}}
   /api/projects/{id}/drafts:
     post: {parameters: [{$ref: '#/components/parameters/ID'}], responses: {'200': {description: Draft saved}}}
@@ -19,6 +32,7 @@ paths:
     get: {parameters: [{$ref: '#/components/parameters/ID'}, {$ref: '#/components/parameters/DraftPathID'}], responses: {'200': {description: Scoped draft including revision and saved candidate state, content: {application/json: {schema: {$ref: '#/components/schemas/Draft'}}}}, '404': {description: Draft not found}}}
     put:
       parameters: [{$ref: '#/components/parameters/ID'}, {$ref: '#/components/parameters/DraftPathID'}]
+      description: Versioned body and title save. A nonblank supplied name also updates the project name when it has exactly one draft; multiple drafts retain independent names.
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/DraftRevisionWrite'}}}}
       responses: {'200': {description: Saved draft with new revision, content: {application/json: {schema: {$ref: '#/components/schemas/Draft'}}}}, '409': {description: Revision conflict; current draft returned}}
   /api/projects/{id}/drafts/{draftId}/candidates:
@@ -228,6 +242,16 @@ components:
     Limit: {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 20}}
     Offset: {name: offset, in: query, schema: {type: integer, minimum: 0, default: 0}}
   schemas:
+    DeleteProject:
+      type: object
+      required: [expected_name, expected_catalog_version, expected_draft_versions]
+      properties:
+        expected_name: {type: string}
+        expected_catalog_version: {type: integer, minimum: 0}
+        expected_draft_versions:
+          type: object
+          description: Complete mapping of draft ID to version from the reviewed project
+          additionalProperties: {type: integer, minimum: 0}
     CreateProject: {type: object, required: [name], properties: {name: {type: string, minLength: 1}}}
     Connection:
       type: object

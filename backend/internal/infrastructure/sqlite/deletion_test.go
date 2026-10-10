@@ -140,3 +140,83 @@ func TestConnectionDeletionCascadeAndLateTaskProtection(t *testing.T) {
 		t.Fatal("retry must allow credential cleanup", e)
 	}
 }
+
+func TestProjectDeletionAllDraftsActiveTaskAndLateWrites(t *testing.T) {
+	ctx := context.Background()
+	store := deletionStore(t)
+	repo := NewProjectRepository(store)
+	p := project.Project{ID: "delete-project", Name: "项目", Drafts: []project.Draft{{ID: "a", Version: 1}, {ID: "b", Version: 2}}}
+	other := project.Project{ID: "keep-project", Name: "保留", Drafts: []project.Draft{{ID: "a"}}}
+	if err := repo.Save(ctx, p); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.Save(ctx, other); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SaveMaterial(ctx, material.Asset{ID: "keep-material", Kind: material.Scene}); err != nil {
+		t.Fatal(err)
+	}
+	for _, kind := range []string{"binding", "generation_snapshot"} {
+		if _, err := store.db.ExecContext(ctx, `INSERT INTO material_references(project_id,draft_id,scene_id,material_id,source_kind,source_id) VALUES(?,?,?,?,?,?)`, p.ID, "a", "s", "keep-material", kind, kind); err != nil {
+			t.Fatal(err)
+		}
+	}
+	expected := project.DeletionExpectation{Name: p.Name, DraftVersions: map[string]int64{"a": 1, "b": 2}}
+	stale := project.DeletionExpectation{Name: p.Name, DraftVersions: map[string]int64{"a": 1}}
+	requireDeleteErr(t, repo.DeleteProjectChecked(ctx, p.ID, stale), "project_version_conflict")
+	running := task.Task{ID: "project-task", ProjectID: p.ID, DraftID: "b", Status: task.StatusRunning}
+	if err := store.Save(ctx, running); err != nil {
+		t.Fatal(err)
+	}
+	requireDeleteErr(t, repo.DeleteProjectChecked(ctx, p.ID, expected), "project_in_use")
+	if actual, err := repo.Get(ctx, p.ID); err != nil || len(actual.Drafts) != 2 {
+		t.Fatal("failed deletion changed project", err)
+	}
+	running.Status = task.StatusSucceeded
+	if err := store.Save(ctx, running); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.DeleteProjectChecked(ctx, p.ID, expected); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.Get(ctx, p.ID); !errors.Is(err, fault.ErrNotFound) {
+		t.Fatal("project retained", err)
+	}
+	if _, err := repo.Get(ctx, other.ID); err != nil {
+		t.Fatal("other project removed", err)
+	}
+	if _, err := store.Get(ctx, running.ID); err != nil {
+		t.Fatal("completed task removed", err)
+	}
+	if _, err := store.GetMaterial(ctx, "keep-material"); err != nil {
+		t.Fatal("library asset removed", err)
+	}
+	var count int
+	if err := store.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM material_references WHERE project_id=? AND source_kind!='generation_snapshot'`, p.ID).Scan(&count); err != nil || count != 0 {
+		t.Fatal("project references retained", err, count)
+	}
+	if err := store.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM material_references WHERE project_id=? AND source_kind='generation_snapshot'`, p.ID).Scan(&count); err != nil || count != 1 {
+		t.Fatal("task snapshot removed", err, count)
+	}
+	requireDeleteErr(t, repo.Save(ctx, p), "resource_deleted")
+	// A delayed creation of a previously unknown draft must not resurrect the project.
+	requireDeleteErr(t, repo.Save(ctx, project.Project{ID: p.ID}), "resource_deleted")
+	late := task.Task{ID: "late-new-draft", ProjectID: p.ID, DraftID: "new", Status: task.StatusQueued}
+	requireDeleteErr(t, store.Save(ctx, late), "resource_deleted")
+	_, _, err := store.CreateIfAbsent(ctx, late)
+	requireDeleteErr(t, err, "resource_deleted")
+	_, err = repo.Update(ctx, p.ID, func(p *project.Project) error { return p.AddDraft(project.Draft{ID: "new"}) })
+	if !errors.Is(err, fault.ErrNotFound) {
+		t.Fatal("late update succeeded", err)
+	}
+	if err = repo.DeleteProjectChecked(ctx, p.ID, expected); !errors.Is(err, fault.ErrNotFound) {
+		t.Fatal("repeat deletion", err)
+	}
+	empty := project.Project{ID: "empty", Name: "空项目"}
+	if err = repo.Save(ctx, empty); err != nil {
+		t.Fatal(err)
+	}
+	if err = repo.DeleteProjectChecked(ctx, empty.ID, project.DeletionExpectation{Name: empty.Name, DraftVersions: map[string]int64{}}); err != nil {
+		t.Fatal("empty project", err)
+	}
+}

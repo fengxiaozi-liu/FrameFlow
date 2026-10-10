@@ -58,7 +58,7 @@ func testServer(t *testing.T) (testServices, func()) {
 	go func() { defer close(workerDone); processor.Start(ctx) }()
 	materials := sqlite.NewMaterialRepository(db)
 	tasks := application.TaskService{Store: db, Enqueuer: processor, Connections: ws.Connections, Providers: providers, Projects: projectRepo, Materials: materials}
-	return testServices{Worker: worker, TaskService: tasks, Projects: application.ProjectService{Repo: projectRepo, Materials: materials, Tasks: db, Models: db}, Providers: providers, Materials: application.MaterialService{Repo: materials, Projects: projectRepo, Tasks: db}}, func() { cancel(); <-workerDone; ws.CloseAll(); _ = db.Close() }
+	return testServices{Worker: worker, TaskService: tasks, Projects: application.ProjectService{Deletion: application.ProjectDeletion{Repository: projectRepo}, Repo: projectRepo, Materials: materials, Tasks: db, Models: db}, Providers: providers, Materials: application.MaterialService{Repo: materials, Projects: projectRepo, Tasks: db}}, func() { cancel(); <-workerDone; ws.CloseAll(); _ = db.Close() }
 }
 
 type testModelClient struct{}

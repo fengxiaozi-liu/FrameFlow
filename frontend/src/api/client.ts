@@ -1,3 +1,4 @@
+import type { components } from "./schema";
 import type {
   Capability,
   Draft,
@@ -50,6 +51,8 @@ export const api = {
     }),
   draft: (projectId: string, draftId: string) =>
     request<Draft>(`/api/projects/${encodeURIComponent(projectId)}/drafts/${encodeURIComponent(draftId)}`),
+  deleteProject: (projectId: string, input: components["schemas"]["DeleteProject"]) =>
+    request<void>(`/api/projects/${encodeURIComponent(projectId)}`, { method: "DELETE", body: JSON.stringify(input) }),
   deleteDraft: (projectId: string, draftId: string, version: number) =>
     request<void>(`/api/projects/${encodeURIComponent(projectId)}/drafts/${encodeURIComponent(draftId)}?expected_version=${version}`, { method: "DELETE" }),
   saveBody: (projectId: string, draftId: string, body: string, expected_version: number, name?: string) =>
@@ -219,7 +222,6 @@ export const api = {
     if (projectId) params.set("project_id", projectId);
     return request<{ materials: Material[] }>(`/api/materials?${params}`);
   },
-  materialUses: (id: string) => request<{ uses: string[] }>(`/api/materials/${encodeURIComponent(id)}/uses`),
   uploadMaterial: (file: File, kind: MaterialKind, onProgress?: (value: number) => void, scope?: {projectId: string; referenceOnly: boolean}) => {
     const body = new FormData();
     body.append("file", file);

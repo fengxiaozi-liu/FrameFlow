@@ -1,6 +1,6 @@
 /* Complete tutorial: compact overview, fixed navigation and scrollable reading area. */
 .home-onboarding .home-steps {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 .home-onboarding .home-step {
   display: flex;
@@ -48,6 +48,8 @@
   font-size: 21px;
 }
 .home-guide-complete > nav {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   flex: none;
   padding: 0 24px 14px;
   border-bottom: 1px solid var(--line);
@@ -493,4 +495,10 @@
     font-size: 12px;
     padding: 8px;
   }
+}
+
+.header-guide {
+  color: var(--accent);
+  font-size: 13px;
+  text-align: left;
 }

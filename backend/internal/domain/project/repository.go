@@ -17,3 +17,8 @@ type AtomicRepository interface {
 type DraftDeletionRepository interface {
 	DeleteDraft(context.Context, string, string, int64) error
 }
+
+// DeleteProjectChecked checks revisions and active tasks in the same transaction.
+type ProjectDeletionRepository interface {
+	DeleteProjectChecked(context.Context, string, DeletionExpectation) error
+}

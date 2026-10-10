@@ -127,7 +127,52 @@ export interface paths {
         };
         put?: never;
         post?: never;
-        delete?: never;
+        /** Delete a project and all drafts, retaining library media and completed task files */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: components["parameters"]["ID"];
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["DeleteProject"];
+                };
+            };
+            responses: {
+                /** @description Project and all drafts deleted */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Missing or invalid project version expectation */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Project not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Project changed or queued/running tasks exist; refresh and confirm again */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
         options?: never;
         head?: never;
         patch?: never;
@@ -205,6 +250,7 @@ export interface paths {
                 };
             };
         };
+        /** @description Versioned body and title save. A nonblank supplied name also updates the project name when it has exactly one draft; multiple drafts retain independent names. */
         put: {
             parameters: {
                 query?: never;
@@ -3387,6 +3433,14 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        DeleteProject: {
+            expected_name: string;
+            expected_catalog_version: number;
+            /** @description Complete mapping of draft ID to version from the reviewed project */
+            expected_draft_versions: {
+                [key: string]: number;
+            };
+        };
         CreateProject: {
             name: string;
         };

@@ -133,6 +133,7 @@ export interface BodySnapshot {
   applied_body: string;
 }
 export interface Project {
+  catalog_version?: number;
   id: string;
   name: string;
   drafts: Draft[];

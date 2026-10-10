@@ -14,6 +14,7 @@ import (
 )
 
 type ProjectService struct {
+	Deletion  ProjectDeletion
 	Models    provider.ModelRepository
 	Repo      project.Repository
 	Materials material.Repository
@@ -96,16 +97,7 @@ func (s ProjectService) SaveDraftRevision(ctx *gin.Context) {
 	var saved project.Draft
 	change := func(p *project.Project) error {
 		var err error
-		saved, err = p.UpdateDraftBody(draftID, *input.ExpectedVersion, input.Body, time.Now().UTC())
-		if err == nil && input.Name != nil {
-			for i := range p.Drafts {
-				if p.Drafts[i].ID == draftID {
-					p.Drafts[i].Name = *input.Name
-					saved.Name = *input.Name
-					break
-				}
-			}
-		}
+		saved, err = p.UpdateDraftContent(draftID, *input.ExpectedVersion, input.Body, input.Name, time.Now().UTC())
 		return err
 	}
 	var err error

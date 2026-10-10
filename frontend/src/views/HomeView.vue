@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { api } from "../api/client";
+import { readGuideStep } from "../components/home/guideProgress";
 import HomeGuide from "../components/home/HomeGuide.vue";
 import { examples, steps } from "../components/home/content";
 import "../styles/home.css";
@@ -33,7 +34,7 @@ const modelHint = computed(() => {
   if (modelsError.value)
     return "暂时无法读取模型配置，你仍可以先写故事、整理分镜。";
   if (!available.value.length)
-    return "首次使用？先连接故事与视频模型，再按四步指南开始创作；图片模型可按需配置。";
+    return "首次使用？先连接故事与视频模型，再按六步指南开始创作；图片模型可按需配置。";
   if (missing.value.length)
     return `已准备好 ${available.value.map((k) => capabilityNames[k as (typeof capabilities)[number]]).join("、")}；${missing.value.join("、")}可按需配置。`;
   return "故事、参考图和视频模型已配置，可以开始创作了。";
@@ -46,9 +47,7 @@ async function loadModels() {
     const data = await api.models();
     if (alive)
       available.value = capabilities.filter((k) =>
-        data.models.some(
-          (m) => m.availability?.[k]?.available === true,
-        ),
+        data.models.some((m) => m.availability?.[k]?.available === true),
       );
   } catch {
     if (alive) modelsError.value = true;
@@ -104,7 +103,7 @@ onBeforeUnmount(() => {
           <button type="button" class="primary" @click="start()">
             开始创作 <span aria-hidden="true">↗</span>
           </button>
-          <button type="button" @click="guideStep = 0">
+          <button type="button" @click="guideStep = readGuideStep()">
             查看入门指南 <span aria-hidden="true">→</span>
           </button>
         </div>
@@ -159,7 +158,7 @@ onBeforeUnmount(() => {
           <span>{{ current.category }}</span>
           <h2>{{ current.title }}</h2>
           <p>{{ current.subtitle }}</p>
-          <button type="button" @click="guideStep = 0">
+          <button type="button" @click="guideStep = readGuideStep()">
             看看如何创作 <span aria-hidden="true">↗</span>
           </button>
         </div>
@@ -191,8 +190,8 @@ onBeforeUnmount(() => {
     <section class="home-onboarding" aria-labelledby="home-steps-title">
       <div class="home-section-heading">
         <div>
-          <h2 id="home-steps-title">四步，完成第一支视频</h2>
-          <p>配置模型 → 故事联想（可跳过）→ 生成分镜 → 合成视频</p>
+          <h2 id="home-steps-title">六步，完成第一支视频</h2>
+          <p>从模型配置到完整成片，按步骤查看图解；已有故事可跳过 AI 联想。</p>
         </div>
         <span class="home-small-note">从这里开始 ↓</span>
       </div>
@@ -216,7 +215,7 @@ onBeforeUnmount(() => {
             ><span class="home-step-link">查看指南 →</span></span
           >
           <span class="home-step-overview" aria-hidden="true">{{
-            ["API → 模型", "想法 → 正文", "正文 → 镜头", "片段 → 成片"][index]
+            step.overview
           }}</span>
         </button>
       </div>

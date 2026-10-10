@@ -10,7 +10,6 @@ const search = ref("");
 const mediaType = ref("");
 const sortOrder = ref<"newest" | "oldest" | "name">("newest");
 const selected = ref<Material | null>(null);
-const uses = ref<string[]>([]);
 const input = ref<HTMLInputElement>();
 const uploading = ref(false);
 const failedUpload = ref<File>();
@@ -44,10 +43,8 @@ async function load() {
 watch([category, mediaType], () => { if (category.value) uploadCategory.value = category.value; void load(); });
 watch(search, () => { if (timer) clearTimeout(timer); timer = setTimeout(() => void load(), 250); });
 onMounted(() => void load());
-async function inspect(item: Material) {
+function inspect(item: Material) {
   selected.value = { ...item, tags: [...(item.tags || [])] };
-  try { uses.value = (await api.materialUses(item.id)).uses || []; }
-  catch (cause) { error.value = (cause as Error).message; uses.value = []; }
 }
 async function upload(event: Event) {
   const field = event.target as HTMLInputElement;
@@ -72,17 +69,14 @@ async function save() {
 async function remove() {
   if (!selected.value || !window.confirm(`删除素材“${selected.value.name}”？`)) return;
   try {
-    uses.value = (await api.materialUses(selected.value.id)).uses || [];
-    if (uses.value.length) { error.value = "该素材仍被引用，请先在对应位置解绑。"; return; }
     await api.deleteMaterial(selected.value.id);
     selected.value = null; await load(); error.value = ""; message.value = "素材已删除。";
-  } catch (cause) { error.value = (cause as Error).message; }
-}
-function locationLink(use: string) {
-  const [project, draft, scene] = use.split("/");
-  return project && draft
-    ? `/studio/${encodeURIComponent(project)}/${encodeURIComponent(draft)}${scene && scene !== "snapshot" && scene !== "composition" ? `?scene=${encodeURIComponent(scene)}` : ""}`
-    : "/tasks";
+  } catch (cause) {
+    const failure = cause as Error & { payload?: { code?: string; error?: { code?: string } } };
+    error.value = (failure.payload?.code || failure.payload?.error?.code) === "material_in_use"
+      ? "该素材仍被项目或任务引用，暂时无法删除。"
+      : failure.message;
+  }
 }
 </script>
 
@@ -121,7 +115,6 @@ function locationLink(use: string) {
       <p v-if="selected.kind === 'voice' || selected.kind === 'music'">时长：{{ selected.media?.duration_seconds?.toFixed(1) || "未知" }} 秒</p>
       <p v-if="selected.legacy_kind === 'frame'">来源：原首尾帧素材，现归入场景。</p>
       <div class="actions"><button class="primary" @click="save">保存信息</button><button @click="remove">删除</button></div>
-      <h3>使用位置</h3><p v-if="!uses.length">尚未被引用</p><ul v-else><li v-for="use in uses" :key="use"><RouterLink :to="locationLink(use)">{{ use }}</RouterLink></li></ul>
     </aside></div>
   </main>
 </template>

@@ -28,7 +28,7 @@ func InitService(store *sqlite.TaskRepository, vault provider.CredentialVault, u
 	projects := sqlite.NewProjectRepository(store)
 	providers.Catalog = application.CatalogService{Connections: store, Models: store, Tasks: store, Vault: vault, Discovery: providerinfra.NewDiscovery()}
 	materials := sqlite.NewMaterialRepository(store)
-	return application.TaskService{Store: store, UploadDir: uploadDir, Connections: connections, Providers: providers, Projects: projects, Materials: materials, Probe: media.Probe}, application.ProjectService{Repo: projects, Materials: materials, Tasks: store, Models: providers.Catalog.Models}, providers, application.MaterialService{Repo: materials, Projects: projects, Tasks: store, UploadDir: uploadDir}
+	return application.TaskService{Store: store, UploadDir: uploadDir, Connections: connections, Providers: providers, Projects: projects, Materials: materials, Probe: media.Probe}, application.ProjectService{Deletion: application.ProjectDeletion{Repository: projects}, Repo: projects, Materials: materials, Tasks: store, Models: providers.Catalog.Models}, providers, application.MaterialService{Repo: materials, Projects: projects, Tasks: store, UploadDir: uploadDir}
 }
 func InitProcessor(store *sqlite.TaskRepository, connections *ws.Hub) (*queue.Worker, *processor.Processor) {
 	worker := queue.NewConcurrentWorker(3)

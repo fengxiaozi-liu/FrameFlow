@@ -26,6 +26,9 @@ func checkDeleted(ctx context.Context, tx *sql.Tx, kind, owner, id string) error
 	return nil
 }
 func checkDeletedDrafts(ctx context.Context, tx *sql.Tx, p project.Project) error {
+	if err := checkDeleted(ctx, tx, "project", "", p.ID); err != nil {
+		return err
+	}
 	for _, d := range p.Drafts {
 		if err := checkDeleted(ctx, tx, "draft", p.ID, d.ID); err != nil {
 			return err
@@ -36,6 +39,9 @@ func checkDeletedDrafts(ctx context.Context, tx *sql.Tx, p project.Project) erro
 func checkTaskDeletion(ctx context.Context, tx *sql.Tx, t task.Task) error {
 	if t.Status != task.StatusQueued && t.Status != task.StatusRunning {
 		return nil
+	}
+	if err := checkDeleted(ctx, tx, "project", "", t.ProjectID); err != nil {
+		return err
 	}
 	if err := checkDeleted(ctx, tx, "draft", t.ProjectID, t.DraftID); err != nil {
 		return err
@@ -162,6 +168,52 @@ func (r *TaskRepository) saveCatalogRecord(ctx context.Context, id, connectionID
 		_, err = tx.ExecContext(ctx, `INSERT INTO provider_models(id,connection_id,payload) VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload,connection_id=excluded.connection_id`, id, connectionID, string(b))
 	}
 	if err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// Project metadata and references are removed atomically. Media and completed
+// tasks remain available; tombstones reject delayed saves and new task creation.
+func (r *ProjectRepository) DeleteProjectChecked(ctx context.Context, id string, expected project.DeletionExpectation) error {
+	tx, err := r.root.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	var raw string
+	if err = tx.QueryRowContext(ctx, `SELECT payload FROM projects WHERE id=?`, id).Scan(&raw); errors.Is(err, sql.ErrNoRows) {
+		return fault.ErrNotFound
+	} else if err != nil {
+		return err
+	}
+	var p project.Project
+	if err = json.Unmarshal([]byte(raw), &p); err != nil {
+		return err
+	}
+	if err = p.CheckDeletion(expected); err != nil {
+		return err
+	}
+	var active int
+	if err = tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM tasks WHERE project_id=? AND json_extract(payload,'$.status') IN ('queued','running')`, id).Scan(&active); err != nil {
+		return err
+	}
+	if active > 0 {
+		return deletionConflict("project_in_use", "该项目有排队或进行中的任务，请完成或取消任务后再删除")
+	}
+	if _, err = tx.ExecContext(ctx, `INSERT OR IGNORE INTO deleted_resources(kind,owner_id,id) VALUES('project','',?)`, id); err != nil {
+		return err
+	}
+	for _, d := range p.Drafts {
+		if _, err = tx.ExecContext(ctx, `INSERT OR IGNORE INTO deleted_resources(kind,owner_id,id) VALUES('draft',?,?)`, id, d.ID); err != nil {
+			return err
+		}
+	}
+	// Retain frozen generation-snapshot references belonging to retained tasks.
+	if _, err = tx.ExecContext(ctx, `DELETE FROM material_references WHERE project_id=? AND source_kind!='generation_snapshot'`, id); err != nil {
+		return err
+	}
+	if _, err = tx.ExecContext(ctx, `DELETE FROM projects WHERE id=?`, id); err != nil {
 		return err
 	}
 	return tx.Commit()

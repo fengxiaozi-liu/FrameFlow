@@ -165,3 +165,26 @@ UI 展示具体不可用原因和处理入口。暂时读取失败可重试，�
 ## 八、下一阶段的进入条件
 
 统一模型接入规格和实施记录已落在 `specs/model-protocol-integration/`。继续扩展时，先记录 wire format、参数与生命周期契约，再增加协议描述、窄端口适配器和测试；不要恢复模型名判断。未知厂商参数须有文档或契约证据，不能猜测。
+
+
+## 操作指南维护（2026-10-10）
+
+首页保留六步概览：配置模型 → 准备故事 → 创建分镜 → 配置人物与场景 → 生成并选用视频 → 合成与下载。每步完整指南包含准备条件、操作、完成检查、常见问题和编号截图。AI 联想是可选步骤，结果生成、确认采用、合成导出需分别说明。
+
+- 文案源：[content.ts](../frontend/src/components/home/content.ts)；截图与编号说明：[guideImages.ts](../frontend/src/components/home/guideImages.ts)。两者按六步顺序对应，不应单独调整顺序。
+- 界面实现：[HomeGuide.vue](../frontend/src/components/home/HomeGuide.vue)；全局入口：[AppHeader.vue](../frontend/src/components/AppHeader.vue)。业务页按当前路由打开相关步骤，有项目上下文时链接应继续当前草稿；阅读、关闭和切换步骤不得创建项目或提交生成任务。
+- [guideProgress.ts](../frontend/src/components/home/guideProgress.ts) 仅按稳定步骤 ID 在当前浏览器记录最后阅读步骤，不记录密钥、草稿正文或任务状态。首页“查看入门指南”恢复进度，指定步骤和业务页入口优先打开对应步骤。存储不可用或步骤失效时仍应可以阅读。
+- 截图放在 [frontend/public/guide](../frontend/public/guide)，现有 17 张。它们由真实页面渲染、合成演示数据和临时编号标注生成，视频结果使用明确标注的演示封面；不能宣称这些截图证明服务商真实生成成功。
+
+在 `frontend` 目录执行 `npx playwright test --config scripts/guide-capture.config.ts` 可重新截图。脚本拦截全部 API 和 WebSocket，只接受 GET，不访问真实用户数据，也不发送付费请求。界面流程、标签、协议配置或参数变化后，先更新演示夹具与图文说明，再重新截图。不要为了得到截图而修改生产界面的业务判断。
+
+验收运行 `npx playwright test e2e/home-guide.spec.ts e2e/home-onboarding.spec.ts e2e/professional-light.spec.ts --workers=1`，检查六步、所有图片加载及放大、键盘与焦点恢复、桌面和窄屏、阅读记忆、当前草稿跳转，以及无生成请求。结合 `npm run lint`、`npm test`、`npm run build` 验证前端。本次上述检查通过；未进行真实厂商调用、完整后端回归或 EXE 打包。
+
+
+## 项目名称与删除（2026-10-10）
+
+- 单草稿项目采用同一个展示标题。版本化正文保存通过领域方法 `Project.UpdateDraftContent` 同步草稿与项目名称；版本冲突和空名称不写入。已有单草稿项目名称不一致时，工作台与编辑页使用该草稿名称展示，无需批量改写用户数据。多草稿项目继续保留项目名称和独立草稿名称。
+- 工作台项目卡片的主操作为“删除项目”，确认框列明全部草稿的删除范围；其他草稿列表仍提供针对单个草稿的独立删除。没有草稿的项目也应可见、可删除。
+- `DELETE /api/projects/{id}` 由接口层解析请求、`application.ProjectDeletion` 编排、领域核对项目名称 / 档案版本 / 全部草稿版本、SQLite 窄删除端口执行。一个事务内检查所有排队和运行中的项目任务、删除项目及其草稿和非任务快照引用、写入项目与草稿删除标记。陈旧确认返回 409，需要刷新后再次确认。
+- 素材库记录、媒体文件、已完成任务及其冻结素材引用保留；原分镜跳转由任务中心按项目实际存在性隐藏。项目删除标记阻止迟到的项目保存与新任务提交重新创建该项目。未新增表或做破坏性数据迁移，沿用现有删除标记表；如需恢复实际删除的数据，应按发布与恢复指南恢复事前备份。
+- 旧的 `ProjectService` 中现有 HTTP 保存接口仍是架构债务，本次只把名称一致性移入领域；新增删除 HTTP handler 放在 `interfaces/http`，用例依赖由组合根注入。

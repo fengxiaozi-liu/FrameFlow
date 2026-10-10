@@ -325,6 +325,8 @@ test("empty material library opens the picker and uploads a local file", async (
   page,
   request,
 }, testInfo) => {
+  let usageRequests = 0;
+  page.on("request", request => { if (/\/api\/materials\/[^/]+\/uses$/.test(new URL(request.url()).pathname)) usageRequests++; });
   await page.route("**/api/materials?*", (route) =>
     route.fulfill({ status: 200, json: { materials: [] } }),
   );
@@ -353,6 +355,8 @@ test("empty material library opens the picker and uploads a local file", async (
   await expect(material).toBeVisible();
   await expect(material).toHaveClass(/selected/);
   await expect(page.locator(".material-detail")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "使用位置" })).toHaveCount(0);
+  await expect(page.locator(".material-detail a")).toHaveCount(0);
   await page.screenshot({ path: testInfo.outputPath("materials-selected-desktop.png"), fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.locator(".material-detail")).toBeVisible();
@@ -366,10 +370,20 @@ test("empty material library opens the picker and uploads a local file", async (
   );
   expect(uploaded?.url).toMatch(/^\/media\//);
   expect((await request.get(uploaded.url)).ok()).toBeTruthy();
+  await page.route(`**/api/materials/${uploaded.id}`, route => route.request().method() === "DELETE"
+    ? route.fulfill({ status: 409, json: { code: "material_in_use", uses: ["internal/project/task-id"] } })
+    : route.continue());
+  page.once("dialog", dialog => dialog.accept());
+  await page.getByRole("button", { name: "删除", exact: true }).click();
+  await expect(page.getByRole("alert")).toHaveText("该素材仍被项目或任务引用，暂时无法删除。");
+  await expect(page.getByText("internal/project/task-id")).toHaveCount(0);
+  await expect(material).toBeVisible();
+  await page.unroute(`**/api/materials/${uploaded.id}`);
   page.once("dialog", (dialog) => dialog.accept());
   await page.getByRole("button", { name: "删除", exact: true }).click();
   await expect(page.getByText("素材已删除。")).toBeVisible();
   await expect(material).toHaveCount(0);
+  expect(usageRequests).toBe(0);
 });
 
 test("failed task can be retried from task center", async ({
