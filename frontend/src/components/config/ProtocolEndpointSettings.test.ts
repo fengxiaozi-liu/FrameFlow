@@ -12,6 +12,7 @@ const protocol = {
 function editor(binding: OperationBinding) {
   const wrapper = mount(ProtocolEndpointSettings, {
     props: {
+      baseUrl: "https://example.com:8443",
       modelValue: binding,
       protocol,
       "onUpdate:modelValue": (value: OperationBinding) =>
@@ -25,6 +26,8 @@ describe("builtin protocol paths", () => {
     const w = editor({ protocol: protocol.id, source: "manual" });
     expect(w.text()).toContain("/submit/video");
     expect(w.text()).toContain("/tasks/{task_id}");
+    expect(w.text()).toContain("https://example.com:8443/submit/video");
+    expect(w.text()).toContain("https://example.com:8443/tasks/{task_id}");
     expect(w.find("input").exists()).toBe(false);
   });
   it("preserves legacy overrides until an explicit restore", async () => {

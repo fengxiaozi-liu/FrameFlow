@@ -48,7 +48,7 @@ const protocols = [
 ] as const;
 async function editor() {
   const wrapper = mount(ModelOperationEditor, {
-    props: { model },
+    props: { model, baseUrl: "https://example.com" },
     global: {
       stubs: { EntityEditorDrawer: { template: "<div><slot /></div>" } },
     },

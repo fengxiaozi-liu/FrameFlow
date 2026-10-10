@@ -51,7 +51,7 @@ func TestOpaqueModelIDsAcrossAllProtocols(t *testing.T) {
 					}
 					return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(tt.response))}, nil
 				})}}
-				conn := provider.Connection{ID: "test", Name: "Custom provider", Vendor: "custom", BaseURL: "https://example.com/v1"}
+				conn := provider.Connection{ID: "test", Name: "Custom provider", Vendor: "custom", BaseURL: "https://example.com"}
 				var err error
 				switch tt.op {
 				case provider.Story:

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { defaultEntityName } from "./entityDefaults";
 import {computed,onMounted,ref} from 'vue';
 import {api} from '../../api/client';
 import {bindingsApi,normalizeEntityCatalog,type EntityCatalog,type EntityVersion,type ShotEntityBinding,type GenerationRequest,type ShotGenerationSettings as GenerationSettings} from '../../api/bindings';
@@ -34,7 +35,7 @@ const copy=<T,>(v:T):T=>JSON.parse(JSON.stringify(v));
 function changeBinding(b:ShotEntityBinding){editor.change({entity_bindings:state.value.entity_bindings.map(x=>x.id===b.id?b:x)})}
 function remove(id:string){editor.change({entity_bindings:state.value.entity_bindings.filter(b=>b.id!==id),prompt_document:{schema_version:1,nodes:state.value.prompt_document.nodes.filter(n=>n.type!=='entity_ref'||n.binding_id!==id)}})}
 function bind(e:EntityVersion){if(state.value.entity_bindings.some(b=>b.entity_id===e.id)){notice.value='此档案已在当前镜头中。';return}editor.change({entity_bindings:[...state.value.entity_bindings,{id:crypto.randomUUID(),entity_id:e.id,entity_revision:e.revision,role:e.kind==='character'?'cast':state.value.entity_bindings.some(b=>b.role==='primary')?'supplement':'primary'}]});library.value=false}
-function create(kind:'location'|'character'){form.value={id:crypto.randomUUID(),kind,name:'',description:'',revision:1,references:[]};formBinding.value='';isNew.value=true;notice.value='';bindingPending.value=false}
+function create(kind:'location'|'character'){form.value={id:crypto.randomUUID(),kind,name:defaultEntityName(kind,latest.value),description:'',revision:1,references:[]};formBinding.value='';isNew.value=true;notice.value='';bindingPending.value=false}
 function edit(e:EntityVersion,id:string){form.value=copy(e);const b=state.value.entity_bindings.find(b=>b.id===id);const ids=b?.reference_material_ids||b?.selected_material_ids;if(ids)form.value.references=ids.map((material_id,order)=>({material_id,order,label:e.references.find(r=>r.material_id===material_id)?.label||props.materials.find(m=>m.id===material_id)?.name||""}));formBinding.value=id;isNew.value=false;notice.value='';bindingPending.value=false}
 function closeForm(){if(!busy.value&&!bindingPending.value&&!sourceBusy.value){form.value=undefined;notice.value=''}}
 async function saveEntity(){if(busy.value||sourceBusy.value)return;if(referenceEditor.value?.hasPendingUpload()){notice.value='请先使用或取消待确认的图片。';return}if(!form.value?.name.trim()){notice.value='请填写名称。';return}busy.value=true;notice.value='';try{

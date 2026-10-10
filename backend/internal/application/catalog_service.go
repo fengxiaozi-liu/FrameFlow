@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"net/url"
 	"strings"
 	"time"
 
@@ -72,11 +71,7 @@ func (s CatalogService) SaveConnection(g *gin.Context) {
 		writeError(g, Invalid("invalid_connection", err))
 		return
 	}
-	u, _ := url.Parse(strings.TrimSpace(c.BaseURL))
-	if u.Path == "" || u.Path == "/" {
-		writeError(g, Invalid("invalid_connection", errors.New("base_url must be a complete API endpoint, not just a host")))
-		return
-	}
+	c.BaseURL = strings.TrimSuffix(strings.TrimSpace(c.BaseURL), "/")
 	if s.Vault != nil {
 		if input.APIKey != "" {
 			if err := s.Vault.Put(ctx, "connection:"+c.ID, input.APIKey); err != nil {

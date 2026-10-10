@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref } from "vue";
+import { baseAddressError } from "../components/config/connectionAddress";
 import ModelOperationEditor from "../components/config/ModelOperationEditor.vue";
 import { api } from "../api/client";
 import type { Capability, Model, ProviderConnection } from "../api/types";
@@ -40,10 +41,8 @@ function toggleFilter(value: Capability | "all") {
 
 function showError(error: unknown) {
   const detail = (error as Error).message;
-  message.value = detail.includes("base_url must be an HTTPS URL")
-    ? "API 地址必须使用 HTTPS，且不能包含账号、查询参数或 # 片段。"
-    : detail.includes("base_url must be a complete API endpoint")
-    ? "请输入完整的 API 接口地址，不能只填域名。"
+  message.value = detail.includes("base_url must be an HTTPS origin")
+    ? "请填写 HTTPS 基础地址，不要包含接口路径、账号、查询参数或片段。"
     : detail;
   messageIsError.value = true;
 }
@@ -84,11 +83,16 @@ async function closeSettings() {
   await nextTick();
   settingsToggle.value?.focus();
 }
+function validateAddress(event: Event) {
+  const input = event.target as HTMLInputElement;
+  input.setCustomValidity(baseAddressError(input.value));
+}
 async function saveConnection() {
   busy.value = true;
   message.value = "";
   messageIsError.value = false;
   try {
+    if (baseAddressError(draft.value.base_url)) throw new Error(baseAddressError(draft.value.base_url));
     const saved = await api.saveConnection(draft.value, apiKey.value, creating.value);
     await loadConnections(saved.id);
     message.value = "连接已保存";
@@ -247,12 +251,14 @@ onMounted(() => { void loadConnections().catch(showError).finally(() => { loadin
         <form @submit.prevent="saveConnection">
           <label>名称<input v-model="draft.name" required placeholder="例如 百炼 · 北京" /></label>
           <label>厂商<select v-model="draft.vendor" :disabled="!creating"><option value="bailian">阿里云百炼</option><option value="custom">其他兼容服务商</option></select></label>
-          <label>API 完整地址<input v-model.trim="draft.base_url" required type="url" placeholder="https://{WorkspaceId}.cn-beijing.maas.aliyuncs.com/compatible-mode/v1/chat/completions" /></label>
+          <label>基础 URL<input :key="draft.id" v-model.trim="draft.base_url" required type="url" placeholder="https://example.com" @input="validateAddress" /></label>
+          <p v-if="draft.base_url && baseAddressError(draft.base_url)" role="alert" class="error">{{ baseAddressError(draft.base_url) }}</p>
+          <p class="muted">仅填写域名和可选端口，不包含 /v1 或 /chat/completions 等接口路径。生成接口路径在模型的「协议与参数」中配置。</p>
           <label>API Key<input v-model="apiKey" type="password" autocomplete="new-password" :placeholder="draft.credential_set ? '已配置，留空表示不修改' : '输入 API Key'" /></label>
           <div class="catalog-settings-actions"><button class="primary" type="submit" :disabled="busy">保存连接</button><button v-if="creating" type="button" :disabled="busy" @click="selectConnection(connections[0]?.id || '')">取消</button></div>
         </form>
       </aside>
     </div>
-    <ModelOperationEditor v-if="editingModel" :key="editingModel.id" :model="editingModel" @close="editingModel = undefined" @saved="modelConfigured" />
+    <ModelOperationEditor v-if="editingModel" :key="editingModel.id" :model="editingModel" :base-url="connections.find((item) => item.id === editingModel?.connection_id)?.base_url || ''" @close="editingModel = undefined" @saved="modelConfigured" />
   </main>
 </template>

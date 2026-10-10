@@ -1,10 +1,12 @@
 <script setup lang="ts">
+import RequestAddressPreview from "./RequestAddressPreview.vue";
 import { computed } from "vue";
 import ModelOptionTags from "./ModelOptionTags.vue";
 import type { Capability } from "../../api/types";
 import type { components } from "../../api/schema";
 type CustomInterface = components["schemas"]["CustomInterface"];
 const props = defineProps<{
+  baseUrl: string;
   modelValue: CustomInterface;
   capability: Capability;
   variables: string[];
@@ -79,8 +81,7 @@ const states = [
           @input="update('path', text($event).trim())"
       /></label>
       <p>
-        使用当前厂商连接的域名。填写从 /
-        开始的完整路径，替换连接地址中的路径部分。
+        填写从 / 开始的完整路径，与厂商基础 URL 组合，不自动添加 /v1。
       </p>
       <label
         >认证方式<select
@@ -208,6 +209,7 @@ const states = [
         @update:model-value="updatePolling(state.key, $event)"
       />
     </section>
+    <RequestAddressPreview :base-url="baseUrl" :path="modelValue.path" :polling-path="modelValue.mode === 'async' ? modelValue.polling?.path : undefined" />
     <p>
       当前支持 JSON POST 与视频 GET
       轮询；不支持文件表单、流式响应、签名脚本及异步图片或语音接口。

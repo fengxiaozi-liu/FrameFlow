@@ -39,7 +39,7 @@ test('draft delete supports cancel, retry, individual drafts and persistence',as
 test('vendor delete cascades model settings and preserves the other connection',async({page,request},testInfo)=>{
   const ids=[randomUUID(),randomUUID()];
   for(let i=0;i<2;i++) {
-    expect((await request.post('/api/connections',{data:{id:ids[i],name:i?'保留厂商':'待删除厂商',vendor:'bailian',base_url:'https://example.com/v1/chat/completions',api_key:'isolated-test-key'}})).ok()).toBeTruthy();
+    expect((await request.post('/api/connections',{data:{id:ids[i],name:i?'保留厂商':'待删除厂商',vendor:'bailian',base_url:'https://example.com',api_key:'isolated-test-key'}})).ok()).toBeTruthy();
     expect((await request.post(`/api/connections/${ids[i]}/models`,{data:{model_id:'qwen-plus',capabilities:['story']}})).ok()).toBeTruthy();
   }
   await page.route('**/api/connections',async route=>{const response=await route.fetch();const data=await response.json();await route.fulfill({json:{connections:data.connections.filter((c:{id:string})=>ids.includes(c.id))}});});

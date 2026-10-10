@@ -30,35 +30,8 @@ func (c Client) httpClient() *http.Client {
 	return &http.Client{Timeout: 5 * time.Minute}
 }
 
-func baseURL(connection provider.Connection) (string, error) {
-	if err := connection.Validate(); err != nil {
-		return "", err
-	}
-	return strings.TrimSpace(connection.BaseURL), nil
-}
-
-// endpoint keeps a complete configured URL intact when it already targets the
-// operation; other Bailian operations use the same workspace host.
 func endpoint(connection provider.Connection, path string) (string, error) {
-	base, err := baseURL(connection)
-	if err != nil {
-		return "", err
-	}
-	u, err := url.Parse(base)
-	if err != nil {
-		return "", err
-	}
-	operation, err := url.Parse(path)
-	if err != nil {
-		return "", err
-	}
-	if u.Path == operation.Path && operation.RawQuery == "" {
-		return base, nil
-	}
-	u.Path = operation.Path
-	u.RawPath = ""
-	u.RawQuery = operation.RawQuery
-	return u.String(), nil
+	return connection.RequestURL(path)
 }
 
 func (c Client) request(ctx context.Context, connection provider.Connection, key, method, path string, body any, out any, async bool) error {
@@ -112,52 +85,6 @@ func (c Client) key(ctx context.Context, connection provider.Connection) (string
 		return "", errors.New("credential reader unavailable")
 	}
 	return c.Credentials.Get(ctx, "connection:"+connection.ID)
-}
-
-func (c Client) Discover(ctx context.Context, connection provider.Connection, key string) ([]provider.DiscoveredModel, error) {
-	if strings.Contains(connection.BaseURL, "/compatible-mode/") {
-		return c.discoverCompatible(ctx, connection, key)
-	}
-	items := make([]provider.DiscoveredModel, 0)
-	for page := 1; page <= 100; page++ {
-		var response struct {
-			Output struct {
-				Total  int `json:"total"`
-				Models []struct {
-					Model        string          `json:"model"`
-					Name         string          `json:"name"`
-					Capabilities json.RawMessage `json:"capabilities"`
-				} `json:"models"`
-			} `json:"output"`
-		}
-		path := fmt.Sprintf("/api/v1/models?page_no=%d&page_size=100", page)
-		if err := c.request(ctx, connection, key, http.MethodGet, path, nil, &response, false); err != nil {
-			return nil, err
-		}
-		for _, m := range response.Output.Models {
-			if m.Model != "" {
-				entry := provider.DiscoveredModel{ID: m.Model, Name: m.Name}
-				var capabilities []provider.Capability
-				if json.Unmarshal(m.Capabilities, &capabilities) == nil {
-					for _, capability := range capabilities {
-						switch {
-						case capability == "TG" || capability == provider.Story:
-							entry.Capabilities = append(entry.Capabilities, provider.Story)
-						case capability == "IG" || capability == provider.Image:
-							entry.Capabilities = append(entry.Capabilities, provider.Image)
-						case capability == "VG" || capability == provider.Video:
-							entry.Capabilities = append(entry.Capabilities, provider.Video)
-						}
-					}
-				}
-				items = append(items, entry)
-			}
-		}
-		if len(response.Output.Models) == 0 || len(items) >= response.Output.Total {
-			return items, nil
-		}
-	}
-	return nil, errors.New("model list exceeds pagination limit")
 }
 
 func (c Client) GenerateText(ctx context.Context, connection provider.Connection, model provider.Model, input provider.StoryRequest, options provider.RequestOptions) (provider.StoryResult, error) {

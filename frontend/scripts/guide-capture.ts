@@ -72,7 +72,7 @@ test("capture annotated guide images from the application", async ({
     id: "demo",
     name: "创作模型 · 示例连接",
     vendor: "bailian",
-    base_url: "https://example.com/v1/chat/completions",
+    base_url: "https://example.com",
     credential_set: true,
   };
   await page.routeWebSocket(/\/ws(?:\?|$)/, () => {});
@@ -221,16 +221,17 @@ test("capture annotated guide images from the application", async ({
   await page.getByRole("button", { name: "添加厂商连接", exact: true }).click();
   await page.getByLabel("名称", { exact: true }).fill("我的创作模型");
   await page
-    .getByLabel("API 完整地址", { exact: true })
-    .fill("https://example.com/v1/chat/completions");
+    .getByLabel("基础 URL", { exact: true })
+    .fill("https://example.com");
   await page
     .getByLabel("API Key", { exact: true })
     .fill("demo-only-not-a-real-key");
   await capture("connection", page.locator(".catalog-settings"), [
-    page.getByLabel("API 完整地址", { exact: true }),
+    page.getByLabel("基础 URL", { exact: true }),
     page.getByLabel("API Key", { exact: true }),
     page.getByRole("button", { name: "保存连接", exact: true }),
   ]);
+  if (process.env.GUIDE_CONNECTION_ONLY === "1") return;
   await page.goto("/config");
   await expect(page.locator(".catalog-main")).toContainText("故事模型");
   await capture("models", page.locator(".catalog-main"), [

@@ -21,7 +21,7 @@ func TestCustomFirstFrameUsesFrozenProtocolAfterConfigurationChanges(t *testing.
 		t.Fatal(e)
 	}
 	defer store.Close()
-	conn := provider.Connection{ID: "c", Name: "c", Vendor: "custom", BaseURL: "https://example.com/v1"}
+	conn := provider.Connection{ID: "c", Name: "c", Vendor: "custom", BaseURL: "https://example.com"}
 	if e = store.SaveConnection(ctx, conn); e != nil {
 		t.Fatal(e)
 	}

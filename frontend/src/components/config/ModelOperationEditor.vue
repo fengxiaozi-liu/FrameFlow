@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import ModelOptionTags from "./ModelOptionTags.vue";
+import DurationRangeInput from "./DurationRangeInput.vue";
 import CustomInterfaceSettings from "./CustomInterfaceSettings.vue";
 import ProtocolEndpointSettings from "./ProtocolEndpointSettings.vue";
 import EntityEditorDrawer from "../studio/EntityEditorDrawer.vue";
 import { modelConfigurationApi } from "../../api/modelConfiguration";
 import type { Capability, Model, OperationBinding } from "../../api/types";
 import type { components } from "../../api/schema";
-const props = defineProps<{ model: Model }>();
+const props = defineProps<{ model: Model; baseUrl: string }>();
 const emit = defineEmits<{ close: []; saved: [Model] }>();
 const labels: Record<Capability, string> = {
   story: "文本生成",
@@ -186,10 +187,12 @@ onMounted(async () => {
             choices.find((p) => p.id === current.protocol)
               ?.template_variables || []
           "
+          :base-url="baseUrl"
           :disabled="busy"
         />
         <ProtocolEndpointSettings
           v-else
+          :base-url="baseUrl"
           :key="selected + current.protocol"
           v-model="bindings[selected]!"
           :protocol="
@@ -244,13 +247,11 @@ onMounted(async () => {
             </select></label
           >
           <div class="operation-grid">
-            <ModelOptionTags
+            <DurationRangeInput
               :key="current.protocol + '-durations'"
-              label="可选时长"
-              kind="duration"
-              :model-value="(current.durations || []).map(String)"
+              :model-value="current.durations || []"
               :disabled="busy"
-              @update:model-value="current.durations = $event.map(Number)"
+              @update:model-value="current.durations = $event"
             />
             <ModelOptionTags
               :key="current.protocol + '-resolutions'"

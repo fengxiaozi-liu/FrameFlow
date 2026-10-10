@@ -13,7 +13,7 @@ test("manual unknown video model uses explicit protocol and parameter choices", 
           id,
           name: `兼容测试 ${id}`,
           vendor: "custom",
-          base_url: "https://example.com/v1",
+          base_url: "https://example.com",
         },
       })
     ).ok(),
@@ -48,14 +48,9 @@ test("manual unknown video model uses explicit protocol and parameter choices", 
     name: "可选清晰度",
     exact: true,
   });
-  for (const seconds of ["8", "4", "4"]) {
-    await durations.getByLabel("添加可选时长", { exact: true }).fill(seconds);
-    await durations.getByLabel("添加可选时长", { exact: true }).press("Enter");
-  }
-  await expect(durations.getByRole("listitem").locator("span")).toHaveText([
-    "4 秒",
-    "8 秒",
-  ]);
+  await durations.getByLabel("最短时长（秒）", { exact: true }).fill("4");
+  await durations.getByLabel("最长时长（秒）", { exact: true }).fill("8");
+  await expect(durations).toContainText("4–8 秒");
   await resolutions.getByRole("button", { name: "720P", exact: true }).click();
   await resolutions.getByRole("button", { name: "1080P", exact: true }).click();
   await resolutions.getByLabel("添加可选清晰度", { exact: true }).fill("1440p");
@@ -102,10 +97,8 @@ test("manual unknown video model uses explicit protocol and parameter choices", 
     .filter({ hasText: "自定义视频" })
     .getByRole("button", { name: "协议与参数" })
     .click();
-  await expect(durations.getByRole("listitem").locator("span")).toHaveText([
-    "4 秒",
-    "8 秒",
-  ]);
+  await expect(durations.getByLabel("最短时长（秒）", { exact: true })).toHaveValue("4");
+  await expect(durations.getByLabel("最长时长（秒）", { exact: true })).toHaveValue("8");
   await expect(resolutions.getByRole("listitem").locator("span")).toHaveText([
     "720P",
     "1080P",
@@ -150,10 +143,10 @@ test("manual unknown video model uses explicit protocol and parameter choices", 
   await settings
     .getByLabel("视频模型", { exact: true })
     .selectOption(`${id}:Wan3.0-video`);
-  await expect(settings.getByLabel("时长", { exact: true })).toHaveValue("4");
+  await expect(settings.getByLabel("时长", { exact: true })).toHaveValue("6");
   await expect(
     settings.getByLabel("时长", { exact: true }).locator("option"),
-  ).toHaveText(["4 秒", "8 秒"]);
+  ).toHaveText(["4 秒", "5 秒", "6 秒", "7 秒", "8 秒"]);
   await expect(
     settings.getByLabel("清晰度", { exact: true }).locator("option"),
   ).toHaveText(["720P", "1080P"]);
@@ -184,7 +177,7 @@ test("model without declared capabilities can be configured directly in the draw
           id,
           name: `空能力 ${id}`,
           vendor: "custom",
-          base_url: "https://example.com/v1",
+          base_url: "https://example.com",
         },
       })
     ).ok(),
@@ -267,7 +260,7 @@ test("custom interface replaces path-only editing and persists its format", asyn
       id,
       name: `自定义格式 ${id}`,
       vendor: "custom",
-      base_url: "https://example.com/v1",
+      base_url: "https://example.com",
     },
   });
   await request.post(`/api/connections/${id}/models`, {
@@ -364,7 +357,7 @@ test("legacy builtin path remains explicit and can restore default", async ({
       id,
       name: `历史路径 ${id}`,
       vendor: "custom",
-      base_url: "https://example.com/v1",
+      base_url: "https://example.com",
     },
   });
   await request.post(`/api/connections/${id}/models`, {
@@ -422,7 +415,7 @@ test("custom async video fields persist and duplicate terminal states are reject
       id,
       name: `自定义异步 ${id}`,
       vendor: "custom",
-      base_url: "https://example.com/v1",
+      base_url: "https://example.com",
     },
   });
   await request.post(`/api/connections/${id}/models`, {
@@ -465,8 +458,8 @@ test("custom async video fields persist and duplicate terminal states are reject
     .selectOption("reference_images");
   await drawer.getByLabel("最多参考图片数", { exact: true }).fill("2");
   await drawer.getByLabel("单张图片上限（MB）", { exact: true }).fill("10");
-  await drawer.getByLabel("添加可选时长", { exact: true }).fill("4");
-  await drawer.getByLabel("添加可选时长", { exact: true }).press("Enter");
+  await drawer.getByLabel("最短时长（秒）", { exact: true }).fill("4");
+  await drawer.getByLabel("最长时长（秒）", { exact: true }).fill("4");
   await drawer.getByRole("button", { name: "720P", exact: true }).click();
   await drawer.getByRole("button", { name: "保存配置", exact: true }).click();
   await expect(drawer.getByRole("alert")).toContainText(

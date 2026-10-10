@@ -13,9 +13,9 @@ export const guideImages: GuideImage[][] = [
       image: "connection",
       title: "填写厂商连接",
       location: "模型管理 → 添加厂商连接",
-      alt: "添加连接表单，标出了 API 完整地址、API Key 和保存连接按钮",
+      alt: "添加连接表单，标出了基础 URL、API Key 和保存连接按钮",
       instructions: [
-        "填写厂商提供的完整 API 地址，图中的 example.com 仅为示例。",
+        "填写 HTTPS 域名（可含端口），不要填写 /v1 等接口路径。",
         "填写自己的 API Key，输入后会以圆点隐藏。",
         "点击「保存连接」，回到模型列表。",
       ],

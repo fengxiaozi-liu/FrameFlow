@@ -64,7 +64,7 @@ test('connection empty state and optional settings release unused columns', asyn
   await expect(page.locator('.catalog-welcome')).toBeVisible();
   await page.getByRole('button',{name:'添加第一个连接'}).click();
   await page.getByLabel('名称',{exact:true}).fill('百炼 · 北京');
-  await page.getByLabel('API 完整地址').fill('https://example.com/compatible-mode/v1/chat/completions');
+  await page.getByLabel('基础 URL').fill('https://example.com');
   await page.getByRole('button',{name:'保存连接'}).click();
   await expect(page.getByRole('heading',{name:'百炼 · 北京'})).toBeVisible();
   const settings=page.locator('.catalog-settings');

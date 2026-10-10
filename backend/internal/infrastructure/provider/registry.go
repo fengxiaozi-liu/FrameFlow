@@ -91,8 +91,6 @@ func (r *Registry) UploadAudio(ctx context.Context, connection domain.Connection
 	return client.Audio.UploadAudio(ctx, connection, model, localPath)
 }
 
-func NewDiscovery() domain.Discovery { return bailian.Client{} }
-
 func (r *Registry) GenerateSpeech(ctx context.Context, connection domain.Connection, model domain.Model, input domain.SpeechRequest, options domain.RequestOptions) (domain.SpeechResult, error) {
 	client, err := r.client(model, domain.Speech)
 	if err != nil {

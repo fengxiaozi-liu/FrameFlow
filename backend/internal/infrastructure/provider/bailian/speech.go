@@ -57,19 +57,3 @@ func (c Client) GenerateSpeech(ctx context.Context, connection provider.Connecti
 	}
 	return provider.SpeechResult{URL: out.Output.Audio.URL}, nil
 }
-func (c Client) discoverCompatible(ctx context.Context, connection provider.Connection, key string) ([]provider.DiscoveredModel, error) {
-	var out struct {
-		Data []struct {
-			ID string `json:"id"`
-		} `json:"data"`
-	}
-	if err := c.request(ctx, connection, key, http.MethodGet, "/compatible-mode/v1/models", nil, &out, false); err != nil {
-		return nil, err
-	}
-	values := []provider.DiscoveredModel{}
-	for _, m := range out.Data {
-		caps := provider.SuggestedCapabilities(m.ID)
-		values = append(values, provider.DiscoveredModel{ID: m.ID, Name: m.ID, Capabilities: caps})
-	}
-	return values, nil
-}

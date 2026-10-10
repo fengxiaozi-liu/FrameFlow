@@ -1,8 +1,10 @@
 <script setup lang="ts">
+import RequestAddressPreview from "./RequestAddressPreview.vue";
 import { computed } from "vue";
 import type { OperationBinding } from "../../api/types";
 import type { components } from "../../api/schema";
 const props = defineProps<{
+  baseUrl?: string;
   modelValue: OperationBinding;
   protocol?: components["schemas"]["ProtocolDescriptor"];
   disabled?: boolean;
@@ -31,6 +33,7 @@ function restoreDefault() {
         <span>查询任务 · GET</span><code>{{ protocol.polling_path }}</code>
       </template>
     </div>
+    <RequestAddressPreview :base-url="baseUrl || ''" :path="requestPath" :polling-path="protocol?.polling_path" />
     <template v-if="legacy">
       <p>
         历史路径配置：继续使用原路径及所选内置协议的数据格式。需要自定义数据格式时，请在上方选择“自定义接口（JSON）”。

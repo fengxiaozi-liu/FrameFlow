@@ -90,18 +90,10 @@ func extract(value any, pointer string) (string, error) {
 }
 
 func (c Client) request(ctx context.Context, connection domain.Connection, config domain.CustomInterface, method, path string, body any) (any, error) {
-	if err := connection.Validate(); err != nil {
+	target, err := connection.RequestURL(path)
+	if err != nil {
 		return nil, err
 	}
-	base, _ := url.Parse(connection.BaseURL)
-	relative, err := url.Parse(path)
-	if err != nil || relative.IsAbs() || relative.Host != "" {
-		return nil, errors.New("请求路径无效")
-	}
-	base.Path = relative.Path
-	base.RawPath = relative.RawPath
-	base.RawQuery = ""
-	base.Fragment = ""
 	var payload io.Reader
 	if body != nil {
 		encoded, err := json.Marshal(body)
@@ -110,7 +102,7 @@ func (c Client) request(ctx context.Context, connection domain.Connection, confi
 		}
 		payload = bytes.NewReader(encoded)
 	}
-	req, err := http.NewRequestWithContext(ctx, method, base.String(), payload)
+	req, err := http.NewRequestWithContext(ctx, method, target, payload)
 	if err != nil {
 		return nil, errors.New("无法创建自定义接口请求")
 	}

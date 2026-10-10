@@ -32,7 +32,7 @@ func fixture(op domain.Capability) domain.Model {
 	return domain.Model{ID: "c:m", RemoteID: "unknown-model-987", Enabled: true, Capabilities: []domain.Capability{op}, Operations: map[domain.Capability]domain.OperationBinding{op: b}}
 }
 func connection(server *httptest.Server) domain.Connection {
-	return domain.Connection{ID: "test", Name: "test", Vendor: "custom", BaseURL: server.URL + "/old/base"}
+	return domain.Connection{ID: "test", Name: "test", Vendor: "custom", BaseURL: server.URL}
 }
 func TestIndependentFormatsAcrossFourOperations(t *testing.T) {
 	for _, op := range []domain.Capability{domain.Story, domain.Image, domain.Video, domain.Speech} {

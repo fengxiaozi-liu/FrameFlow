@@ -3390,15 +3390,26 @@ export interface components {
         CreateProject: {
             name: string;
         };
+        Connection: {
+            id: string;
+            name: string;
+            vendor: string;
+            region: string;
+            workspace_id?: string;
+            /**
+             * Format: uri
+             * @description HTTPS origin only (scheme, host and optional port); no API path, credentials, query or fragment
+             */
+            base_url: string;
+            readonly credential_set: boolean;
+        };
         ConnectionInput: {
             id: string;
             name: string;
             vendor: string;
-            /**
-             * Format: uri
-             * @description Complete HTTPS Bailian API endpoint (for example, /compatible-mode/v1/chat/completions); other supported operations use the same workspace host with their documented endpoints
-             */
-            base_url: string;
+            region?: string;
+            workspace_id?: string;
+            base_url: components["schemas"]["Connection"]["base_url"];
             api_key?: string;
         };
         ManualModel: {

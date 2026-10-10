@@ -52,8 +52,15 @@ func TestCatalogSyncPreservesManualAndRejectsUnknown(t *testing.T) {
 		}
 		return out.Body.Bytes()
 	}
-	request("POST", "/connections", `{"id":"invalid","name":"Invalid","vendor":"bailian","base_url":"https://dashscope.aliyuncs.com"}`, 400)
-	request("POST", "/connections", `{"id":"beijing","name":"Beijing","vendor":"bailian","base_url":"https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions","api_key":"secret"}`, 201)
+	request("POST", "/connections", `{"id":"invalid","name":"Invalid","vendor":"bailian","base_url":"https://dashscope.aliyuncs.com/v1/chat/completions"}`, 400)
+	request("POST", "/connections", `{"id":"invalid","name":"Invalid","vendor":"bailian","base_url":"https://example.com"}`, 201)
+	request("POST", "/connections", `{"id":"manual","name":"Manual","vendor":"custom","base_url":"https://example.com:8443/"}`, 201)
+	router.POST("/connections/:id/test", s.TestConnection)
+	originConnection, _ := store.GetConnection(ctx, "manual")
+	if originConnection.BaseURL != "https://example.com:8443" {
+		t.Fatal("connection was not normalized and persisted", originConnection)
+	}
+	request("POST", "/connections", `{"id":"beijing","name":"Beijing","vendor":"bailian","base_url":"https://dashscope.aliyuncs.com","api_key":"secret"}`, 201)
 	request("POST", "/connections/beijing/models", `{"model_id":"qwen-plus","name":"My Qwen","capabilities":["story"]}`, 201)
 	request("POST", "/connections/beijing/models/sync", `{}`, 200)
 	manual, err := store.GetModel(ctx, "beijing:qwen-plus")
@@ -125,7 +132,7 @@ func TestCatalogSyncPreservesManualAndRejectsUnknown(t *testing.T) {
 	router.DELETE("/protected/:id/models/:model", s.DeleteModel)
 	request("DELETE", "/protected/beijing/models/beijing:qwen-plus", "", 409)
 	var saved provider.Connection
-	if err := json.Unmarshal(request("POST", "/connections", `{"id":"other","name":"Other","vendor":"bailian","base_url":"https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions"}`, 201), &saved); err != nil || saved.CredentialSet {
+	if err := json.Unmarshal(request("POST", "/connections", `{"id":"other","name":"Other","vendor":"bailian","base_url":"https://dashscope.aliyuncs.com"}`, 201), &saved); err != nil || saved.CredentialSet {
 		t.Fatal(saved, err)
 	}
 }

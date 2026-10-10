@@ -42,7 +42,7 @@ func TestWan27FirstLastAudioRequest(t *testing.T) {
 		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"output":{"task_id":"remote"}}`)), Header: make(http.Header)}, nil
 	})}}
 	model := provider.MigrateLegacyModel(provider.Model{RemoteID: "wan2.7-i2v-2026-04-25", Enabled: true, Supported: true, Capabilities: []provider.Capability{provider.Video}})
-	_, err := client.GenerateVideo(context.Background(), provider.Connection{ID: "c", Name: "Test", Vendor: "bailian", BaseURL: "https://example.com/api/v1"}, model, provider.VideoRequest{Prompt: "motion", SourceImageURL: "https://example.com/first.png", LastFrameURL: "https://example.com/last.png", DrivingAudioURL: "https://example.com/voice.mp3", Resolution: "720P", Duration: 10}, provider.RequestOptions{})
+	_, err := client.GenerateVideo(context.Background(), provider.Connection{ID: "c", Name: "Test", Vendor: "bailian", BaseURL: "https://example.com"}, model, provider.VideoRequest{Prompt: "motion", SourceImageURL: "https://example.com/first.png", LastFrameURL: "https://example.com/last.png", DrivingAudioURL: "https://example.com/voice.mp3", Resolution: "720P", Duration: 10}, provider.RequestOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -126,33 +126,5 @@ func TestDiscoveryAndClientProtocolSelection(t *testing.T) {
 	}
 	if _, err := client.GenerateImage(context.Background(), connection, model("unknown", provider.Image), provider.ImageRequest{}, provider.RequestOptions{}); err == nil {
 		t.Fatal(err)
-	}
-}
-
-func TestConnectionUsesHTTPSBaseURL(t *testing.T) {
-	for _, origin := range []string{"", "http://example.com", "https://user:pass@example.com", "https://example.com/?token=key"} {
-		connection := provider.Connection{ID: "test", Name: "Test", Vendor: "bailian", BaseURL: origin}
-		if _, err := baseURL(connection); err == nil {
-			t.Fatalf("accepted invalid origin %q", origin)
-		}
-	}
-	connection := provider.Connection{ID: "test", Name: "Test", Vendor: "bailian", BaseURL: "https://example.com/compatible-mode/v1/chat/completions"}
-	if got, err := baseURL(connection); err != nil || got != connection.BaseURL {
-		t.Fatalf("changed complete endpoint: %q %v", got, err)
-	}
-	client := Client{HTTP: &http.Client{Transport: roundTrip(func(req *http.Request) (*http.Response, error) {
-		if req.URL.Path != "/compatible-mode/v1/models" || req.URL.RawQuery != "" {
-			t.Fatalf("wrong discovery endpoint: %s", req.URL)
-		}
-		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"data":[]}`)), Header: make(http.Header)}, nil
-	})}}
-	if _, err := client.Discover(context.Background(), connection, "test-key"); err != nil {
-		t.Fatal(err)
-	}
-	if got, err := endpoint(connection, "/compatible-mode/v1/chat/completions"); err != nil || got != connection.BaseURL {
-		t.Fatalf("complete chat endpoint changed: %q %v", got, err)
-	}
-	if got, err := endpoint(connection, "/api/v1/services/aigc/multimodal-generation/generation"); err != nil || got != "https://example.com/api/v1/services/aigc/multimodal-generation/generation" {
-		t.Fatalf("wrong image endpoint: %q %v", got, err)
 	}
 }

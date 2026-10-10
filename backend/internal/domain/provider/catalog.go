@@ -54,8 +54,8 @@ func (c Connection) Validate() error {
 	}
 	{
 		u, err := url.Parse(strings.TrimSpace(c.BaseURL))
-		if err != nil || u.Scheme != "https" || u.Hostname() == "" || u.Opaque != "" || u.User != nil || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" {
-			return errors.New("bailian base_url must be an HTTPS URL without credentials, query or fragment")
+		if err != nil || u.Scheme != "https" || u.Hostname() == "" || u.Opaque != "" || u.User != nil || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" || (u.EscapedPath() != "" && u.EscapedPath() != "/") || strings.ContainsAny(c.BaseURL, "\\#") {
+			return errors.New("base_url must be an HTTPS origin without path, credentials, query or fragment")
 		}
 	}
 	return nil

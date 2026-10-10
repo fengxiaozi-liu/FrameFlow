@@ -32,7 +32,7 @@ func TestMultiImageAndSpeechWireRequests(t *testing.T) {
 		}
 		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(out)), Header: http.Header{}}, nil
 	})}}
-	conn := provider.Connection{ID: "c", Name: "test", Vendor: "bailian", BaseURL: "https://example.com/compatible-mode/v1/chat/completions"}
+	conn := provider.Connection{ID: "c", Name: "test", Vendor: "bailian", BaseURL: "https://example.com"}
 	_, err := c.GenerateImage(context.Background(), conn, provider.MigrateLegacyModel(provider.Model{RemoteID: "qwen-image-2.0-pro", Enabled: true, Supported: true, Capabilities: []provider.Capability{provider.Image}}), provider.ImageRequest{Prompt: "first person and second place", AspectRatio: "1:1", References: []provider.ImageReference{{URL: "https://example.com/a.png"}, {URL: "https://example.com/b.png"}}}, provider.RequestOptions{})
 	if err != nil {
 		t.Fatal(err)
@@ -49,14 +49,14 @@ func TestMultiImageAndSpeechWireRequests(t *testing.T) {
 	}
 }
 func TestCompatibleDiscovery(t *testing.T) {
-	c := Client{HTTP: &http.Client{Transport: roundTrip(func(r *http.Request) (*http.Response, error) {
-		if r.URL.Path != "/compatible-mode/v1/models" {
+	c := CompatibleDiscovery{HTTP: &http.Client{Transport: roundTrip(func(r *http.Request) (*http.Response, error) {
+		if r.URL.Path != "/v1/models" {
 			t.Fatal(r.URL)
 		}
 		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"data":[{"id":"qwen3-tts-flash"},{"id":"qwen-image-2.0-pro"}]}`))}, nil
 	})}}
-	models, err := c.Discover(context.Background(), provider.Connection{ID: "c", Name: "test", Vendor: "bailian", BaseURL: "https://example.com/compatible-mode/v1/chat/completions"}, "test")
-	if err != nil || len(models) != 2 || models[0].Capabilities[0] != provider.Speech {
+	models, err := c.Discover(context.Background(), provider.Connection{ID: "c", Name: "test", Vendor: "bailian", BaseURL: "https://example.com"}, "test")
+	if err != nil || len(models) != 2 || len(models[0].Capabilities) != 0 {
 		t.Fatal(models, err)
 	}
 }

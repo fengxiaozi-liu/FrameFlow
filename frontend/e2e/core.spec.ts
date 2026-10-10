@@ -8,7 +8,7 @@ async function seedProviders(request: APIRequestContext) {
       name: "百炼测试",
       vendor: "bailian",
       base_url:
-        "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
+        "https://dashscope.aliyuncs.com",
     },
   });
   expect(connection.ok()).toBeTruthy();
@@ -245,8 +245,8 @@ test("configuration center offers a preset and keeps unknown models pending conf
   await page.getByRole("button", { name: "添加厂商连接" }).click();
   await page.getByLabel("名称").fill("新建百炼连接");
   await page
-    .getByLabel("API 完整地址")
-    .fill("https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions");
+    .getByLabel("基础 URL")
+    .fill("https://dashscope.aliyuncs.com");
   await page.getByRole("button", { name: "保存连接" }).click();
   await expect(
     page.getByRole("heading", { name: "新建百炼连接" }),
@@ -281,18 +281,18 @@ test("configuration center offers a preset and keeps unknown models pending conf
   await expect(page.getByText("调用适配器")).toHaveCount(0);
 });
 
-test("Bailian connection saves a complete HTTPS endpoint", async ({
+test("Bailian connection saves an HTTPS origin and rejects unsafe URLs", async ({
   page,
 }, testInfo) => {
   await page.goto("/config");
   await page.getByRole("button", { name: "添加厂商连接" }).click();
   await page.getByLabel("名称").fill("自定义百炼连接");
   await page
-    .getByLabel("API 完整地址")
+    .getByLabel("基础 URL")
     .fill("https://custom.example.com/?token=unsafe");
   await page.getByRole("button", { name: "保存连接" }).click();
-  await expect(page.locator(".notice.error")).toContainText(
-    "API 地址必须使用 HTTPS",
+  await expect(page.getByRole("alert")).toContainText(
+    "请填写 HTTPS 基础地址",
   );
   await page.screenshot({
     path: testInfo.outputPath("connection-error.png"),
@@ -309,15 +309,15 @@ test("Bailian connection saves a complete HTTPS endpoint", async ({
     fullPage: true,
   });
   await page
-    .getByLabel("API 完整地址")
-    .fill("https://custom.example.com/compatible-mode/v1/chat/completions");
+    .getByLabel("基础 URL")
+    .fill("https://custom.example.com");
   await page.getByRole("button", { name: "保存连接" }).click();
   await expect(
     page.getByRole("heading", { name: "自定义百炼连接" }),
   ).toBeVisible();
   await page.getByRole("button", { name: "连接设置", exact: true }).click();
-  await expect(page.getByLabel("API 完整地址")).toHaveValue(
-    "https://custom.example.com/compatible-mode/v1/chat/completions",
+  await expect(page.getByLabel("基础 URL")).toHaveValue(
+    "https://custom.example.com",
   );
 });
 

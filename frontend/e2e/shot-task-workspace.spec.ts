@@ -112,7 +112,7 @@ test('drawer retains failed edits, retries binding save and restores focus on ca
 });
 async function seed(request:APIRequestContext){
  const id='e2e-'+randomUUID();
- const c=await request.post('/api/connections',{data:{id,name:'本地验收连接',vendor:'bailian',region:'cn',base_url:'https://example.invalid/api/v1'}});expect(c.ok()).toBeTruthy();
+ const c=await request.post('/api/connections',{data:{id,name:'本地验收连接',vendor:'bailian',region:'cn',base_url:'https://example.invalid'}});expect(c.ok()).toBeTruthy();
  for(const [remote,name,cap] of [['qwen-image-2.0-pro','验收分镜图','image'],['wan2.7-r2v','验收视频','video'],['qwen3-tts-flash','验收配音','speech']]){const r=await request.post(`/api/connections/${id}/models`,{data:{model_id:remote,name,capabilities:[cap]}});expect(r.ok()).toBeTruthy()}
  const p=await(await request.post('/api/projects',{data:{name:'分镜工作区验收'}})).json();const d='draft-'+randomUUID();
  const r=await request.post(`/api/projects/${p.id}/drafts`,{data:{id:d,name:'雨夜故事',story:{body:'雨夜咖啡馆',summary:'',scenes:[{id:'shot',order:1,title:'雨夜 · 走进咖啡馆',visual_prompt:'中景，镜头缓慢推进，林夏推开玻璃门。',narration:'',duration_seconds:4}]}}});expect(r.ok()).toBeTruthy();
@@ -236,4 +236,31 @@ test('generated reference publishes only on explicit use and recovers publicatio
  await generator.getByRole('button',{name:'使用这张图片'}).click();await expect(drawer.locator('.reference-tile')).toHaveCount(1);await expect(generator.getByRole('button',{name:'已加入参考图'})).toBeDisabled();expect(promotions).toBe(2);
  expect((await(await request.get('/api/materials')).json()).materials.filter((m:any)=>m.id===materialID)).toHaveLength(1);
  await drawer.getByRole('button',{name:'保存并引用'}).click();await expect(drawer).toHaveCount(0);await page.reload();await expect(page.locator('.entity-card .reference-tile')).toHaveCount(1);
+});
+
+
+test('new entities have editable defaults that persist and avoid existing names', async ({page, request}, testInfo) => {
+ const s = await seed(request);
+ await page.goto(`${s.base}/shots/shot`);
+ const drawer = page.getByRole('dialog');
+ for (const [kind, expected, renamed] of [
+   ['场景', '场景 1', ''],
+   ['场景', '场景 2', '雨夜咖啡馆'],
+   ['人物', '人物 1', ''],
+   ['人物', '人物 2', '林夏'],
+ ]) {
+   await page.getByRole('button', {name: `＋ 添加${kind}`, exact: true}).click();
+   await expect(drawer.getByLabel('名称', {exact: true})).toHaveValue(expected!);
+   if (renamed) await drawer.getByLabel('名称', {exact: true}).fill(renamed);
+   if (expected === '人物 1') await page.screenshot({path: testInfo.outputPath('default-character-name.png')});
+   await drawer.getByRole('button', {name: '保存并引用', exact: true}).click();
+   await expect(drawer).toHaveCount(0);
+   await expect(page.getByRole('status').first()).toHaveText('已保存');
+ }
+ await page.reload();
+ const cards = page.locator('.entity-card');
+ await expect(cards).toHaveCount(4);
+ for (const name of ['场景 1', '雨夜咖啡馆', '人物 1', '林夏']) await expect(cards.filter({hasText: name})).toHaveCount(1);
+ await cards.filter({hasText: '林夏'}).getByRole('button', {name: '编辑项目设定'}).click();
+ await expect(drawer.getByLabel('名称', {exact: true})).toHaveValue('林夏');
 });

@@ -10,7 +10,7 @@ async function seed(request: APIRequestContext) {
           id,
           name: `选择测试 ${id}`,
           vendor: "custom",
-          base_url: "https://example.com/v1",
+          base_url: "https://example.com",
         },
       })
     ).ok(),

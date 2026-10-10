@@ -229,7 +229,28 @@ components:
     Offset: {name: offset, in: query, schema: {type: integer, minimum: 0, default: 0}}
   schemas:
     CreateProject: {type: object, required: [name], properties: {name: {type: string, minLength: 1}}}
-    ConnectionInput: {type: object, required: [id, name, vendor, base_url], properties: {id: {type: string}, name: {type: string}, vendor: {type: string}, base_url: {type: string, format: uri, description: "Complete HTTPS Bailian API endpoint (for example, /compatible-mode/v1/chat/completions); other supported operations use the same workspace host with their documented endpoints"}, api_key: {type: string, writeOnly: true}}}
+    Connection:
+      type: object
+      required: [id, name, vendor, region, base_url, credential_set]
+      properties:
+        id: {type: string}
+        name: {type: string}
+        vendor: {type: string}
+        region: {type: string}
+        workspace_id: {type: string}
+        base_url: {type: string, format: uri, description: "HTTPS origin only (scheme, host and optional port); no API path, credentials, query or fragment"}
+        credential_set: {type: boolean, readOnly: true}
+    ConnectionInput:
+      type: object
+      required: [id, name, vendor, base_url]
+      properties:
+        id: {type: string}
+        name: {type: string}
+        vendor: {type: string}
+        region: {type: string}
+        workspace_id: {type: string}
+        base_url: {$ref: '#/components/schemas/Connection/properties/base_url'}
+        api_key: {type: string, writeOnly: true}
     ManualModel: {type: object, required: [model_id], properties: {model_id: {type: string}, name: {type: string}, capabilities: {type: array, items: {type: string, enum: [story, image, video, speech]}}}}
     DraftRevisionWrite: {type: object, required: [expected_version, body], properties: {expected_version: {type: integer, minimum: 0}, body: {type: string}, name: {type: string}}}
     CreateCandidate: {type: object, required: [expected_version, idempotency_key, target], properties: {expected_version: {type: integer, minimum: 0}, idempotency_key: {type: string, minLength: 1}, target: {type: string, enum: [story, storyboard]}, mode: {type: string, enum: [create, revise]}, instruction: {type: string}, model_id: {type: string}}}

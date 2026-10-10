@@ -156,15 +156,7 @@ export interface DraftOutput {
   url?: string;
   created_at: string;
 }
-export interface ProviderConnection {
-  id: string;
-  name: string;
-  vendor: string;
-  region: string;
-  workspace_id?: string;
-  base_url: string;
-  credential_set: boolean;
-}
+export type ProviderConnection = Schema["Connection"];
 export type Model = import("./schema").components["schemas"]["ModelDefinition"];
 export type OperationBinding = import("./schema").components["schemas"]["OperationBinding"];
 export type OperationStatus = import("./schema").components["schemas"]["OperationStatus"];
