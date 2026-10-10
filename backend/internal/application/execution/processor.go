@@ -149,6 +149,21 @@ func (p *Processor) processModel(ctx context.Context, item *task.Task, progress 
 	if item.Kind == task.KindVideo && model.Operations[provider.Video].MaxImageBytes > 0 {
 		imageLimit = model.Operations[provider.Video].MaxImageBytes
 	}
+	videoMode := ""
+	if item.Kind == task.KindVideo {
+		requested := ""
+		if item.Snapshot == nil && item.Input.SourceImageURL != "" {
+			requested = "first_frame"
+		}
+		if item.Snapshot != nil {
+			requested = item.Snapshot.VideoInputMode
+		}
+		selected, modeErr := model.Operations[provider.Video].SelectVideoMode(requested)
+		if modeErr != nil {
+			return modeErr
+		}
+		videoMode = selected
+	}
 	refs := []provider.ImageReference{}
 	if item.Snapshot != nil {
 		snap := item.Snapshot
@@ -163,6 +178,9 @@ func (p *Processor) processModel(ctx context.Context, item *task.Task, progress 
 		item.Input.AspectRatio = snap.AspectRatio
 		item.Input.Duration = snap.DurationSeconds
 		item.Input.Resolution = snap.Resolution
+		if item.Kind == task.KindVideo && snap.VideoInputMode != "" {
+			item.Input.SourceImageURL, item.Input.LastFrameURL = "", ""
+		}
 		for _, e := range snap.Entities {
 			for _, r := range e.References {
 				name := strings.TrimPrefix(r.URL, "/media/")
@@ -181,10 +199,18 @@ func (p *Processor) processModel(ctx context.Context, item *task.Task, progress 
 				if err != nil {
 					return err
 				}
+				if item.Kind == task.KindVideo && videoMode == "first_frame" {
+					if r.MaterialID == snap.FirstFrameMaterialID {
+						item.Input.SourceImageURL = url
+					}
+					if r.MaterialID == snap.LastFrameMaterialID {
+						item.Input.LastFrameURL = url
+					}
+				}
 				refs = append(refs, provider.ImageReference{URL: url, EntityID: e.EntityID, Label: r.Label})
 			}
 		}
-		if item.Kind == task.KindVideo && model.Operations[provider.Video].InputMode == "first_frame" && len(refs) == 1 {
+		if item.Kind == task.KindVideo && videoMode == "first_frame" && snap.FirstFrameMaterialID == "" && len(refs) == 1 {
 			item.Input.SourceImageURL = refs[0].URL
 		}
 	}
@@ -251,7 +277,7 @@ func (p *Processor) processModel(ctx context.Context, item *task.Task, progress 
 		if item.RemoteTaskID == "" {
 			var source string
 			var videoReferences []provider.ImageReference
-			if item.Snapshot != nil && model.Operations[provider.Video].InputMode == "reference_images" {
+			if item.Snapshot != nil && videoMode == "reference_images" {
 				videoReferences = refs
 			} else {
 				source, err = p.videoSource(item.Input.SourceImageURL, imageLimit)
@@ -286,7 +312,7 @@ func (p *Processor) processModel(ctx context.Context, item *task.Task, progress 
 					return err
 				}
 			}
-			result, err := p.ModelClient.GenerateVideo(ctx, connection, model, provider.VideoRequest{References: videoReferences, Prompt: item.Input.Prompt, Model: model.RemoteID, SourceImageURL: source, LastFrameURL: lastFrame, DrivingAudioURL: audio, Duration: item.Input.Duration, Resolution: item.Input.Resolution, AspectRatio: item.Input.AspectRatio}, options)
+			result, err := p.ModelClient.GenerateVideo(ctx, connection, model, provider.VideoRequest{InputMode: videoMode, References: videoReferences, Prompt: item.Input.Prompt, Model: model.RemoteID, SourceImageURL: source, LastFrameURL: lastFrame, DrivingAudioURL: audio, Duration: item.Input.Duration, Resolution: item.Input.Resolution, AspectRatio: item.Input.AspectRatio}, options)
 			if err != nil {
 				return err
 			}

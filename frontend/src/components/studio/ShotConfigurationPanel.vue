@@ -13,7 +13,7 @@ import ReferenceImageSource from './ReferenceImageSource.vue';
 import ShotGenerationSettings from './ShotGenerationSettings.vue';
 import EntityEditorDrawer from './EntityEditorDrawer.vue';
 import CharacterVoiceSettings from './CharacterVoiceSettings.vue';
-const props=defineProps<{projectId:string;draft:Draft;scene:Scene;materials:Material[];models:Model[];submitting?:boolean;activeRun?:boolean;focusName?:boolean}>();
+const props=defineProps<{projectId:string;draft:Draft;scene:Scene;materials:Material[];models:Model[];submitting?:boolean;focusName?:boolean}>();
 const emit=defineEmits<{saved:[Draft];material:[Material];generate:[Omit<GenerationRequest,'idempotency_key'>]}>();
 const editor=useShotEditor(()=>({project:props.projectId,draft:props.draft,scene:props.scene}),d=>emit('saved',d));
 const {state,dirty,saving,error,conflict,supplementsMerged}=editor;
@@ -31,11 +31,28 @@ const missingGroups=computed(()=>groups.value.filter(g=>!g.entity));
 const mentionOptions=computed(()=>groups.value.filter(g=>g.entity).map(g=>({id:g.binding.id,name:g.entity!.name,kind:g.entity!.kind})));
 const voices=computed(()=>catalog.value.voice_profiles||[]);
 const mappedMaterials=computed(()=>props.materials.map(m=>({...m,url:api.mediaUrl(m.url)})));
+const videoImages = computed(() => {
+ const ids = new Set(groups.value.flatMap(({binding, entity}) => binding.reference_material_ids || binding.selected_material_ids || entity?.references.map(ref => ref.material_id) || []));
+ return mappedMaterials.value.filter(material => ids.has(material.id));
+});
 const copy=<T,>(v:T):T=>JSON.parse(JSON.stringify(v));
 function changeBinding(b:ShotEntityBinding){editor.change({entity_bindings:state.value.entity_bindings.map(x=>x.id===b.id?b:x)})}
 function remove(id:string){editor.change({entity_bindings:state.value.entity_bindings.filter(b=>b.id!==id),prompt_document:{schema_version:1,nodes:state.value.prompt_document.nodes.filter(n=>n.type!=='entity_ref'||n.binding_id!==id)}})}
 function bind(e:EntityVersion){if(state.value.entity_bindings.some(b=>b.entity_id===e.id)){notice.value='此档案已在当前镜头中。';return}editor.change({entity_bindings:[...state.value.entity_bindings,{id:crypto.randomUUID(),entity_id:e.id,entity_revision:e.revision,role:e.kind==='character'?'cast':state.value.entity_bindings.some(b=>b.role==='primary')?'supplement':'primary'}]});library.value=false}
-function create(kind:'location'|'character'){form.value={id:crypto.randomUUID(),kind,name:defaultEntityName(kind,latest.value),description:'',revision:1,references:[]};formBinding.value='';isNew.value=true;notice.value='';bindingPending.value=false}
+function create(kind: 'location' | 'character') {
+  form.value = {
+    id: crypto.randomUUID(),
+    kind,
+    name: defaultEntityName(kind, latest.value),
+    description: '',
+    revision: 1,
+    references: [],
+  };
+  formBinding.value = '';
+  isNew.value = true;
+  notice.value = '';
+  bindingPending.value = false;
+}
 function edit(e:EntityVersion,id:string){form.value=copy(e);const b=state.value.entity_bindings.find(b=>b.id===id);const ids=b?.reference_material_ids||b?.selected_material_ids;if(ids)form.value.references=ids.map((material_id,order)=>({material_id,order,label:e.references.find(r=>r.material_id===material_id)?.label||props.materials.find(m=>m.id===material_id)?.name||""}));formBinding.value=id;isNew.value=false;notice.value='';bindingPending.value=false}
 function closeForm(){if(!busy.value&&!bindingPending.value&&!sourceBusy.value){form.value=undefined;notice.value=''}}
 async function saveEntity(){if(busy.value||sourceBusy.value)return;if(referenceEditor.value?.hasPendingUpload()){notice.value='请先使用或取消待确认的图片。';return}if(!form.value?.name.trim()){notice.value='请填写名称。';return}busy.value=true;notice.value='';try{
@@ -55,7 +72,24 @@ async function retryCardUploads(){busy.value=true;try{for(const u of cardUploads
 function cardUpload(entity:EntityVersion,binding:string,files:File[],replaceID?:string,saveToLibrary=false){cardUploads.value.push(...files.map(file=>({entity,binding,file,replaceID,saveToLibrary,error:'',done:false})));void retryCardUploads()}
 onMounted(async()=>{if(props.focusName){nameInput.value?.focus();nameInput.value?.select()}try{catalog.value=await bindingsApi.catalog(props.projectId)}catch(e){notice.value=(e as Error).message}});
 async function flushAll(){for(let i=0;i<5;i++){if(!await editor.flush())return false;if(!dirty.value)return true}return false}
-async function generate(){if(props.submitting||props.activeRun||busy.value||form.value)return;if(!settings.value.video_model_id){notice.value='请先选择参考生视频模型';return}if(!await flushAll())return;const s=settings.value;emit('generate',{expected_version:state.value.expected_version,model_id:s.video_model_id,video_model_id:s.video_model_id,path:'reference_video',aspect_ratio:s.aspect_ratio,resolution:s.resolution,duration_seconds:s.duration_seconds})}
+async function generate() {
+  if (props.submitting || busy.value || form.value || !videoReady.value) return;
+  if (!await flushAll()) return;
+  const s = settings.value;
+  emit('generate', {
+    expected_version: state.value.expected_version,
+    model_id: s.video_model_id,
+    video_model_id: s.video_model_id,
+    path: 'reference_video',
+    video_input_mode: s.video_input_mode,
+    first_frame_material_id: s.video_input_mode === 'first_frame' ? s.first_frame_material_id : undefined,
+    last_frame_material_id: s.video_input_mode === 'first_frame' ? s.last_frame_material_id : undefined,
+    aspect_ratio: s.aspect_ratio,
+    resolution: s.resolution,
+    duration_seconds: s.duration_seconds,
+  });
+}
+
 defineExpose({flush:async()=>!form.value&&!busy.value&&await flushAll()});
 </script>
 <template><header class="shot-name-section" aria-label="分镜基本信息"><div><span class="shot-title-eyebrow">分镜 {{String(scene.order).padStart(2,'0')}}</span><h1 class="sr-only">{{state.title || '未命名分镜'}}</h1><label><span class="sr-only">分镜名称</span><input ref="nameInput" :value="state.title" maxlength="100" placeholder="为这个分镜命名" @input="editor.change({title:($event.target as HTMLInputElement).value})" /></label><p>点击名称编辑 · 自动保存</p></div></header><section class="binding-workbench shot-configuration" aria-label="场景人物工作台"><header class="shot-config-heading"><h2 class="sr-only">分镜配置</h2>
@@ -77,6 +111,6 @@ defineExpose({flush:async()=>!form.value&&!busy.value&&await flushAll()});
  <div class="shot-prompt-field"><MentionPromptEditor :show-insert-button="false" :model-value="state.prompt_document" :options="mentionOptions" @update:model-value="editor.change({prompt_document:$event})" /></div>
  <details class="shot-audio-options" :open="!!state.narration||state.utterances.length>0"><summary>旁白与台词 <span>选填 · 作为视频描述提交</span></summary><div class="shot-audio-content"><label>旁白文本<textarea :value="state.narration" placeholder="填写这段分镜的旁白文字" @input="editor.change({narration:($event.target as HTMLTextAreaElement).value})" /></label><DialogueVoicePanel :lines="state.utterances" :characters="catalog.entities.filter(e=>e.kind==='character')" :voices="voices" :busy="busy||submitting" edit-only text-only @change="editor.change({utterances:$event})" /></div></details>
 </section>
-<ShotGenerationSettings :model-value="settings" :models="models" :disabled="submitting" @ready="videoReady=$event" @update:model-value="editor.change({generation_settings:$event})" />
-<p v-if="groups.some(g=>g.entity?.voice_profile_id)" class="voice-scope-note">当前参考生视频不会使用人物设定的配音音色，视频中的声音由视频模型生成。</p><footer class="shot-generate-footer"><span>使用引用素材与场景描述生成视频</span><button class="primary" :disabled="submitting||activeRun||busy||saving||!videoReady" @click="generate">{{submitting?'提交中…':'生成视频'}}</button></footer><p v-if="activeRun" class="muted">已有制作任务处理中，请进入任务详情完成选用或取消。</p>
+<ShotGenerationSettings :model-value="settings" :models="models" :images="videoImages" :disabled="submitting" @ready="videoReady=$event" @update:model-value="editor.change({generation_settings:$event})" />
+<p v-if="groups.some(g=>g.entity?.voice_profile_id)" class="voice-scope-note">当前参考生视频不会使用人物设定的配音音色，视频中的声音由视频模型生成。</p><footer class="shot-generate-footer"><span>使用引用素材与场景描述生成视频</span><button class="primary" :disabled="submitting||busy||saving||!videoReady" @click="generate">{{submitting?'提交中…':'生成视频'}}</button></footer>
 </section></template>

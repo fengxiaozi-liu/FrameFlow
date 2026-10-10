@@ -53,6 +53,7 @@ type ImageRequest struct {
 }
 type ImageResult struct{ URL string }
 type VideoRequest struct {
+	InputMode                                  string
 	References                                 []ImageReference
 	Prompt, Model, AspectRatio, SourceImageURL string
 	LastFrameURL, DrivingAudioURL, Resolution  string

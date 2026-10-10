@@ -137,3 +137,50 @@ func TestManualCapabilitySelectionRetainsProtocolAndIntent(t *testing.T) {
 		t.Fatal("changed original aggregate")
 	}
 }
+
+func TestVideoModesAreIndependentCapabilities(t *testing.T) {
+	model := MigrateLegacyModel(Model{RemoteID: "wan2.7-r2v", Enabled: true, Supported: true, Capabilities: []Capability{Video}})
+	model.RemoteID = "unfamiliar-video"
+	binding := model.Operations[Video]
+	binding.InputMode = ""
+	binding.InputModes = []string{"first_frame", "reference_images"}
+	binding.LastFrame = true
+	model.Operations[Video] = binding
+	cap, ok := model.InputCapability()
+	if !ok || !cap.FirstFrame || !cap.ReferenceVideo {
+		t.Fatal(cap)
+	}
+	if _, err := model.VideoCapabilityFor(""); err == nil {
+		t.Fatal("ambiguous mode accepted")
+	}
+	first, err := model.VideoCapabilityFor("first_frame")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := first.ValidateInput(4, "720P", []string{"first_frame", "last_frame"}); err != nil {
+		t.Fatal(err)
+	}
+	if first.ValidateInput(4, "720P", []string{"first_frame", "reference_image"}) == nil {
+		t.Fatal("mixed inputs accepted")
+	}
+	refs, err := model.VideoCapabilityFor("reference_images")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := refs.ValidateInput(4, "720P", []string{"reference_image", "reference_image"}); err != nil {
+		t.Fatal(err)
+	}
+	if refs.ValidateInput(4, "720P", []string{"reference_image", "last_frame"}) == nil {
+		t.Fatal("tail accepted in reference mode")
+	}
+	binding.InputModes = []string{"reference_images"}
+	model.Operations[Video] = binding
+	if model.Resolve(Video).Available {
+		t.Fatal("tail support without frame mode accepted")
+	}
+	binding.LastFrame = false
+	binding.InputModes = []string{}
+	if binding.Validate(Video) == nil {
+		t.Fatal("empty modes accepted")
+	}
+}

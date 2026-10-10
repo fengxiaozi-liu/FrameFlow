@@ -114,13 +114,16 @@ func (c Client) GenerateVideo(ctx context.Context, connection domain.Connection,
 		return domain.VideoResult{}, err
 	}
 	b := model.Operations[domain.Video]
-	capability, _ := model.VideoCapability()
+	capability, modeErr := model.VideoCapabilityFor(input.InputMode)
+	if modeErr != nil {
+		return domain.VideoResult{}, modeErr
+	}
 	images, err := referenceURLs(input.References, b.MaxReferences)
 	if err != nil {
 		return domain.VideoResult{}, err
 	}
 	usages := []string{}
-	if b.InputMode == "reference_images" {
+	if capability.InputMode == "reference_images" {
 		if input.SourceImageURL != "" || len(images) == 0 {
 			return domain.VideoResult{}, errors.New("多图参考模式需要参考图片，不能混用首帧")
 		}
@@ -150,7 +153,7 @@ func (c Client) GenerateVideo(ctx context.Context, connection domain.Connection,
 	}
 	ctx, cancel := domain.WithTimeout(ctx, options)
 	defer cancel()
-	result, err := c.submit(ctx, connection, model, domain.Video, map[string]any{"prompt": input.Prompt, "images": images, "first_frame": input.SourceImageURL, "last_frame": input.LastFrameURL, "duration": input.Duration, "resolution": input.Resolution, "ratio": input.AspectRatio})
+	result, err := c.submit(ctx, connection, model, domain.Video, map[string]any{"input_mode": capability.InputMode, "prompt": input.Prompt, "images": images, "first_frame": input.SourceImageURL, "last_frame": input.LastFrameURL, "duration": input.Duration, "resolution": input.Resolution, "ratio": input.AspectRatio})
 	if err != nil {
 		return domain.VideoResult{}, err
 	}

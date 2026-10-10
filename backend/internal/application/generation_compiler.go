@@ -22,15 +22,18 @@ import (
 )
 
 type GenerationRequest struct {
-	ExpectedVersion *int64 `json:"expected_version"`
-	IdempotencyKey  string `json:"idempotency_key"`
-	ModelID         string `json:"model_id"`
-	VideoModelID    string `json:"video_model_id,omitempty"`
-	Path            string `json:"path"`
-	AspectRatio     string `json:"aspect_ratio"`
-	Resolution      string `json:"resolution"`
-	DurationSeconds int    `json:"duration_seconds"`
-	UtteranceID     string `json:"utterance_id"`
+	VideoInputMode       string `json:"video_input_mode,omitempty"`
+	FirstFrameMaterialID string `json:"first_frame_material_id,omitempty"`
+	LastFrameMaterialID  string `json:"last_frame_material_id,omitempty"`
+	ExpectedVersion      *int64 `json:"expected_version"`
+	IdempotencyKey       string `json:"idempotency_key"`
+	ModelID              string `json:"model_id"`
+	VideoModelID         string `json:"video_model_id,omitempty"`
+	Path                 string `json:"path"`
+	AspectRatio          string `json:"aspect_ratio"`
+	Resolution           string `json:"resolution"`
+	DurationSeconds      int    `json:"duration_seconds"`
+	UtteranceID          string `json:"utterance_id"`
 }
 
 type GenerationCompiler struct {
@@ -102,6 +105,26 @@ func (c GenerationCompiler) Compile(ctx context.Context, p project.Project, d pr
 	}
 	if in.Path == "reference_image_then_video" || in.Path == "reference_video" {
 		directVideo := in.Path == "reference_video"
+		var videoCap provider.VideoCapability
+		if directVideo {
+			videoCap, err = m.VideoCapabilityFor(in.VideoInputMode)
+			if err != nil {
+				return s, err
+			}
+			s.VideoInputMode = videoCap.InputMode
+			if s.VideoInputMode == "reference_images" && (in.FirstFrameMaterialID != "" || in.LastFrameMaterialID != "") {
+				return s, errors.New("智能参考不能同时提交首尾帧")
+			}
+			if s.VideoInputMode == "first_frame" {
+				s.FirstFrameMaterialID, s.LastFrameMaterialID = in.FirstFrameMaterialID, in.LastFrameMaterialID
+				if in.VideoInputMode != "" && s.FirstFrameMaterialID == "" {
+					return s, errors.New("请选择首帧图片")
+				}
+				if s.LastFrameMaterialID != "" && videoCap.AllowedMedia["last_frame"] == 0 {
+					return s, errors.New("模型不支持尾帧图片")
+				}
+			}
+		}
 		if directVideo && (!m.Supports(provider.Video) || (!cap.ReferenceVideo && !cap.FirstFrame)) {
 			return s, errors.New("请选择支持参考图直接生成视频的模型")
 		}
@@ -116,21 +139,40 @@ func (c GenerationCompiler) Compile(ctx context.Context, p project.Project, d pr
 			return s, errors.New("unsupported aspect ratio for configured model")
 		}
 		count := 0
+		selectedReferences := map[string]bool{}
 		for _, b := range resolved.Entities {
 			e := task.SnapshotEntity{BindingID: b.Binding.ID, EntityID: b.Entity.ID, Revision: b.Entity.Revision, Description: b.Description, References: []task.MediaReference{}}
 			s.Prompt += fmt.Sprintf("\n%s（%s，%s）：%s", b.Entity.Name, b.Entity.Kind, b.Binding.Role, b.Description)
 			for _, r := range b.References {
+				if directVideo && s.VideoInputMode == "first_frame" && s.FirstFrameMaterialID != "" && r.MaterialID != s.FirstFrameMaterialID && r.MaterialID != s.LastFrameMaterialID {
+					continue
+				}
+				if directVideo && selectedReferences[r.MaterialID] {
+					continue
+				}
+				selectedReferences[r.MaterialID] = true
 				ref, err := c.reference(ctx, r.MaterialID, r.Label)
 				if err != nil {
 					return s, err
 				}
 				e.References = append(e.References, ref)
 				count++
-				s.Prompt += fmt.Sprintf("\n图%d属于%s；视角：%s。", count, b.Entity.Name, r.Label)
+				if directVideo && s.VideoInputMode == "first_frame" && s.FirstFrameMaterialID != "" {
+					role := "首帧"
+					if r.MaterialID == s.LastFrameMaterialID {
+						role = "尾帧"
+						if r.MaterialID == s.FirstFrameMaterialID {
+							role = "首帧和尾帧"
+						}
+					}
+					s.Prompt += fmt.Sprintf("\n%s属于%s；视角：%s。", role, b.Entity.Name, r.Label)
+				} else {
+					s.Prompt += fmt.Sprintf("\n图%d属于%s；视角：%s。", count, b.Entity.Name, r.Label)
+				}
 			}
 			s.Entities = append(s.Entities, e)
 		}
-		if count > m.Operations[operation].MaxReferences {
+		if (!directVideo || s.VideoInputMode == "reference_images") && count > m.Operations[operation].MaxReferences {
 			return s, fmt.Errorf("reference_image_limit: 已选 %d 张，模型最多支持 %d 张；请移除本镜头多余参考图后重试", count, m.Operations[operation].MaxReferences)
 		}
 		if directVideo {
@@ -143,12 +185,28 @@ func (c GenerationCompiler) Compile(ctx context.Context, p project.Project, d pr
 			if s.Resolution == "" {
 				s.Resolution = "720P"
 			}
-			videoCap, _ := m.VideoCapability()
 			usages := make([]string, count)
 			for i := range usages {
 				usages[i] = "reference_image"
-				if cap.FirstFrame {
-					usages[i] = "first_frame"
+			}
+			if s.VideoInputMode == "first_frame" {
+				if s.FirstFrameMaterialID == "" && in.VideoInputMode == "" && count == 1 {
+					for id := range selectedReferences {
+						s.FirstFrameMaterialID = id
+					}
+				}
+				if !selectedReferences[s.FirstFrameMaterialID] {
+					return s, errors.New("首帧必须选择当前分镜引用中的图片")
+				}
+				usages = []string{"first_frame"}
+				if s.LastFrameMaterialID != "" {
+					if !selectedReferences[s.LastFrameMaterialID] {
+						return s, errors.New("尾帧必须选择当前分镜引用中的图片")
+					}
+					usages = append(usages, "last_frame")
+				}
+				if in.VideoInputMode == "" && count > len(usages) {
+					return s, errors.New("请明确选择首帧与尾帧图片")
 				}
 			}
 			if err := videoCap.ValidateInput(s.DurationSeconds, s.Resolution, usages); err != nil {
@@ -173,6 +231,7 @@ func (c GenerationCompiler) Compile(ctx context.Context, p project.Project, d pr
 			}
 		}
 	} else if in.Path == "first_frame_video" {
+		s.VideoInputMode = "first_frame"
 		for _, take := range d.MediaTakes {
 			if take.ID == d.SelectedMedia[scene.ID+":image"] && (take.Stale || take.DependencyHash != dependencyHash(p.EntityCatalog, scene, "reference_image_then_video", "")) {
 				return s, errors.New("所选首帧基于旧设定，请重新生成并选用分镜图")
@@ -211,6 +270,7 @@ func (c GenerationCompiler) Compile(ctx context.Context, p project.Project, d pr
 				if err != nil {
 					return s, err
 				}
+				s.FirstFrameMaterialID = r.MaterialID
 				s.Entities = append(s.Entities, task.SnapshotEntity{BindingID: "first_frame", EntityID: "first_frame", References: []task.MediaReference{r}})
 			}
 		}

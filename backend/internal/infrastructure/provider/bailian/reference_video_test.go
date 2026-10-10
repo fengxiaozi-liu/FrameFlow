@@ -60,3 +60,58 @@ func TestReferenceVideoRequestAndPolling(t *testing.T) {
 		t.Fatalf("invalid input reached provider: %d calls", calls)
 	}
 }
+
+func TestMultiModeModelUsesSelectedWireFormatAndCanPoll(t *testing.T) {
+	model := provider.MigrateLegacyModel(provider.Model{RemoteID: "wan2.7-r2v", Enabled: true, Capabilities: []provider.Capability{provider.Video}})
+	b := model.Operations[provider.Video]
+	b.InputMode = ""
+	b.InputModes = []string{"first_frame", "reference_images"}
+	b.LastFrame = true
+	model.Operations[provider.Video] = b
+	model.RemoteID = "unknown-dual-mode"
+	expectedMode := ""
+	calls := 0
+	client := Client{Credentials: credential("test-key"), HTTP: &http.Client{Transport: roundTrip(func(req *http.Request) (*http.Response, error) {
+		calls++
+		body := `{"output":{"task_status":"SUCCEEDED","video_url":"https://example.com/video.mp4"}}`
+		if req.Method == http.MethodPost {
+			var payload protocol.WanxiangVideoRequest
+			if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
+				t.Fatal(err)
+			}
+			if len(payload.Input.Media) != 2 {
+				t.Fatal(payload)
+			}
+			if expectedMode == "first_frame" {
+				if payload.Input.Media[0].Type != "first_frame" || payload.Input.Media[1].Type != "last_frame" {
+					t.Fatal(payload)
+				}
+			} else if payload.Input.Media[0].Type != "reference_image" || payload.Input.Media[1].Type != "reference_image" {
+				t.Fatal(payload)
+			}
+			body = `{"output":{"task_id":"dual-job"}}`
+		}
+		return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(body))}, nil
+	})}}
+	conn := provider.Connection{ID: "c", Name: "c", Vendor: "bailian", BaseURL: "https://example.com"}
+	for _, mode := range []string{"first_frame", "reference_images"} {
+		expectedMode = mode
+		input := provider.VideoRequest{InputMode: mode, Prompt: "move", AspectRatio: "16:9", Duration: 4, Resolution: "720P"}
+		if mode == "first_frame" {
+			input.SourceImageURL = "https://media/a.png"
+			input.LastFrameURL = "https://media/b.png"
+		} else {
+			input.References = []provider.ImageReference{{URL: "https://media/a.png"}, {URL: "https://media/b.png"}}
+		}
+		result, err := client.GenerateVideo(context.Background(), conn, model, input, provider.RequestOptions{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, done, err := client.PollVideo(context.Background(), conn, model, result.JobReference); err != nil || !done {
+			t.Fatal(done, err)
+		}
+	}
+	if calls != 4 {
+		t.Fatal(calls)
+	}
+}

@@ -39,7 +39,7 @@ func CustomVariables(op Capability) []string {
 	case Image:
 		return append(variables, "prompt", "images", "ratio", "size")
 	case Video:
-		return append(variables, "prompt", "images", "first_frame", "last_frame", "duration", "resolution", "ratio")
+		return append(variables, "prompt", "images", "first_frame", "last_frame", "input_mode", "duration", "resolution", "ratio")
 	case Speech:
 		return append(variables, "text", "voice", "language", "instructions")
 	}

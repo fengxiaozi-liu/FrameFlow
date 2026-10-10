@@ -68,16 +68,24 @@ function chooseProtocol(event: Event) {
     };
   }
 }
-function chooseMode(event: Event) {
+const inputModes = computed(
+  () =>
+    current.value?.input_modes ??
+    (current.value?.input_mode ? [current.value.input_mode] : []),
+);
+function toggleMode(mode: "first_frame" | "reference_images", event: Event) {
   if (!current.value) return;
-  current.value.input_mode = (event.target as HTMLSelectElement)
-    .value as OperationBinding["input_mode"];
-  if (current.value.input_mode === "first_frame")
-    current.value.max_references = 1;
-  else {
-    current.value.last_frame = false;
-    current.value.driving_audio = false;
+  const checked = (event.target as HTMLInputElement).checked;
+  current.value.input_modes = checked
+    ? [...inputModes.value, mode]
+    : inputModes.value.filter((value) => value !== mode);
+  current.value.input_mode = undefined;
+  if (mode === "first_frame") {
+    current.value.last_frame = checked;
+    if (!checked) current.value.driving_audio = false;
   }
+  if (checked && !current.value.max_references)
+    current.value.max_references = 1;
 }
 function setSize(ratio: string, event: Event) {
   if (current.value)
@@ -234,18 +242,34 @@ onMounted(async () => {
           /></label>
         </template>
         <template v-if="selected === 'video'">
-          <label
-            >图片输入方式<select
-              aria-label="图片输入方式"
-              :value="current.input_mode || ''"
-              :disabled="busy"
-              @change="chooseMode"
+          <fieldset :disabled="busy">
+            <legend>支持的生成模式（可多选）</legend>
+            <label class="operation-check"
+              ><input
+                type="checkbox"
+                :checked="inputModes.includes('first_frame')"
+                @change="toggleMode('first_frame', $event)"
+              />首尾帧模式</label
             >
-              <option value="">请选择</option>
-              <option value="first_frame">单图首帧</option>
-              <option value="reference_images">多图参考</option>
-            </select></label
-          >
+            <label class="operation-check"
+              ><input
+                type="checkbox"
+                :checked="inputModes.includes('reference_images')"
+                @change="toggleMode('reference_images', $event)"
+              />智能参考（多图）</label
+            >
+            <p class="muted">
+              按模型实际能力勾选，分镜生成时再选择本次使用的模式。
+            </p>
+            <label
+              v-if="inputModes.includes('first_frame')"
+              class="operation-check"
+              ><input
+                v-model="current.last_frame"
+                type="checkbox"
+              />支持尾帧图片（仅支持首帧的模型请取消）</label
+            >
+          </fieldset>
           <div class="operation-grid">
             <DurationRangeInput
               :key="current.protocol + '-durations'"
@@ -261,13 +285,13 @@ onMounted(async () => {
               :disabled="busy"
               @update:model-value="current.resolutions = $event"
             />
-            <label
+            <label v-if="inputModes.includes('reference_images')"
               >最多参考图片数<input
                 v-model.number="current.max_references"
                 type="number"
                 min="1"
                 max="100"
-                :disabled="busy || current.input_mode === 'first_frame'"
+                :disabled="busy"
             /></label>
             <label
               >单张图片上限（MB）<input
@@ -284,18 +308,11 @@ onMounted(async () => {
                 @input="setImageMB"
             /></label>
           </div>
-          <p v-if="current.input_mode === 'first_frame'" class="muted">
-            生成时使用分镜中唯一的引用图片作为首帧；多张引用时会要求你调整。
+          <p v-if="inputModes.includes('first_frame')" class="muted">
+            生成时从分镜引用中明确选择首帧与尾帧，不按图片排列顺序自动指定。
           </p>
-          <details v-if="current.input_mode === 'first_frame'">
-            <summary>首尾帧与驱动音频（可选）</summary>
-            <label class="operation-check"
-              ><input
-                v-model="current.last_frame"
-                type="checkbox"
-                :disabled="busy"
-              />允许尾帧</label
-            >
+          <details v-if="inputModes.includes('first_frame')">
+            <summary>驱动音频（可选）</summary>
             <label
               v-if="current.protocol !== 'custom.json.v1'"
               class="operation-check"

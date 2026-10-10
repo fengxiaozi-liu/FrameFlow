@@ -1832,7 +1832,7 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
-                /** @description Configured model input limits or unavailable reason */
+                /** @description Configured limits grouped by input mode in capabilities; capability is included for single-mode models; otherwise unavailable reason */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -3748,6 +3748,10 @@ export interface components {
             duration_seconds?: number;
             utterance_id?: string;
             video_model_id?: string;
+            /** @enum {string} */
+            video_input_mode?: "first_frame" | "reference_images";
+            first_frame_material_id?: string;
+            last_frame_material_id?: string;
         };
         ResolvedEntity: {
             binding_id: string;
@@ -3792,6 +3796,10 @@ export interface components {
             }[];
             dependency_hash?: string;
             model_config?: components["schemas"]["ModelDefinition"];
+            /** @enum {string} */
+            video_input_mode?: "first_frame" | "reference_images";
+            first_frame_material_id?: string;
+            last_frame_material_id?: string;
         };
         BindingIssue: {
             code: string;
@@ -3886,6 +3894,10 @@ export interface components {
             aspect_ratio: string;
             resolution: string;
             duration_seconds: number;
+            /** @enum {string} */
+            video_input_mode?: "first_frame" | "reference_images";
+            first_frame_material_id?: string;
+            last_frame_material_id?: string;
         };
         RunSelection: {
             image_take_id?: string;
@@ -3954,6 +3966,8 @@ export interface components {
              */
             endpoint_mode?: "default" | "custom";
             custom?: components["schemas"]["CustomInterface"];
+            /** @description Supported video input modes; input_mode is read only for legacy single-mode configurations. */
+            input_modes?: ("first_frame" | "reference_images")[];
         };
         OperationStatus: {
             available: boolean;

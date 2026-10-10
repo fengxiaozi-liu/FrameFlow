@@ -46,8 +46,8 @@ func (s TaskService) validateVideoScene(g *gin.Context, projectID, draftID, scen
 		add("model_id", "请选择可用的视频模型")
 		return issues
 	}
-	capability, known := model.VideoCapability()
-	if !known {
+	capability, modeErr := model.VideoCapabilityFor("first_frame")
+	if modeErr != nil {
 		add("model_id", "该模型的输入能力尚未确认")
 		return issues
 	}

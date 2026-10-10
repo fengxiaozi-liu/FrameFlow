@@ -137,18 +137,18 @@ test('list, configuration order, frozen task details, failure retry and another 
  }
  const card=page.locator('.entity-card').nth(1);await card.locator('summary').click();const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl6p9sAAAAASUVORK5CYII=','base64');await card.locator('input[type=file]').setInputFiles({name:'林夏.png',mimeType:'image/png',buffer:png});await expect(card.locator('.reference-tile')).toHaveCount(1);await expect(page.getByRole('status').first()).toHaveText('已保存');await card.locator('input[type=file]').first().setInputFiles({name:'林夏替换.png',mimeType:'image/png',buffer:png});await expect(card.locator('.reference-tile')).toHaveCount(1);await expect(page.getByRole('status').first()).toHaveText('已保存');
  await card.getByRole('button',{name:'编辑项目设定'}).click();await expect(page.getByRole('dialog').locator('.reference-tile')).toHaveCount(1);await page.getByRole('dialog').getByRole('button',{name:'保存并引用'}).click();await expect(page.getByRole('dialog')).toHaveCount(0);await expect(card.locator('.reference-tile')).toHaveCount(1);await page.evaluate(()=>scrollTo(0,0));await page.screenshot({path:testInfo.outputPath('shot-detail-desktop.png'),fullPage:true});await page.setViewportSize({width:390,height:844});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBeTruthy();await page.evaluate(()=>scrollTo(0,0));await page.screenshot({path:testInfo.outputPath('shot-detail-mobile.png'),fullPage:true});await page.setViewportSize({width:1440,height:1000});await page.reload();await expect(page.getByRole('combobox',{name:'视频模型',exact:true})).toHaveValue(s.video);
- await page.getByRole('button',{name:'生成视频',exact:true}).click();await expect(page).toHaveURL(/\/runs\/run-/);await expect(page.getByRole('heading',{name:'分镜图',exact:true})).toHaveCount(0);await expect(page.locator('.run-step')).toHaveCount(1);
+ await page.getByRole('button',{name:'生成视频',exact:true}).click();await expect(page).toHaveURL(`${s.base}/shots/shot`);await expect(page.locator('.generation-run-row')).toHaveCount(1);await page.getByRole('link',{name:'进入任务 →'}).first().click();await expect(page.getByRole('heading',{name:'分镜图',exact:true})).toHaveCount(0);await expect(page.locator('.run-step')).toHaveCount(1);
  await expect(page.getByRole('heading',{name:'制作任务详情'})).toBeVisible();await expect(page.getByRole('region',{name:'本次生成设定'})).toContainText('4 秒');await expect(page.getByRole('button',{name:'按原输入重试'})).toBeVisible({timeout:15000});
  await page.screenshot({path:testInfo.outputPath('video-task-detail-desktop.png'),fullPage:true});await page.getByRole('button',{name:'按原输入重试'}).click();await expect(page.getByRole('button',{name:'按原输入重试'})).toBeVisible({timeout:15000});
  await page.getByRole('link',{name:'分镜详情',exact:true}).click();await expect(page.locator('.generation-run-row')).toHaveCount(1);await page.getByLabel('镜头描述文本').fill('第二次生成的新镜头描述');await expect(page.getByRole('status').first()).toHaveText('已保存');
- await expect(page.getByRole('button',{name:'生成视频',exact:true})).toBeEnabled({timeout:15000});await page.getByRole('button',{name:'生成视频',exact:true}).click();await expect(page).toHaveURL(/\/runs\/run-/);await page.getByRole('link',{name:'分镜详情',exact:true}).click();await expect(page.locator('.generation-run-row')).toHaveCount(2);
+ await expect(page.getByRole('button',{name:'生成视频',exact:true})).toBeEnabled({timeout:15000});await page.getByRole('button',{name:'生成视频',exact:true}).click();await expect(page).toHaveURL(`${s.base}/shots/shot`);await expect(page.locator('.generation-run-row')).toHaveCount(2);
  await page.getByRole('link',{name:'进入任务 →'}).first().click();await page.getByText('提交时的场景描述与引用素材').click();await expect(page.locator('.snapshot-prompt')).toContainText('中景，镜头缓慢推进');await expect(page.locator('.snapshot-prompt')).not.toContainText('第二次');
  await page.getByRole('link',{name:'分镜列表',exact:true}).click();await expect(page.locator('.shot-list-row')).toContainText('2 个制作任务');await page.setViewportSize({width:390,height:844});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBeTruthy();await page.getByRole('link',{name:'进入详情 →'}).click();await page.getByRole('link',{name:'进入任务 →'}).nth(1).click();await page.getByRole('button',{name:'取消制作任务'}).click();await page.getByRole('link',{name:'分镜详情',exact:true}).click();await expect(page.locator('.generation-run-row').nth(1)).toContainText('已取消');
 });
 test('lost submit response recovers same run without duplication',async({page,request})=>{
  const s=await seed(request);await page.goto(`${s.base}/shots/shot`);await configure(page,s);await page.getByRole('button',{name:'＋ 添加场景',exact:true}).click();const form=page.getByRole('dialog');await form.getByLabel('名称',{exact:true}).fill('参考场景');await form.locator('input[type=file]').setInputFiles({name:'场景.png',mimeType:'image/png',buffer:Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl6p9sAAAAASUVORK5CYII=','base64')});await form.getByRole('button',{name:'使用这张图片',exact:true}).click();await expect(form.locator('.reference-tile')).toHaveCount(1);await form.getByRole('button',{name:'保存并引用'}).click();await expect(form).toHaveCount(0);const keys:string[]=[];
  await page.route('**/generation-runs',async route=>{if(route.request().method()!=='POST'){await route.continue();return}keys.push(route.request().postDataJSON().idempotency_key);if(keys.length===1){await route.fetch();await route.abort('failed')}else await route.continue()});
- await page.getByRole('button',{name:'生成视频',exact:true}).click();await expect(page.getByRole('alert')).toBeVisible();await page.getByRole('button',{name:'生成视频',exact:true}).click();await expect(page).toHaveURL(/\/runs\/run-/);await page.getByRole('link',{name:'分镜详情',exact:true}).click();await expect(page.locator('.generation-run-row')).toHaveCount(1);expect(keys).toHaveLength(2);expect(keys[0]).toBe(keys[1]);await page.reload();await expect(page.locator('.generation-run-row')).toHaveCount(1);
+ await page.getByRole('button',{name:'生成视频',exact:true}).click();await expect(page.getByRole('alert')).toBeVisible();await page.getByRole('button',{name:'生成视频',exact:true}).click();await expect(page).toHaveURL(`${s.base}/shots/shot`);await expect(page.locator('.generation-run-row')).toHaveCount(1);expect(keys).toHaveLength(2);expect(keys[0]).toBe(keys[1]);await page.reload();await expect(page.locator('.generation-run-row')).toHaveCount(1);
 });
 
 
@@ -221,7 +221,7 @@ test('reference upload uses explicit library button, survives reload and retries
  expect((await request.get(`/api/materials/${ids[0]}`)).ok()).toBeTruthy();expect((await(await request.get('/api/materials')).json()).materials.some((m:any)=>m.id===ids[1])).toBeTruthy();
 });
 
-test('generated reference publishes only on explicit use and recovers publication failure',async({page,request},testInfo)=>{
+test('generated reference uploads independently from adoption and recovers publication failure',async({page,request},testInfo)=>{
  const s=await seed(request);const id='optional-'+randomUUID(),materialID='result-'+id;
  const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl6p9sAAAAASUVORK5CYII=','base64');
  await page.route('**/media/optional.png',r=>r.fulfill({contentType:'image/png',body:png}));
@@ -230,9 +230,16 @@ test('generated reference publishes only on explicit use and recovers publicatio
  await page.route('**/reference-image-tasks',r=>r.fulfill({status:202,json:task}));await page.route(`**/api/tasks/${id}`,r=>r.fulfill({json:task}));
  let promotions=0;await page.route(`**/api/materials/${materialID}/library`,async r=>{promotions++;if(promotions===1)await r.fulfill({status:503,json:{error:{message:'入库暂时失败，请重试'}}});else await r.continue()});
  await page.goto(`${s.base}/shots/shot`);await page.getByRole('button',{name:'＋ 添加人物',exact:true}).click();const drawer=page.getByRole('dialog');await drawer.getByLabel('名称',{exact:true}).fill('林夏');await drawer.getByLabel('参考描述',{exact:true}).fill('米色风衣');await drawer.getByRole('button',{name:'文生图',exact:true}).click();const generator=drawer.getByRole('region',{name:'文生图设置'});await generator.getByLabel('生图模型').selectOption(s.image);await generator.getByRole('button',{name:'生成图片',exact:true}).click();
- await expect(generator.getByLabel('同时保存到素材库')).not.toBeChecked();await expect(drawer.locator('.reference-tile')).toHaveCount(0);
+ await expect(generator.getByRole('checkbox')).toHaveCount(0);await expect(generator.getByRole('button',{name:'上传到素材库',exact:true})).toBeEnabled();await expect(drawer.locator('.reference-tile')).toHaveCount(0);
  expect((await(await request.get('/api/materials')).json()).materials.some((m:any)=>m.id===materialID)).toBeFalsy();
- await generator.getByLabel('同时保存到素材库').check();await generator.getByRole('button',{name:'使用这张图片'}).click();await expect(generator.getByRole('alert')).toContainText('入库暂时失败');await expect(drawer.locator('.reference-tile')).toHaveCount(0);
+ await generator.getByRole('button',{name:'上传到素材库',exact:true}).click();await expect(generator.getByRole('alert')).toContainText('入库暂时失败');await expect(drawer.locator('.reference-tile')).toHaveCount(0);
+ await generator.getByRole('button',{name:'上传到素材库',exact:true}).click();
+ await expect(generator.getByRole('button',{name:'已上传到素材库',exact:true})).toBeDisabled();
+ await expect(drawer.locator('.reference-tile')).toHaveCount(0);
+ await page.screenshot({path:testInfo.outputPath('generated-library-button.png')});
+ await page.setViewportSize({width:390,height:844});
+ await generator.getByRole('button',{name:'使用这张图片'}).scrollIntoViewIfNeeded();
+ await page.screenshot({path:testInfo.outputPath('generated-library-button-mobile.png')});
  await generator.getByRole('button',{name:'使用这张图片'}).click();await expect(drawer.locator('.reference-tile')).toHaveCount(1);await expect(generator.getByRole('button',{name:'已加入参考图'})).toBeDisabled();expect(promotions).toBe(2);
  expect((await(await request.get('/api/materials')).json()).materials.filter((m:any)=>m.id===materialID)).toHaveLength(1);
  await drawer.getByRole('button',{name:'保存并引用'}).click();await expect(drawer).toHaveCount(0);await page.reload();await expect(page.locator('.entity-card .reference-tile')).toHaveCount(1);
@@ -263,4 +270,73 @@ test('new entities have editable defaults that persist and avoid existing names'
  for (const name of ['场景 1', '雨夜咖啡馆', '人物 1', '林夏']) await expect(cards.filter({hasText: name})).toHaveCount(1);
  await cards.filter({hasText: '林夏'}).getByRole('button', {name: '编辑项目设定'}).click();
  await expect(drawer.getByLabel('名称', {exact: true})).toHaveValue('林夏');
+});
+
+
+test('video submissions stay inline and allow another run while the first is running', async ({page,request}, testInfo) => {
+ const s = await seed(request);
+ await page.goto(`${s.base}/shots/shot`);
+ await configure(page,s);
+ await page.getByRole('button',{name:'＋ 添加场景',exact:true}).click();
+ const drawer = page.getByRole('dialog');
+ await drawer.locator('input[type=file]').setInputFiles({name:'参考.png',mimeType:'image/png',buffer:Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl6p9sAAAAASUVORK5CYII=','base64')});
+ await drawer.getByRole('button',{name:'使用这张图片',exact:true}).click();
+ await drawer.getByRole('button',{name:'保存并引用'}).click();
+ await expect(drawer).toHaveCount(0);
+ const endpoint = `/api/projects/${s.p}/drafts/${s.d}/scenes/shot/generation-runs`;
+ const keys: string[] = [];
+ const ids: string[] = [];
+ let complete = false;
+ let releaseSubmit!: () => void;
+ const submissionGate = new Promise<void>(resolve => {releaseSubmit = resolve});
+ // Persist real runs, but simulate slow provider progress without paid calls.
+ await page.route(`**${endpoint}/run-*`,async route => {
+  const response = await route.fetch();
+  const run = await response.json();
+  const succeeded = complete && run.id === ids[0];
+  await route.fulfill({json:{...run,state:succeeded?'awaiting_video_selection':'generating_video',error:'',steps:[{id:run.task_ids[0],kind:'video',status:succeeded?'succeeded':'running',progress:succeeded?100:35,result_url:succeeded?'/media/inline-preview.mp4':'',error:''}]}});
+ });
+ await page.route(`**${endpoint}`,async route => {
+  if(route.request().method()!=='POST'){await route.continue();return}
+  keys.push(route.request().postDataJSON().idempotency_key);
+  const response = await route.fetch();
+  expect(response.status()).toBe(202);
+  const run = await response.json();
+  ids.push(run.id);
+  if(keys.length===1) await submissionGate;
+  await route.fulfill({response});
+ });
+ const generate = page.getByRole('button',{name:'生成视频',exact:true});
+ await generate.click();
+ await expect(page.getByRole('button',{name:'提交中…',exact:true})).toBeDisabled();
+ releaseSubmit();
+ await expect(page).toHaveURL(`${s.base}/shots/shot`);
+ await expect(page.getByLabel('任务 1 视频生成进度')).toHaveAttribute('value','35');
+ await expect(generate).toBeEnabled();
+ await page.getByLabel('镜头描述文本').fill('第二次生成，镜头拉远');
+ await expect(page.getByRole('status').first()).toHaveText('已保存');
+ await generate.click();
+ await expect(page.locator('.generation-run-row')).toHaveCount(2);
+ await expect(page.getByLabel('任务 2 视频生成进度')).toHaveAttribute('value','35');
+ await expect(page.getByLabel('任务 1 视频生成进度')).toBeVisible();
+ await expect(generate).toBeEnabled();
+ expect(keys).toHaveLength(2);
+ expect(new Set(keys).size).toBe(2);
+ expect(new Set(ids).size).toBe(2);
+ const persisted = (await (await request.get(endpoint)).json()).runs;
+ expect(persisted).toHaveLength(2);
+ expect(persisted.find((r:any)=>r.id===ids[0]).plan[0].prompt).not.toContain('第二次生成');
+ expect(persisted.find((r:any)=>r.id===ids[1]).plan[0].prompt).toContain('第二次生成');
+ await page.getByRole('region',{name:'任务结构'}).screenshot({path:testInfo.outputPath('inline-runs-desktop.png')});
+ await page.setViewportSize({width:390,height:844});
+ await page.getByRole('region',{name:'任务结构'}).screenshot({path:testInfo.outputPath('inline-runs-mobile.png')});
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBeTruthy();
+ await page.route('**/media/inline-preview.mp4',r=>r.fulfill({status:200,contentType:'video/mp4',body:''}));
+ complete = true;
+ await expect(page.locator('.generation-run-row').first().locator('video')).toHaveAttribute('src',/\/media\/inline-preview\.mp4$/);
+ await expect(page.getByLabel('任务 2 视频生成进度')).toBeVisible();
+ await expect(page).toHaveURL(`${s.base}/shots/shot`);
+ await page.reload();
+ await expect(page.locator('.generation-run-row')).toHaveCount(2);
+ await expect(generate).toBeEnabled();
 });

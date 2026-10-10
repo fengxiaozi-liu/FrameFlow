@@ -168,8 +168,11 @@ func (c Client) GenerateImage(ctx context.Context, connection provider.Connectio
 }
 
 func (c Client) GenerateVideo(ctx context.Context, connection provider.Connection, model provider.Model, input provider.VideoRequest, options provider.RequestOptions) (provider.VideoResult, error) {
-	capability, known := model.VideoCapability()
-	if model.Require(provider.Video, provider.VideoProtocol) != nil || !known {
+	capability, modeErr := model.VideoCapabilityFor(input.InputMode)
+	if modeErr != nil {
+		return provider.VideoResult{}, modeErr
+	}
+	if model.Require(provider.Video, provider.VideoProtocol) != nil {
 		return provider.VideoResult{}, provider.ErrUnsupported
 	}
 	referenceMode := capability.InputMode == "reference_images"
@@ -280,8 +283,7 @@ func (c Client) GenerateVideo(ctx context.Context, connection provider.Connectio
 }
 
 func (c Client) PollVideo(ctx context.Context, connection provider.Connection, model provider.Model, id string) (provider.VideoResult, bool, error) {
-	_, known := model.VideoCapability()
-	if model.Require(provider.Video, provider.VideoProtocol) != nil || !known {
+	if model.Require(provider.Video, provider.VideoProtocol) != nil {
 		return provider.VideoResult{}, false, provider.ErrUnsupported
 	}
 	key, err := c.key(ctx, connection)

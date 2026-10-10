@@ -545,12 +545,6 @@ textarea {
   max-height: 340px;
   object-fit: contain;
 }
-.video-preview video {
-  display: block;
-  width: min(100%, 680px);
-  aspect-ratio: 16 / 9;
-  background: #17232a;
-}
 .task-unavailable {
   margin: 16px 0 0;
   font-size: 13px;

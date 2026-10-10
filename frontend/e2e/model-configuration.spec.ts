@@ -37,9 +37,7 @@ test("manual unknown video model uses explicit protocol and parameter choices", 
     .getByLabel("接口协议", { exact: true })
     .selectOption("dashscope.media-video.v1");
   await drawer.getByLabel("16:9", { exact: true }).check();
-  await drawer
-    .getByLabel("图片输入方式", { exact: true })
-    .selectOption("first_frame");
+  await drawer.getByLabel("首尾帧模式", { exact: true }).check();
   const durations = drawer.getByRole("group", {
     name: "可选时长",
     exact: true,
@@ -152,7 +150,7 @@ test("manual unknown video model uses explicit protocol and parameter choices", 
   ).toHaveText(["720P", "1080P"]);
   await settings.getByLabel("时长", { exact: true }).selectOption("8");
   await settings.getByLabel("清晰度", { exact: true }).selectOption("1080P");
-  await expect(settings).toContainText("一张引用图片作为首帧");
+  await expect(settings).toContainText("请选择当前分镜引用中的首帧图片");
   await expect(page.getByRole("status").first()).toHaveText("已保存");
   await page.reload();
   await expect(settings.getByLabel("时长", { exact: true })).toHaveValue("8");
@@ -453,9 +451,7 @@ test("custom async video fields persist and duplicate terminal states are reject
     await input.press("Enter");
   }
   await drawer.getByLabel("16:9", { exact: true }).check();
-  await drawer
-    .getByLabel("图片输入方式", { exact: true })
-    .selectOption("reference_images");
+  await drawer.getByLabel("智能参考（多图）", { exact: true }).check();
   await drawer.getByLabel("最多参考图片数", { exact: true }).fill("2");
   await drawer.getByLabel("单张图片上限（MB）", { exact: true }).fill("10");
   await drawer.getByLabel("最短时长（秒）", { exact: true }).fill("4");

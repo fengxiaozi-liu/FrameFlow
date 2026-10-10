@@ -26,7 +26,6 @@ const mode = ref<"library" | "generate">("library"),
 const uploads = ref<{ file: File; preview: string; uploaded?: Material }[]>([]),
   uploadError = ref(""),
   uploadProgress = ref(0);
-const saveGenerated = ref(false);
 const uploadAction = ref<"use" | "library">("use");
 const uploadsInLibrary = computed(
   () =>
@@ -192,23 +191,23 @@ async function useUpload(publish = false) {
     setBusy(false);
   }
 }
-async function useGenerated() {
-  if (!result.value || busy.value || props.disabled || chosen(result.value.id))
-    return;
+function useGenerated() {
+  if (!result.value || busy.value || props.disabled) return;
+  add(result.value);
+}
+async function publishGenerated() {
+  if (!result.value?.reference_only || busy.value || props.disabled) return;
   setBusy(true);
   error.value = "";
   try {
-    let material = result.value;
-    if (saveGenerated.value && material.reference_only)
-      material = await api.addMaterialToLibrary(material.id);
+    const material = await api.addMaterialToLibrary(result.value.id);
     if (!alive) return;
     result.value = material;
-    add(material);
-    if (!material.reference_only)
-      library.value = [
-        ...library.value.filter((m) => m.id !== material.id),
-        material,
-      ];
+    emit("material", material);
+    library.value = [
+      ...library.value.filter((m) => m.id !== material.id),
+      material,
+    ];
   } catch (e) {
     if (alive) error.value = (e as Error).message;
   } finally {
@@ -271,7 +270,6 @@ async function generate() {
     if (!alive) return;
     current.value = task;
     result.value = undefined;
-    saveGenerated.value = false;
     pending.value = undefined;
     remember();
     void refresh();
@@ -482,9 +480,8 @@ onBeforeUnmount(() => {
     >
       <h4>生成{{ kind === "scene" ? "场景" : "人物" }}参考图</h4>
       <p v-if="!models.length" class="muted">
-        暂无配置就绪的生图模型，请在模型管理配置协议、图片尺寸并启用。
+        暂无配置就绪的生图模型，<RouterLink to="/config">前往模型管理配置</RouterLink>。
       </p>
-      <p v-for="m in props.models.filter(m => m.capabilities.includes('image') && !m.availability?.image?.available)" :key="m.id" class="muted">{{ m.name }}：{{ m.availability?.image?.reason || '能力尚未读取' }} <RouterLink to="/config">配置模型</RouterLink></p>
       <div class="reference-image-settings">
         <label
           >生图模型<select v-model="model" :disabled="locked">
@@ -564,21 +561,20 @@ onBeforeUnmount(() => {
         >
           刷新生成状态
         </button>
-        <template v-if="result"
-          ><img :src="api.mediaUrl(result.url)" :alt="result.name" /><template
-            v-if="result.reference_only && !chosen(result.id)"
-            ><label class="reference-library-option"
-              ><input
-                v-model="saveGenerated"
-                type="checkbox"
-                :disabled="disabled || busy"
-              />同时保存到素材库</label
-            >
-            <p class="reference-option-note">
-              不勾选：仅用于当前人物或场景。<br />勾选后：可从素材库复用。
-            </p></template
+        <template v-if="result">
+          <img :src="api.mediaUrl(result.url)" :alt="result.name" />
+          <button
+            type="button"
+            :disabled="disabled || busy || !result.reference_only"
+            @click="publishGenerated"
           >
-          <p v-else-if="!result.reference_only" class="muted">已在素材库中</p>
+            {{ !result.reference_only ? "已上传到素材库" : busy ? "上传中…" : "上传到素材库" }}
+          </button>
+          <p class="reference-option-note">
+            {{ result.reference_only
+              ? "直接使用仅作为当前人物或场景的参考图；需要复用时，再上传到素材库。"
+              : "已保存，可在素材库中复用。" }}
+          </p>
           <button
             type="button"
             class="primary reference-use-generated"

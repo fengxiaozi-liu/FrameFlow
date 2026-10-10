@@ -64,7 +64,21 @@ const copy=<T,>(v:T):T=>JSON.parse(JSON.stringify(v));
 function changeBinding(b:ShotEntityBinding){editor.change({entity_bindings:state.value.entity_bindings.map(x=>x.id===b.id?b:x)})}
 function remove(id:string){editor.change({entity_bindings:state.value.entity_bindings.filter(b=>b.id!==id),prompt_document:{schema_version:1,nodes:state.value.prompt_document.nodes.filter(n=>n.type!=='entity_ref'||n.binding_id!==id)}})}
 function bind(e:EntityVersion){if(state.value.entity_bindings.some(b=>b.entity_id===e.id)){notice.value='此档案已在当前镜头中。';return}editor.change({entity_bindings:[...state.value.entity_bindings,{id:crypto.randomUUID(),entity_id:e.id,entity_revision:e.revision,role:e.kind==='character'?'cast':state.value.entity_bindings.some(b=>b.role==='primary')?'supplement':'primary'}]});library.value=false}
-function create(kind:'location'|'character'){form.value={id:crypto.randomUUID(),kind,name:defaultEntityName(kind,latest.value),description:'',revision:1,references:[]};formBinding.value='';isNew.value=true;uploads.value=[];voiceModel.value='';voiceRemote.value=''}
+function create(kind: 'location' | 'character') {
+  form.value = {
+    id: crypto.randomUUID(),
+    kind,
+    name: defaultEntityName(kind, latest.value),
+    description: '',
+    revision: 1,
+    references: [],
+  };
+  formBinding.value = '';
+  isNew.value = true;
+  uploads.value = [];
+  voiceModel.value = '';
+  voiceRemote.value = '';
+}
 function edit(e:EntityVersion,id:string){form.value=copy(e);formBinding.value=id;isNew.value=false;uploads.value=[];voiceModel.value='';voiceRemote.value=''}
 async function loadVoices(){voiceOptions.value=[];voiceRemote.value='';if(!voiceModel.value)return;try{voiceOptions.value=(await bindingsApi.voices(voiceModel.value)).voices||[]}catch(e){notice.value=(e as Error).message}}
 async function saveEntity(){if(busy.value)return;if(!form.value?.name.trim()){notice.value='请填写名称。';return}busy.value=true;notice.value='';try{

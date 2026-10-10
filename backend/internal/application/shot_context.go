@@ -54,6 +54,12 @@ func (s ProjectService) WriteShotContext(g *gin.Context) {
 		}
 		video, e := s.Models.GetModel(g.Request.Context(), in.Settings.VideoModelID)
 		vc, known := video.InputCapability()
+		if in.Settings.VideoInputMode != "" {
+			if _, modeErr := video.Operations[provider.Video].SelectVideoMode(in.Settings.VideoInputMode); modeErr != nil {
+				writeError(g, Invalid("invalid_generation_settings", modeErr))
+				return
+			}
+		}
 		validDuration, validResolution := false, false
 		for _, v := range vc.Durations {
 			validDuration = validDuration || v == in.Settings.DurationSeconds

@@ -28,6 +28,7 @@ type OperationBinding struct {
 	Source           string            `json:"source"`
 	EndpointMode     string            `json:"endpoint_mode,omitempty"`
 	Endpoint         string            `json:"endpoint,omitempty"`
+	InputModes       []string          `json:"input_modes,omitempty"`
 	InputMode        string            `json:"input_mode,omitempty"`
 	Ratios           []string          `json:"ratios,omitempty"`
 	Durations        []int             `json:"durations,omitempty"`
@@ -116,12 +117,14 @@ func (b OperationBinding) Validate(operation Capability) error {
 			return errors.New("参考图能力需要在请求模板映射 {{images}}")
 		}
 		if operation == Video {
-			required := "first_frame"
-			if b.InputMode == "reference_images" {
-				required = "images"
-			}
-			if !variables[required] {
-				return fmt.Errorf("视频模板需要映射 {{%s}}", required)
+			for _, mode := range b.VideoInputModes() {
+				required := "first_frame"
+				if mode == "reference_images" {
+					required = "images"
+				}
+				if !variables[required] {
+					return fmt.Errorf("视频模板需要映射 {{%s}}", required)
+				}
 			}
 			if b.LastFrame && !variables["last_frame"] {
 				return errors.New("尾帧能力需要映射 {{last_frame}}")
@@ -164,14 +167,23 @@ func (b OperationBinding) Validate(operation Capability) error {
 			}
 		}
 	case Video:
-		if b.InputMode != "first_frame" && b.InputMode != "reference_images" {
-			return errors.New("请选择首帧或多图参考输入方式")
+		modes := b.VideoInputModes()
+		if len(modes) == 0 {
+			return errors.New("请至少选择一种视频输入方式")
 		}
-		if b.InputMode == "first_frame" && b.MaxReferences != 1 {
-			return errors.New("首帧视频必须使用一张图片")
+		for i, mode := range modes {
+			if mode != "first_frame" && mode != "reference_images" {
+				return errors.New("不支持的视频输入方式")
+			}
+			if slices.Contains(modes[:i], mode) {
+				return errors.New("视频输入方式不能重复")
+			}
 		}
-		if b.InputMode == "reference_images" && (b.MaxReferences < 1 || b.LastFrame || b.DrivingAudio) {
-			return errors.New("多图参考需至少一张图片，不能混用首尾帧或音频")
+		if b.SupportsVideoMode("reference_images") && b.MaxReferences < 1 {
+			return errors.New("多图参考需至少一张图片")
+		}
+		if !b.SupportsVideoMode("first_frame") && (b.LastFrame || b.DrivingAudio) {
+			return errors.New("尾帧与驱动音频需要启用首尾帧模式")
 		}
 		if b.MaxImageBytes > MaxLocalImageBytes {
 			return errors.New("当前本地图片传输上限为 20 MB，请收窄配置")
@@ -255,8 +267,8 @@ func (m Model) InputCapability() (InputCapability, bool) {
 			c.Speech = true
 			c.Voices = b.Voices
 		case Video:
-			c.ReferenceVideo = b.InputMode == "reference_images"
-			c.FirstFrame = b.InputMode == "first_frame"
+			c.ReferenceVideo = b.SupportsVideoMode("reference_images")
+			c.FirstFrame = b.SupportsVideoMode("first_frame")
 			c.ReferenceImages = b.MaxReferences
 			c.Durations = b.Durations
 			c.Resolutions = b.Resolutions
@@ -266,25 +278,59 @@ func (m Model) InputCapability() (InputCapability, bool) {
 	return c, any
 }
 
+// VideoCapability preserves the single-mode caller contract. Multi-mode calls must select a mode.
 func (m Model) VideoCapability() (VideoCapability, bool) {
-	s := m.Resolve(Video)
-	if !s.Available {
-		return VideoCapability{}, false
+	c, err := m.VideoCapabilityFor("")
+	return c, err == nil
+}
+
+func (m Model) VideoCapabilityFor(mode string) (VideoCapability, error) {
+	status := m.Resolve(Video)
+	if !status.Available {
+		return VideoCapability{}, errors.New(status.Reason)
 	}
-	b := s.Binding
+	b := status.Binding
+	selected, err := b.SelectVideoMode(mode)
+	if err != nil {
+		return VideoCapability{}, err
+	}
 	media := map[string]int{}
-	if b.InputMode == "reference_images" {
+	if selected == "reference_images" {
 		media["reference_image"] = b.MaxReferences
 	} else {
 		media["first_frame"] = 1
+		if b.LastFrame {
+			media["last_frame"] = 1
+		}
+		if b.DrivingAudio {
+			media["driving_audio"] = 1
+		}
 	}
-	if b.LastFrame {
-		media["last_frame"] = 1
+	return VideoCapability{ModelPrefix: b.Protocol, InputMode: selected, Durations: b.Durations, MinDuration: slices.Min(b.Durations), MaxDuration: slices.Max(b.Durations), Resolutions: b.Resolutions, AllowedMedia: media, MaxImageBytes: b.MaxImageBytes, MaxAudioBytes: b.MaxAudioBytes, MinAudioDuration: b.MinAudioDuration, MaxAudioDuration: b.MaxAudioDuration}, nil
+}
+
+// VideoInputModes reads old single-mode configurations without changing stored snapshots.
+func (b OperationBinding) VideoInputModes() []string {
+	if b.InputModes != nil {
+		return b.InputModes
 	}
-	if b.DrivingAudio {
-		media["driving_audio"] = 1
+	if b.InputMode != "" {
+		return []string{b.InputMode}
 	}
-	return VideoCapability{ModelPrefix: b.Protocol, InputMode: b.InputMode, Durations: b.Durations, MinDuration: slices.Min(b.Durations), MaxDuration: slices.Max(b.Durations), Resolutions: b.Resolutions, AllowedMedia: media, MaxImageBytes: b.MaxImageBytes, MaxAudioBytes: b.MaxAudioBytes, MinAudioDuration: b.MinAudioDuration, MaxAudioDuration: b.MaxAudioDuration}, true
+	return nil
+}
+func (b OperationBinding) SupportsVideoMode(mode string) bool {
+	return slices.Contains(b.VideoInputModes(), mode)
+}
+func (b OperationBinding) SelectVideoMode(mode string) (string, error) {
+	modes := b.VideoInputModes()
+	if mode == "" && len(modes) == 1 {
+		return modes[0], nil
+	}
+	if !slices.Contains(modes, mode) {
+		return "", errors.New("请选择模型支持的视频生成模式")
+	}
+	return mode, nil
 }
 
 func (m Model) Require(operation Capability, protocol string) error {

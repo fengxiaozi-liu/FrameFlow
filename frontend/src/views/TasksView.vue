@@ -5,6 +5,7 @@ import { useTaskStore } from "../stores/tasks";
 import type { Project, Task, TaskStatus } from "../api/types";
 import StatusBadge from "../components/StatusBadge.vue";
 import ProgressBar from "../components/ProgressBar.vue";
+import VideoPreview from "../components/VideoPreview.vue";
 const store = useTaskStore(),
   filter = ref<"all" | TaskStatus>("all"),
   message = ref(""),
@@ -47,7 +48,7 @@ function sceneLink(item: Task) {
   if (!item.project_id || !item.draft_id || !item.scene_id) return "";
   const draft = projects.value.find((value) => value.id === item.project_id)?.drafts.find((value) => value.id === item.draft_id);
   return draft?.story.scenes.some((scene) => scene.id === item.scene_id)
-    ? `/studio/${encodeURIComponent(item.project_id)}/${encodeURIComponent(item.draft_id)}/shots/${encodeURIComponent(item.scene_id)}${item.run_id ? `/runs/${encodeURIComponent(item.run_id)}` : ''}` : "";
+    ? `/studio/${encodeURIComponent(item.project_id)}/${encodeURIComponent(item.draft_id)}/shots/${encodeURIComponent(item.scene_id)}` : "";
 }
 function sceneLabel(item: Task) {
   const scene = projects.value.find((project) => project.id === item.project_id)?.drafts.find((draft) => draft.id === item.draft_id)?.story.scenes.find((value) => value.id === item.scene_id);
@@ -192,13 +193,10 @@ async function retry(item: Task) {
             "
             class="task-preview video-preview"
           >
-            <video
+            <VideoPreview
               :src="previewURL(task)"
               :poster="sourcePoster(task)"
-              controls
-              preload="metadata"
-              playsinline
-              aria-label="生成的视频"
+              title="生成的视频"
             />
           </div>
           <p
@@ -212,6 +210,10 @@ async function retry(item: Task) {
             此任务没有保存可预览的媒体文件。
           </p>
           <div class="actions">
+            <template v-if="sceneLink(task)">
+              <RouterLink :to="sceneLink(task)" class="button">返回分镜</RouterLink>
+              <RouterLink v-if="task.run_id" :to="`${sceneLink(task)}/runs/${encodeURIComponent(task.run_id)}`">查看任务详情</RouterLink>
+            </template>
             <button
               v-if="task.status === 'queued' || task.status === 'running'"
               @click="cancel(task)"

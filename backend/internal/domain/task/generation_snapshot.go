@@ -33,29 +33,55 @@ type SpeechInput struct {
 	Instructions   string `json:"instructions,omitempty"`
 }
 type GenerationSnapshot struct {
-	ModelConfig       *provider.Model   `json:"model_config,omitempty"`
-	DependencyHash    string            `json:"dependency_hash"`
-	ID                string            `json:"id"`
-	SchemaVersion     int               `json:"schema_version"`
-	ProjectID         string            `json:"project_id"`
-	DraftID           string            `json:"draft_id"`
-	SceneID           string            `json:"scene_id"`
-	DraftVersion      int64             `json:"draft_version"`
-	Entities          []SnapshotEntity  `json:"entities"`
-	Utterances        []story.Utterance `json:"utterances"`
-	Speech            []SpeechInput     `json:"speech,omitempty"`
-	Prompt            string            `json:"prompt"`
-	ModelID           string            `json:"model_id"`
-	CapabilityVersion string            `json:"capability_version"`
-	Path              string            `json:"path"`
-	AspectRatio       string            `json:"aspect_ratio"`
-	Resolution        string            `json:"resolution"`
-	DurationSeconds   int               `json:"duration_seconds"`
-	InputHash         string            `json:"input_hash"`
-	CreatedAt         time.Time         `json:"created_at"`
+	VideoInputMode       string            `json:"video_input_mode,omitempty"`
+	FirstFrameMaterialID string            `json:"first_frame_material_id,omitempty"`
+	LastFrameMaterialID  string            `json:"last_frame_material_id,omitempty"`
+	ModelConfig          *provider.Model   `json:"model_config,omitempty"`
+	DependencyHash       string            `json:"dependency_hash"`
+	ID                   string            `json:"id"`
+	SchemaVersion        int               `json:"schema_version"`
+	ProjectID            string            `json:"project_id"`
+	DraftID              string            `json:"draft_id"`
+	SceneID              string            `json:"scene_id"`
+	DraftVersion         int64             `json:"draft_version"`
+	Entities             []SnapshotEntity  `json:"entities"`
+	Utterances           []story.Utterance `json:"utterances"`
+	Speech               []SpeechInput     `json:"speech,omitempty"`
+	Prompt               string            `json:"prompt"`
+	ModelID              string            `json:"model_id"`
+	CapabilityVersion    string            `json:"capability_version"`
+	Path                 string            `json:"path"`
+	AspectRatio          string            `json:"aspect_ratio"`
+	Resolution           string            `json:"resolution"`
+	DurationSeconds      int               `json:"duration_seconds"`
+	InputHash            string            `json:"input_hash"`
+	CreatedAt            time.Time         `json:"created_at"`
 }
 
 func FreezeSnapshot(value GenerationSnapshot) (GenerationSnapshot, error) {
+	if value.VideoInputMode != "" {
+		if value.VideoInputMode != "first_frame" && value.VideoInputMode != "reference_images" {
+			return value, errors.New("invalid video input mode")
+		}
+		if value.VideoInputMode == "reference_images" && (value.FirstFrameMaterialID != "" || value.LastFrameMaterialID != "") {
+			return value, errors.New("reference mode cannot contain frame selections")
+		}
+		if value.VideoInputMode == "first_frame" {
+			selected := map[string]bool{}
+			for _, entity := range value.Entities {
+				for _, ref := range entity.References {
+					selected[ref.MaterialID] = true
+				}
+			}
+			if value.FirstFrameMaterialID == "" || !selected[value.FirstFrameMaterialID] {
+				return value, errors.New("snapshot first frame is missing")
+			}
+			if value.LastFrameMaterialID != "" && !selected[value.LastFrameMaterialID] {
+				return value, errors.New("snapshot last frame is missing")
+			}
+		}
+	}
+
 	if value.ProjectID == "" || value.DraftID == "" || value.SceneID == "" || value.ModelID == "" || value.CapabilityVersion == "" {
 		return value, errors.New("incomplete generation snapshot")
 	}

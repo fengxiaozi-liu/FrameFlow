@@ -27,12 +27,23 @@ func (s CatalogService) VideoCapability(g *gin.Context) {
 		writeError(g, err)
 		return
 	}
-	capability, known := model.VideoCapability()
-	if !known || !model.Supports(provider.Video) {
-		g.JSON(http.StatusOK, gin.H{"supported": false, "reason": "该模型的视频输入能力尚未确认"})
+	status := model.Resolve(provider.Video)
+	if !status.Available {
+		g.JSON(http.StatusOK, gin.H{"supported": false, "reason": status.Reason})
 		return
 	}
-	g.JSON(http.StatusOK, gin.H{"supported": true, "capability": capability})
+	capabilities := map[string]provider.VideoCapability{}
+	for _, mode := range status.Binding.VideoInputModes() {
+		capability, err := model.VideoCapabilityFor(mode)
+		if err == nil {
+			capabilities[mode] = capability
+		}
+	}
+	response := gin.H{"supported": true, "capabilities": capabilities}
+	if capability, ok := model.VideoCapability(); ok {
+		response["capability"] = capability
+	}
+	g.JSON(http.StatusOK, response)
 }
 
 func (s CatalogService) ListConnections(g *gin.Context) {

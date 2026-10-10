@@ -214,3 +214,50 @@ func TestJSONPointersAndMediaValidation(t *testing.T) {
 		}
 	}
 }
+
+func TestCustomMultiModeMapsExplicitSelection(t *testing.T) {
+	model := fixture(domain.Video)
+	binding := model.Operations[domain.Video]
+	binding.InputMode = ""
+	binding.InputModes = []string{"first_frame", "reference_images"}
+	binding.LastFrame = true
+	binding.Custom.BodyTemplate = `{"model":"{{model}}","prompt":"{{prompt}}","mode":"{{input_mode}}","first":"{{first_frame}}","last":"{{last_frame}}","references":"{{images}}"}`
+	model.Operations[domain.Video] = binding
+	calls := 0
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Error(err)
+		}
+		if body["mode"] == "first_frame" {
+			if body["first"] != "https://media/first.png" || body["last"] != "https://media/last.png" {
+				t.Error(body)
+			}
+		} else if body["mode"] == "reference_images" {
+			if len(body["references"].([]any)) != 1 || body["first"] != "" || body["last"] != "" {
+				t.Error(body)
+			}
+		} else {
+			t.Error(body)
+		}
+		_, _ = w.Write([]byte(`{"payload":{"results":[{"value":"https://media/video.mp4"}]}}`))
+	}))
+	defer server.Close()
+	client := Client{HTTP: server.Client(), Credentials: credential("test-key")}
+	for _, mode := range []string{"first_frame", "reference_images"} {
+		input := domain.VideoRequest{InputMode: mode, Prompt: "move", AspectRatio: "16:9", Duration: 4, Resolution: "720P"}
+		if mode == "first_frame" {
+			input.SourceImageURL = "https://media/first.png"
+			input.LastFrameURL = "https://media/last.png"
+		} else {
+			input.References = []domain.ImageReference{{URL: "https://media/a.png"}}
+		}
+		if _, err := client.GenerateVideo(context.Background(), connection(server), model, input, domain.RequestOptions{}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if calls != 2 {
+		t.Fatal(calls)
+	}
+}
