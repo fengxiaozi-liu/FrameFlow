@@ -2,6 +2,8 @@ import { expect, test, type APIRequestContext } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 
 async function seedProviders(request: APIRequestContext) {
+  const existing = (await (await request.get("/api/connections")).json()).connections;
+  if (!existing.some((connection: { id: string }) => connection.id === "e2e-bailian")) {
   const connection = await request.post("/api/connections", {
     data: {
       id: "e2e-bailian",
@@ -12,6 +14,7 @@ async function seedProviders(request: APIRequestContext) {
     },
   });
   expect(connection.ok()).toBeTruthy();
+  }
   for (const [id, cap] of [
     ["qwen-plus", "story"],
     ["qwen-image-2.0", "image"],
@@ -255,7 +258,7 @@ test("configuration center offers a preset and keeps unknown models pending conf
   await page.getByLabel("模型 ID").fill("qwen-image-2.0");
   await page
     .getByRole("group", { name: "支持的能力" })
-    .getByLabel("文生图")
+    .getByLabel("图片生成")
     .check();
   await page.getByRole("button", { name: "添加", exact: true }).click();
   await expect(page.getByRole("dialog").getByLabel("接口协议", {exact:true})).toHaveValue("dashscope.image.v1");

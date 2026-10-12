@@ -1,4 +1,4 @@
-package customjson
+package custom
 
 import (
 	"context"
@@ -259,5 +259,36 @@ func TestCustomMultiModeMapsExplicitSelection(t *testing.T) {
 	}
 	if calls != 2 {
 		t.Fatal(calls)
+	}
+}
+
+func TestImageEditingContractRequiresImagesAndKeepsTheirOrder(t *testing.T) {
+	m := fixture(domain.Image)
+	b := m.Operations[domain.Image]
+	b.ImageModes, b.MinReferences, b.MaxReferences, b.MaxImageBytes = []string{domain.ImageToImage}, 1, 3, 10<<20
+	if b.Validate(domain.Image) == nil {
+		t.Fatal("editing accepted without image binding")
+	}
+	b.Custom.BodyTemplate = `{"engine":"{{model}}","input":{"instruction":"{{prompt}}","references":"{{images}}"}}`
+	m.Operations[domain.Image] = b
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Input struct {
+				References []string `json:"references"`
+			} `json:"input"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Error(err)
+		}
+		if len(body.Input.References) != 2 || body.Input.References[0] != "data:image/png;base64,c2Vjb25k" || body.Input.References[1] != "https://media.example/first.png" {
+			t.Error(body)
+		}
+		_, _ = w.Write([]byte(`{"payload":{"results":[{"value":"https://media.example/edited.png"}]}}`))
+	}))
+	defer server.Close()
+	client := Client{HTTP: server.Client(), Credentials: credential("test-key")}
+	result, err := client.GenerateImage(context.Background(), connection(server), m, domain.ImageRequest{Mode: domain.ImageToImage, Prompt: "edit", AspectRatio: "16:9", References: []domain.ImageReference{{URL: "data:image/png;base64,c2Vjb25k"}, {URL: "https://media.example/first.png"}}}, domain.RequestOptions{})
+	if err != nil || result.URL != "https://media.example/edited.png" {
+		t.Fatal(result, err)
 	}
 }

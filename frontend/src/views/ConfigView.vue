@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref } from "vue";
 import { baseAddressError } from "../components/config/connectionAddress";
+import DiscoveryProfileSettings from "../components/config/DiscoveryProfileSettings.vue";
 import ModelOperationEditor from "../components/config/ModelOperationEditor.vue";
 import { api } from "../api/client";
 import type { Capability, Model, ProviderConnection } from "../api/types";
@@ -32,7 +33,7 @@ const filteredModels = computed(() => models.value.filter((item) =>
   `${item.name} ${item.remote_id}`.toLowerCase().includes(modelQuery.value.toLowerCase().trim()),
 ));
 const visibleModels = computed(() => filteredModels.value.slice(0, shownCount.value));
-const labels: Record<Capability, string> = { story: "文本生成", image: "文生图", video: "图生视频", speech: "语音合成" };
+const labels: Record<Capability, string> = { story: "文本生成", image: "图片生成", video: "图生视频", speech: "语音合成" };
 
 function toggleFilter(value: Capability | "all") {
   filter.value = filter.value === value ? "all" : value;
@@ -50,6 +51,20 @@ function showError(error: unknown) {
 function blankConnection(): ProviderConnection {
   return { id: crypto.randomUUID(), name: "", vendor: "bailian", region: "", workspace_id: "", base_url: "", credential_set: false };
 }
+function defaultDiscovery(): NonNullable<ProviderConnection["discovery"]> {
+  return {
+    method: "GET",
+    path: "/v1/models",
+    model_list_pointer: "/data",
+    model_id_pointer: "/id",
+    pagination: { mode: "none" },
+  };
+}
+function ensureDiscovery() {
+  if (draft.value.vendor === "custom" && !draft.value.discovery) draft.value.discovery = defaultDiscovery();
+  if (draft.value.vendor === "custom") { draft.value.auth ||= { mode: "bearer" }; if (draft.value.discovery) draft.value.discovery.pagination ||= { mode: "none" }; }
+  else { draft.value.discovery = undefined; draft.value.auth = undefined; }
+}
 async function loadConnections(select?: string) {
   connections.value = (await api.connections()).connections;
   selectConnection(select || selectedID.value || connections.value[0]?.id || "");
@@ -58,7 +73,8 @@ function selectConnection(id: string) {
   selectedID.value = id;
   creating.value = false;
   settingsOpen.value = false;
-  draft.value = { ...(connections.value.find((item) => item.id === id) || blankConnection()) };
+  draft.value = JSON.parse(JSON.stringify(connections.value.find((item) => item.id === id) || blankConnection()));
+  ensureDiscovery();
   apiKey.value = "";
   addingModel.value = false;
   modelQuery.value = "";
@@ -92,6 +108,7 @@ async function saveConnection() {
   message.value = "";
   messageIsError.value = false;
   try {
+    ensureDiscovery();
     if (baseAddressError(draft.value.base_url)) throw new Error(baseAddressError(draft.value.base_url));
     const saved = await api.saveConnection(draft.value, apiKey.value, creating.value);
     await loadConnections(saved.id);
@@ -203,8 +220,8 @@ onMounted(() => { void loadConnections().catch(showError).finally(() => { loadin
             <div class="actions">
               <button class="quiet" style="color:var(--danger)" :disabled="busy" @click="removeConnection">删除厂商</button>
               <button ref="settingsToggle" :aria-expanded="settingsOpen" aria-controls="connection-settings" @click="settingsOpen = !settingsOpen">连接设置</button>
-              <button :disabled="busy || !active.credential_set" @click="testConnection">测试连接</button>
-              <button :disabled="busy || !active.credential_set" @click="sync">同步模型</button>
+              <button :disabled="busy || (!active.credential_set && active.auth?.mode !== 'none')" @click="testConnection">测试连接</button>
+              <button :disabled="busy || (!active.credential_set && active.auth?.mode !== 'none')" @click="sync">同步模型</button>
               <button class="primary" :disabled="busy" @click="addingModel = !addingModel">手动添加</button>
             </div>
           </header>
@@ -218,7 +235,7 @@ onMounted(() => { void loadConnections().catch(showError).finally(() => { loadin
             <button class="primary" :disabled="busy" type="submit">添加</button>
           </form>
           <div class="catalog-filters" aria-label="模型类型">
-            <button v-for="item in ([['all', '全部'], ['story', '文本生成'], ['image', '文生图'], ['video', '图生视频'], ['speech', '语音合成']] as const)"
+            <button v-for="item in ([['all', '全部'], ['story', '文本生成'], ['image', '图片生成'], ['video', '图生视频'], ['speech', '语音合成']] as const)"
               :key="item[0]" :class="{ active: filter === item[0] }" :aria-pressed="filter === item[0]" @click="toggleFilter(item[0])">{{ item[1] }}</button>
           </div>
           <label class="catalog-model-search">查找模型<input v-model="modelQuery" type="search" placeholder="名称或模型 ID" @input="shownCount = 50" /></label>
@@ -250,11 +267,16 @@ onMounted(() => { void loadConnections().catch(showError).finally(() => { loadin
         <div class="catalog-settings-heading"><h2>{{ creating ? '添加连接' : '连接设置' }}</h2><button v-if="!creating" class="quiet" aria-label="收起连接设置" @click="closeSettings">收起</button></div>
         <form @submit.prevent="saveConnection">
           <label>名称<input v-model="draft.name" required placeholder="例如 百炼 · 北京" /></label>
-          <label>厂商<select v-model="draft.vendor" :disabled="!creating"><option value="bailian">阿里云百炼</option><option value="custom">其他兼容服务商</option></select></label>
+          <label>厂商<select aria-label="厂商" v-model="draft.vendor" :disabled="!creating" @change="ensureDiscovery"><option value="bailian">阿里云百炼</option><option value="custom">自定义厂商</option></select></label>
           <label>基础 URL<input :key="draft.id" v-model.trim="draft.base_url" required type="url" placeholder="https://example.com" @input="validateAddress" /></label>
           <p v-if="draft.base_url && baseAddressError(draft.base_url)" role="alert" class="error">{{ baseAddressError(draft.base_url) }}</p>
           <p class="muted">仅填写域名和可选端口，不包含 /v1 或 /chat/completions 等接口路径。生成接口路径在模型的「协议与参数」中配置。</p>
           <label>API Key<input v-model="apiKey" type="password" autocomplete="new-password" :placeholder="draft.credential_set ? '已配置，留空表示不修改' : '输入 API Key'" /></label>
+          <template v-if="draft.vendor === 'custom' && draft.auth">
+            <label>认证方式<select aria-label="认证方式" v-model="draft.auth.mode"><option value="bearer">Bearer Token</option><option value="header">自定义认证请求头</option><option value="none">无需认证</option></select></label>
+            <template v-if="draft.auth.mode === 'header'"><label>认证头名称<input v-model.trim="draft.auth.header" required placeholder="X-API-Key" /></label><label>认证值前缀<input v-model="draft.auth.prefix" placeholder="可留空" /></label></template>
+          </template>
+          <DiscoveryProfileSettings v-if="draft.vendor === 'custom' && draft.discovery" v-model="draft.discovery" :base-url="draft.base_url" :disabled="busy" />
           <div class="catalog-settings-actions"><button class="primary" type="submit" :disabled="busy">保存连接</button><button v-if="creating" type="button" :disabled="busy" @click="selectConnection(connections[0]?.id || '')">取消</button></div>
         </form>
       </aside>

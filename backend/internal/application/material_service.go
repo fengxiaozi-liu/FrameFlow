@@ -236,6 +236,11 @@ func (s MaterialService) usageLocations(g *gin.Context, item material.Asset) ([]
 			return nil, err
 		}
 		for _, value := range tasks {
+			for _, ref := range value.Input.ReferenceImages {
+				if ref.MaterialID == item.ID {
+					uses = append(uses, "task/"+value.ID)
+				}
+			}
 			if value.Snapshot != nil {
 				for _, entity := range value.Snapshot.Entities {
 					for _, ref := range entity.References {

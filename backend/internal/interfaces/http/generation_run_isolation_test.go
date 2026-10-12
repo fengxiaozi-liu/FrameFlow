@@ -9,6 +9,7 @@ import (
 	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/provider"
 	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/story"
 	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/task"
+	"github.com/fengxiaozi-liu/FrameFlow/internal/infrastructure/queue"
 	"os"
 	"path/filepath"
 	"testing"
@@ -19,7 +20,10 @@ func TestRunSelectionIsolatedAndFrozen(t *testing.T) {
 	defer done()
 	ctx := context.Background()
 	s.TaskService.UploadDir = t.TempDir()
-	for _, m := range []provider.Model{{ID: "im", RemoteID: "qwen-image-2.0-pro", Enabled: true, Supported: true, Capabilities: []provider.Capability{provider.Image}}, {ID: "vid", RemoteID: "wan2.7-i2v", Enabled: true, Supported: true, Capabilities: []provider.Capability{provider.Video}}} {
+	// This test publishes fixture results itself. Keep submitted jobs in a
+	// separate queue so the background fake generator cannot overwrite them.
+	s.TaskService.Enqueuer = queue.NewWorker()
+	for _, m := range []provider.Model{{ID: "im", ConnectionID: "test-connection", RemoteID: "qwen-image-2.0-pro", Enabled: true, Supported: true, Capabilities: []provider.Capability{provider.Image}}, {ID: "vid", ConnectionID: "test-connection", RemoteID: "wan2.7-i2v", Enabled: true, Supported: true, Capabilities: []provider.Capability{provider.Video}}} {
 		if e := s.Providers.Catalog.Models.SaveModel(ctx, m); e != nil {
 			t.Fatal(e)
 		}
@@ -135,7 +139,7 @@ func TestShotSettingsAndLocalReferencesPersist(t *testing.T) {
 	s, done := testServer(t)
 	defer done()
 	ctx := context.Background()
-	for _, m := range []provider.Model{{ID: "im", RemoteID: "qwen-image-2.0-pro", Enabled: true, Supported: true, Capabilities: []provider.Capability{provider.Image}}, {ID: "vid", RemoteID: "wan2.7-i2v", Enabled: true, Supported: true, Capabilities: []provider.Capability{provider.Video}}} {
+	for _, m := range []provider.Model{{ID: "im", ConnectionID: "test-connection", RemoteID: "qwen-image-2.0-pro", Enabled: true, Supported: true, Capabilities: []provider.Capability{provider.Image}}, {ID: "vid", ConnectionID: "test-connection", RemoteID: "wan2.7-i2v", Enabled: true, Supported: true, Capabilities: []provider.Capability{provider.Video}}} {
 		if err := s.Providers.Catalog.Models.SaveModel(ctx, m); err != nil {
 			t.Fatal(err)
 		}

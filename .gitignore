@@ -15,4 +15,5 @@ playwright-report/
 test-results/
 release/
 .env
-specs/
+specs/*
+*.log

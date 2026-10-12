@@ -9,16 +9,21 @@ import (
 )
 
 type Connection struct {
-	ID            string `json:"id"`
-	Name          string `json:"name"`
-	Vendor        string `json:"vendor"`
-	Region        string `json:"region"`
-	WorkspaceID   string `json:"workspace_id,omitempty"`
-	BaseURL       string `json:"base_url"`
-	CredentialSet bool   `json:"credential_set"`
+	Auth          *ConnectionAuth   `json:"auth,omitempty"`
+	Revision      int64             `json:"revision,omitempty"`
+	SchemaVersion int               `json:"schema_version,omitempty"`
+	ID            string            `json:"id"`
+	Name          string            `json:"name"`
+	Vendor        string            `json:"vendor"`
+	Region        string            `json:"region"`
+	WorkspaceID   string            `json:"workspace_id,omitempty"`
+	BaseURL       string            `json:"base_url"`
+	CredentialSet bool              `json:"credential_set"`
+	Discovery     *DiscoveryProfile `json:"discovery,omitempty"`
 }
 
 type Model struct {
+	NameConfigured         bool                            `json:"name_configured,omitempty"`
 	CapabilitiesConfigured bool                            `json:"capabilities_configured,omitempty"`
 	Availability           map[Capability]OperationStatus  `json:"availability,omitempty"`
 	Revision               int64                           `json:"revision"`
@@ -42,6 +47,9 @@ func ModelID(connectionID, remoteID string) string {
 }
 
 func (c Connection) Validate() error {
+	if err := c.Authentication().Validate(); err != nil {
+		return err
+	}
 	if strings.TrimSpace(c.ID) == "" || strings.TrimSpace(c.Name) == "" || c.Vendor == "" {
 		return errors.New("connection id, name and vendor are required")
 	}
@@ -56,6 +64,11 @@ func (c Connection) Validate() error {
 		u, err := url.Parse(strings.TrimSpace(c.BaseURL))
 		if err != nil || u.Scheme != "https" || u.Hostname() == "" || u.Opaque != "" || u.User != nil || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" || (u.EscapedPath() != "" && u.EscapedPath() != "/") || strings.ContainsAny(c.BaseURL, "\\#") {
 			return errors.New("base_url must be an HTTPS origin without path, credentials, query or fragment")
+		}
+	}
+	if c.Vendor == "custom" && c.Discovery != nil {
+		if err := c.Discovery.Validate(); err != nil {
+			return err
 		}
 	}
 	return nil

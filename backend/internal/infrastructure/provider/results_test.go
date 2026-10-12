@@ -55,3 +55,20 @@ func TestVideoResultMustBeValidMP4BeforePersistence(t *testing.T) {
 		t.Fatal(saved, err)
 	}
 }
+
+func TestCustomVendorPublicCDNResults(t *testing.T) {
+	store := ResultStore{Directory: t.TempDir(), HTTP: &http.Client{Transport: resultTransport(func(req *http.Request) (*http.Response, error) {
+		if req.URL.Host != "cdn.example.com" {
+			t.Fatal(req.URL)
+		}
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader("image")), Header: make(http.Header)}, nil
+	})}}
+	if _, err := store.Save(context.Background(), "custom", task.KindImage, "https://cdn.example.com/image.png"); err != nil {
+		t.Fatal(err)
+	}
+	for _, url := range []string{"https://127.0.0.1/x", "https://10.0.0.1/x", "https://localhost/x", "https://user:pass@cdn.example.com/x"} {
+		if _, err := store.Save(context.Background(), "bad", task.KindImage, url); err == nil {
+			t.Fatal("unsafe URL accepted", url)
+		}
+	}
+}

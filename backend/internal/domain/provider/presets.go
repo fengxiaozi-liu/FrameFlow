@@ -33,6 +33,9 @@ func MigrateLegacyModel(m Model) Model {
 			}
 			if id == "qwen-image-2.0-pro" {
 				b.MaxReferences = 3
+				b.ImageModes = []string{TextToImage, ImageToImage}
+				b.MinReferences = 1
+				b.MaxImageBytes = 10 << 20
 			}
 		case Video:
 			v, ok := legacyVideoPreset(id)

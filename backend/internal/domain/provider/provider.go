@@ -48,6 +48,7 @@ type RequestOptions struct {
 type StoryRequest struct{ Prompt, Model, SystemPrompt string }
 type StoryResult struct{ Document string }
 type ImageRequest struct {
+	Mode                       string
 	Prompt, Model, AspectRatio string
 	References                 []ImageReference
 }
@@ -60,6 +61,8 @@ type VideoRequest struct {
 	Duration                                   int
 }
 type VideoResult struct{ JobReference, URL string }
+
+var ErrRemoteAcceptanceUnknown = errors.New("远端可能已受理请求，请在服务商确认后处理；禁止直接重试生成")
 
 // WithTimeout 是所有 provider 共用的取消和超时处理方式。
 func WithTimeout(parent context.Context, options RequestOptions) (context.Context, context.CancelFunc) {

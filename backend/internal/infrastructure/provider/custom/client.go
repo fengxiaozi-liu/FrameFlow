@@ -1,4 +1,4 @@
-package customjson
+package custom
 
 import (
 	"context"
@@ -22,7 +22,19 @@ func (c Client) submit(ctx context.Context, connection domain.Connection, model 
 	if err != nil {
 		return nil, err
 	}
-	return c.request(ctx, connection, *config, http.MethodPost, config.Path, body)
+	result, err := c.request(ctx, connection, *config, http.MethodPost, config.Path, body)
+	if err != nil {
+		return nil, err
+	}
+	if contract := model.Operations[op].Contract; contract != nil {
+		if err := contract.Response.ValidateMappings(result); err != nil {
+			if config.Mode == "async" {
+				return nil, errors.Join(domain.ErrRemoteAcceptanceUnknown, err)
+			}
+			return nil, err
+		}
+	}
+	return result, nil
 }
 
 func (c Client) GenerateText(ctx context.Context, connection domain.Connection, model domain.Model, input domain.StoryRequest, options domain.RequestOptions) (domain.StoryResult, error) {
@@ -58,6 +70,9 @@ func (c Client) GenerateImage(ctx context.Context, connection domain.Connection,
 		return domain.ImageResult{}, err
 	}
 	b := model.Operations[domain.Image]
+	if err := b.ValidateImageInput(input.Mode, len(input.References)); err != nil {
+		return domain.ImageResult{}, err
+	}
 	if !slices.Contains(b.Ratios, input.AspectRatio) {
 		return domain.ImageResult{}, errors.New("图片比例不受支持")
 	}
@@ -162,6 +177,9 @@ func (c Client) GenerateVideo(ctx context.Context, connection domain.Connection,
 		if err == nil {
 			err = validateTaskID(id)
 		}
+		if err != nil {
+			err = errors.Join(domain.ErrRemoteAcceptanceUnknown, err)
+		}
 		return domain.VideoResult{JobReference: id}, err
 	}
 	value, err := extract(result, b.Custom.ResultPointer)
@@ -205,6 +223,11 @@ func (c Client) PollVideo(ctx context.Context, connection domain.Connection, mod
 	}
 	if !slices.Contains(p.Succeeded, state) {
 		return domain.VideoResult{}, false, errors.New("远端任务状态未配置映射，请检查状态字段与状态值")
+	}
+	if contract := model.Operations[domain.Video].Contract; contract != nil && contract.PollingResponse != nil {
+		if err := contract.PollingResponse.ValidateMappings(result); err != nil {
+			return domain.VideoResult{}, false, err
+		}
 	}
 	value, err := extract(result, config.ResultPointer)
 	if err != nil {

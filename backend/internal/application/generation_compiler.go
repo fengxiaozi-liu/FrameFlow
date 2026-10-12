@@ -37,6 +37,7 @@ type GenerationRequest struct {
 }
 
 type GenerationCompiler struct {
+	Connections       provider.ConnectionRepository
 	Models            provider.ModelRepository
 	Materials         material.Repository
 	Directory         string
@@ -60,10 +61,21 @@ func (c GenerationCompiler) Compile(ctx context.Context, p project.Project, d pr
 		return s, errors.New("model input capability unavailable")
 	}
 	c.MaxReferenceBytes = provider.MaxLocalImageBytes
+	if in.Path == "reference_image_then_video" {
+		c.MaxReferenceBytes = m.Resolve(provider.Image).Binding.MaxImageBytes
+	}
 	if in.Path == "reference_video" || in.Path == "first_frame_video" {
 		c.MaxReferenceBytes = m.Operations[provider.Video].MaxImageBytes
 	}
 	s.ModelConfig = &m
+	if c.Connections != nil {
+		connection, err := c.Connections.GetConnection(ctx, m.ConnectionID)
+		if err != nil {
+			return s, err
+		}
+		connection = connection.GenerationSnapshot()
+		s.ConnectionConfig = &connection
+	}
 	s.CapabilityVersion = cap.Version
 	s.DependencyHash = dependencyHash(p.EntityCatalog, scene, in.Path, in.UtteranceID)
 	resolved, err := ResolveBindings(p.EntityCatalog, scene, in.Path == "speech")
@@ -128,7 +140,7 @@ func (c GenerationCompiler) Compile(ctx context.Context, p project.Project, d pr
 		if directVideo && (!m.Supports(provider.Video) || (!cap.ReferenceVideo && !cap.FirstFrame)) {
 			return s, errors.New("请选择支持参考图直接生成视频的模型")
 		}
-		if !directVideo && (!m.Supports(provider.Image) || m.Operations[provider.Image].MaxReferences == 0) {
+		if !directVideo && (!m.Supports(provider.Image) || !m.Operations[provider.Image].SupportsImageMode(provider.ImageToImage)) {
 			return s, errors.New("choose a verified multi-image model")
 		}
 		operation := provider.Image
@@ -174,6 +186,11 @@ func (c GenerationCompiler) Compile(ctx context.Context, p project.Project, d pr
 		}
 		if (!directVideo || s.VideoInputMode == "reference_images") && count > m.Operations[operation].MaxReferences {
 			return s, fmt.Errorf("reference_image_limit: 已选 %d 张，模型最多支持 %d 张；请移除本镜头多余参考图后重试", count, m.Operations[operation].MaxReferences)
+		}
+		if !directVideo {
+			if err := m.Operations[provider.Image].ValidateImageInput("", count); err != nil {
+				return s, err
+			}
 		}
 		if directVideo {
 			if count == 0 {
@@ -353,7 +370,7 @@ func (s TaskService) compileShot(g *gin.Context, in GenerationRequest) (task.Gen
 	}
 	for _, scene := range d.Story.Scenes {
 		if scene.ID == g.Param("sceneId") {
-			return (GenerationCompiler{Models: s.Providers.Catalog.Models, Materials: s.Materials, Directory: s.UploadDir}).Compile(g.Request.Context(), p, *d, scene, in)
+			return (GenerationCompiler{Connections: s.Providers.Catalog.Connections, Models: s.Providers.Catalog.Models, Materials: s.Materials, Directory: s.UploadDir}).Compile(g.Request.Context(), p, *d, scene, in)
 		}
 	}
 	return task.GenerationSnapshot{}, errors.New("scene not found")

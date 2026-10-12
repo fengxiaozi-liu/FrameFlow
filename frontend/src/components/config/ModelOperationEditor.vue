@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
+import ImageModeSettings from "./ImageModeSettings.vue";
 import ModelOptionTags from "./ModelOptionTags.vue";
 import DurationRangeInput from "./DurationRangeInput.vue";
 import CustomInterfaceSettings from "./CustomInterfaceSettings.vue";
+import OperationContractSettings from "./OperationContractSettings.vue";
 import ProtocolEndpointSettings from "./ProtocolEndpointSettings.vue";
 import EntityEditorDrawer from "../studio/EntityEditorDrawer.vue";
 import { modelConfigurationApi } from "../../api/modelConfiguration";
@@ -22,6 +24,12 @@ const capabilities = ref<Capability[]>([...props.model.capabilities]);
 const bindings = ref<Record<string, OperationBinding>>(
   JSON.parse(JSON.stringify(props.model.operations || {})),
 );
+if (bindings.value.image && !bindings.value.image.image_modes) {
+  const resolved = props.model.availability?.image?.binding;
+  bindings.value.image.image_modes = resolved?.image_modes || ["text_to_image"];
+  bindings.value.image.min_references = resolved?.min_references;
+  bindings.value.image.max_image_bytes = resolved?.max_image_bytes;
+}
 const protocols = ref<components["schemas"]["ProtocolDescriptor"][]>([]);
 const busy = ref(false),
   error = ref(""),
@@ -46,6 +54,9 @@ function chooseProtocol(event: Event) {
     ratios: [],
     image_sizes: {},
     voices: [],
+    ...(selected.value === "image"
+      ? { image_modes: ["text_to_image" as const] }
+      : {}),
   };
   if (protocol === "custom.json.v1") {
     const body =
@@ -62,9 +73,45 @@ function chooseProtocol(event: Event) {
     bindings.value[selected.value]!.custom = {
       path: "",
       body_template: JSON.stringify(body, null, 2),
-      auth_mode: "bearer",
+      auth_mode: "connection",
       mode: "sync",
       result_pointer: "",
+    };
+    const demo =
+      selected.value === "story"
+        ? { model: props.model.remote_id, prompt: "描述一个故事" }
+        : selected.value === "speech"
+          ? { model: props.model.remote_id, text: "你好", voice: "voice-id" }
+          : selected.value === "image"
+            ? {
+                model: props.model.remote_id,
+                prompt: "图片描述",
+                images: [],
+                ratio: "16:9",
+                size: "1024*1024",
+              }
+            : {
+                model: props.model.remote_id,
+                prompt: "镜头描述",
+                first_frame: "https://cdn.example.com/frame.png",
+                images: [],
+                duration: 5,
+                resolution: "720p",
+                ratio: "16:9",
+              };
+    const mappings: Record<string, string> = {};
+    for (const key of Object.keys(demo)) mappings[key] = `/${key}`;
+    bindings.value[selected.value]!.contract = {
+      version: 1,
+      execution: "sync_json",
+      request: { example: JSON.stringify(demo, null, 2), bindings: mappings },
+      response: {
+        example:
+          selected.value === "story"
+            ? '{"result":"示例文字"}'
+            : '{"url":"https://cdn.example.com/result.mp4"}',
+        bindings: { result: selected.value === "story" ? "/result" : "/url" },
+      },
     };
   }
 }
@@ -136,6 +183,8 @@ onMounted(async () => {
   <EntityEditorDrawer
     :title="`${model.name} · 协议与参数`"
     :busy="busy"
+    resizable
+    close-label="关闭协议与参数"
     @close="emit('close')"
   >
     <form class="model-operation-form" @submit.prevent="save">
@@ -187,8 +236,19 @@ onMounted(async () => {
         暂无可用协议，请重新加载或接入对应协议适配器。
       </p>
       <template v-if="current">
+        <OperationContractSettings
+          v-if="current.protocol === 'custom.json.v1' && current.contract"
+          v-model="bindings[selected]!"
+          :capability="selected as Capability"
+          :variables="
+            choices.find((p) => p.id === current.protocol)
+              ?.template_variables || []
+          "
+          :base-url="baseUrl"
+          :disabled="busy"
+        />
         <CustomInterfaceSettings
-          v-if="current.protocol === 'custom.json.v1' && current.custom"
+          v-else-if="current.protocol === 'custom.json.v1' && current.custom"
           v-model="current.custom"
           :capability="selected as Capability"
           :variables="
@@ -206,6 +266,11 @@ onMounted(async () => {
           :protocol="
             choices.find((protocol) => protocol.id === current.protocol)
           "
+          :disabled="busy"
+        />
+        <ImageModeSettings
+          v-if="selected === 'image'"
+          v-model="bindings[selected]!"
           :disabled="busy"
         />
         <fieldset
@@ -230,15 +295,6 @@ onMounted(async () => {
               :disabled="busy"
               placeholder="宽*高，例如 1664*928"
               @input="setSize(ratio, $event)"
-          /></label>
-          <label
-            >最多参考图片数<input
-              v-model.number="current.max_references"
-              type="number"
-              min="0"
-              max="100"
-              placeholder="纯文生图填 0"
-              :disabled="busy"
           /></label>
         </template>
         <template v-if="selected === 'video'">
@@ -406,12 +462,14 @@ onMounted(async () => {
   display: grid;
   gap: 16px;
   padding: 20px 24px;
+  min-width: 0;
 }
 .model-operation-form label {
   display: grid;
   gap: 6px;
 }
 .model-operation-form fieldset {
+  min-width: 0;
   padding: 12px;
   border: 1px solid var(--border, #dbe3ee);
   border-radius: 8px;
@@ -424,6 +482,14 @@ onMounted(async () => {
 .operation-ratios {
   display: flex;
   gap: 20px;
+}
+@container (max-width: 540px) {
+  .operation-grid {
+    grid-template-columns: 1fr;
+  }
+  .model-operation-form {
+    padding: 16px;
+  }
 }
 .operation-ratios label,
 .model-operation-form .operation-check {

@@ -15,10 +15,10 @@ func TestRunPersistsAndDoesNotDuplicateChildren(t *testing.T) {
 	s, done := testServer(t)
 	defer done()
 	ctx := context.Background()
-	if err := s.Providers.Catalog.Models.SaveModel(ctx, provider.Model{ID: "vid", RemoteID: "wan2.7-i2v", Enabled: true, Supported: true, Capabilities: []provider.Capability{provider.Video}}); err != nil {
+	if err := s.Providers.Catalog.Models.SaveModel(ctx, provider.Model{ID: "vid", ConnectionID: "test-connection", RemoteID: "wan2.7-i2v", Enabled: true, Supported: true, Capabilities: []provider.Capability{provider.Video}}); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.Providers.Catalog.Models.SaveModel(ctx, provider.Model{ID: "im", RemoteID: "qwen-image-2.0-pro", Enabled: true, Supported: true, Capabilities: []provider.Capability{provider.Image}}); err != nil {
+	if err := s.Providers.Catalog.Models.SaveModel(ctx, provider.Model{ID: "im", ConnectionID: "test-connection", RemoteID: "qwen-image-2.0-pro", Enabled: true, Supported: true, Capabilities: []provider.Capability{provider.Image}}); err != nil {
 		t.Fatal(err)
 	}
 	_, err := s.Projects.Repo.(project.AtomicRepository).Update(ctx, "test-project", func(p *project.Project) error {

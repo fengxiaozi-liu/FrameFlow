@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"net/url"
 	"slices"
 
 	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/provider"
@@ -79,51 +78,6 @@ func (c Client) Discover(ctx context.Context, connection provider.Connection, ke
 		if len(items) == before {
 			return nil, errors.New("模型目录分页未返回新条目，同步未完成，请重试")
 		}
-	}
-	return nil, errors.New("model list exceeds pagination limit")
-}
-
-// CompatibleDiscovery uses an explicitly selected OpenAI-compatible directory.
-// An ID-only response does not declare any generation capabilities.
-type CompatibleDiscovery struct{ HTTP *http.Client }
-
-func (d CompatibleDiscovery) Discover(ctx context.Context, connection provider.Connection, key string) ([]provider.DiscoveredModel, error) {
-	c := Client{HTTP: d.HTTP}
-	items := make([]provider.DiscoveredModel, 0)
-	seen := map[string]bool{}
-	cursors := map[string]bool{}
-	path := "/v1/models"
-	for page := 0; page < 100; page++ {
-		var response struct {
-			Data []struct {
-				ID string `json:"id"`
-			} `json:"data"`
-			HasMore bool   `json:"has_more"`
-			LastID  string `json:"last_id"`
-		}
-		if err := c.request(ctx, connection, key, http.MethodGet, path, nil, &response, false); err != nil {
-			return nil, err
-		}
-		if response.Data == nil {
-			return nil, errors.New("模型目录响应格式不符，预期 OpenAI 兼容 data 数组")
-		}
-		for _, model := range response.Data {
-			if model.ID == "" {
-				return nil, errors.New("模型目录条目缺少模型 ID")
-			}
-			if !seen[model.ID] {
-				seen[model.ID] = true
-				items = append(items, provider.DiscoveredModel{ID: model.ID, Name: model.ID})
-			}
-		}
-		if !response.HasMore {
-			return items, nil
-		}
-		if response.LastID == "" || cursors[response.LastID] {
-			return nil, errors.New("模型目录分页缺少有效游标，同步未完成")
-		}
-		cursors[response.LastID] = true
-		path = "/v1/models?after=" + url.QueryEscape(response.LastID)
 	}
 	return nil, errors.New("model list exceeds pagination limit")
 }

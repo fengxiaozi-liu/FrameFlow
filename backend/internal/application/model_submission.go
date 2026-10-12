@@ -8,7 +8,7 @@ import (
 	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/task"
 )
 
-func freezeTaskModel(ctx context.Context, models provider.ModelRepository, item *task.Task) error {
+func freezeTaskModel(ctx context.Context, models provider.ModelRepository, item *task.Task, connections ...provider.ConnectionRepository) error {
 	if item.Kind == task.KindComposition || item.ModelID == "" {
 		return nil
 	}
@@ -19,6 +19,10 @@ func freezeTaskModel(ctx context.Context, models provider.ModelRepository, item 
 	if err != nil {
 		return err
 	}
+	return freezeResolvedTaskModel(ctx, m, item, connections...)
+}
+
+func freezeResolvedTaskModel(ctx context.Context, m provider.Model, item *task.Task, connections ...provider.ConnectionRepository) error {
 	status := m.Resolve(provider.Capability(item.Kind))
 	if !status.Available {
 		return errors.New(status.Code + ": " + status.Reason)
@@ -27,5 +31,16 @@ func freezeTaskModel(ctx context.Context, models provider.ModelRepository, item 
 	if err != nil {
 		return err
 	}
-	return json.Unmarshal(data, &item.ModelConfig)
+	if err := json.Unmarshal(data, &item.ModelConfig); err != nil {
+		return err
+	}
+	if len(connections) > 0 && connections[0] != nil {
+		c, err := connections[0].GetConnection(ctx, m.ConnectionID)
+		if err != nil {
+			return err
+		}
+		c = c.GenerationSnapshot()
+		item.ConnectionConfig = &c
+	}
+	return nil
 }

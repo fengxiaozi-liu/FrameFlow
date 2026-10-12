@@ -55,6 +55,7 @@ func (s TaskService) createBindingTask(g *gin.Context, kind task.Kind) {
 	item.ProjectID, item.DraftID, item.SceneID = snap.ProjectID, snap.DraftID, snap.SceneID
 	item.ModelID = snap.ModelID
 	item.ModelConfig = snap.ModelConfig
+	item.ConnectionConfig = snap.ConnectionConfig
 	item.InputVersion = snap.DraftVersion
 	item.InputHash = snap.InputHash
 	item.Snapshot = &snap

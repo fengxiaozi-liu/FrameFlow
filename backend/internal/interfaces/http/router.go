@@ -24,6 +24,7 @@ func RegisterRoutes(
 	providers application.ProviderService,
 	materials application.MaterialService,
 	system application.SystemService,
+	catalogCommands CatalogCommands,
 ) {
 	system.RequestCount = requestCount.Load
 	engine.GET("/health", system.Health)
@@ -43,7 +44,7 @@ func RegisterRoutes(
 	taskRoutes.GET("/:id/download", tasks.Download)
 
 	projectRoutes := api.Group("/projects")
-	projectRoutes.POST("/:id/drafts/:draftId/reference-image-tasks", tasks.CreateReferenceImage)
+	projectRoutes.POST("/:id/drafts/:draftId/reference-image-tasks", createReferenceImage(tasks))
 	projectRoutes.GET("/:id/entities", projects.EntityCatalog)
 	projectRoutes.GET("/:id/entities/:entityId/uses", projects.EntityUsage)
 	projectRoutes.POST("/:id/entities", projects.WriteEntity)
@@ -98,14 +99,15 @@ func RegisterRoutes(
 	providerRoutes.DELETE("/:id", providers.Delete)
 	providerRoutes.POST("/:id/test", providers.TestConnection)
 	connectionRoutes := api.Group("/connections")
+	connectionSave := saveConnection(catalogCommands.Connections)
 	connectionRoutes.GET("", providers.Catalog.ListConnections)
-	connectionRoutes.POST("", providers.Catalog.SaveConnection)
-	connectionRoutes.PUT("/:id", providers.Catalog.SaveConnection)
+	connectionRoutes.POST("", connectionSave)
+	connectionRoutes.PUT("/:id", connectionSave)
 	connectionRoutes.DELETE("/:id", providers.Catalog.DeleteConnection)
 	connectionRoutes.POST("/:id/test", providers.Catalog.TestConnection)
 	connectionRoutes.GET("/:id/models", providers.Catalog.ListModels)
 	connectionRoutes.POST("/:id/models", providers.Catalog.AddModel)
-	connectionRoutes.POST("/:id/models/sync", providers.Catalog.SyncModels)
+	connectionRoutes.POST("/:id/models/sync", syncConnectionModels(providers.Catalog, catalogCommands.Discovery))
 	connectionRoutes.PATCH("/:id/models/:model", providers.Catalog.UpdateModel)
 	connectionRoutes.DELETE("/:id/models/:model", providers.Catalog.DeleteModel)
 	api.GET("/models/:model/input-capability", providers.Catalog.InputCapability)

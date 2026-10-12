@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { pasteContractJSON } from "./json-contract-helpers";
 import { randomUUID } from "node:crypto";
 
 test("manual unknown video model uses explicit protocol and parameter choices", async ({
@@ -95,8 +96,12 @@ test("manual unknown video model uses explicit protocol and parameter choices", 
     .filter({ hasText: "自定义视频" })
     .getByRole("button", { name: "协议与参数" })
     .click();
-  await expect(durations.getByLabel("最短时长（秒）", { exact: true })).toHaveValue("4");
-  await expect(durations.getByLabel("最长时长（秒）", { exact: true })).toHaveValue("8");
+  await expect(
+    durations.getByLabel("最短时长（秒）", { exact: true }),
+  ).toHaveValue("4");
+  await expect(
+    durations.getByLabel("最长时长（秒）", { exact: true }),
+  ).toHaveValue("8");
   await expect(resolutions.getByRole("listitem").locator("span")).toHaveText([
     "720P",
     "1080P",
@@ -220,7 +225,9 @@ test("model without declared capabilities can be configured directly in the draw
   await protocol.selectOption("dashscope.image.v1");
   await drawer.getByLabel("1:1", { exact: true }).check();
   await drawer.getByLabel("1:1 输出尺寸", { exact: true }).fill("1024*1024");
-  await drawer.getByLabel("最多参考图片数", { exact: true }).fill("0");
+  await expect(drawer.getByLabel("文生图", { exact: true })).toBeChecked();
+  await expect(drawer.getByLabel("图生图", { exact: true })).not.toBeChecked();
+  await expect(drawer.getByLabel("最多参考图片数", { exact: true })).toHaveCount(0);
   await page.screenshot({
     path: testInfo.outputPath("unclassified-model-desktop.png"),
     fullPage: true,
@@ -238,7 +245,7 @@ test("model without declared capabilities can be configured directly in the draw
   await drawer.getByRole("button", { name: "保存配置", exact: true }).click();
   await expect(drawer).toHaveCount(0);
   await page.setViewportSize({ width: 1440, height: 1000 });
-  await expect(row.getByLabel("文生图", { exact: true })).toBeChecked();
+  await expect(row.getByLabel("图片生成", { exact: true })).toBeChecked();
   await expect(row.getByLabel("文本生成", { exact: true })).not.toBeChecked();
   await expect(row.getByLabel("启用", { exact: true })).not.toBeChecked();
   await row.getByLabel("启用", { exact: true }).check();
@@ -279,9 +286,7 @@ test("custom interface replaces path-only editing and persists its format", asyn
   await expect(drawer.getByLabel("实际请求路径", { exact: true })).toHaveCount(
     0,
   );
-  await drawer
-    .getByLabel("生成请求路径", { exact: true })
-    .fill("/v1/custom/chat");
+  await drawer.getByLabel("请求路径", { exact: true }).fill("/v1/custom/chat");
   const template = JSON.stringify(
     {
       engine: "{{model}}",
@@ -292,12 +297,21 @@ test("custom interface replaces path-only editing and persists its format", asyn
     null,
     2,
   );
-  await drawer.getByLabel("JSON 请求模板", { exact: true }).fill(template);
+  await pasteContractJSON(drawer, "请求", template);
   await drawer
-    .getByLabel("结果字段路径", { exact: true })
-    .fill("/payload/text");
-  await drawer.getByLabel("认证方式", { exact: true }).selectOption("header");
-  await drawer.getByLabel("认证请求头名称", { exact: true }).fill("X-API-Key");
+    .getByLabel("请求 engine 绑定参数", { exact: true })
+    .selectOption("model");
+  await drawer
+    .getByLabel("请求 question 绑定参数", { exact: true })
+    .selectOption("prompt");
+  await drawer
+    .getByLabel("请求 context 绑定参数", { exact: true })
+    .selectOption("system_prompt");
+  await pasteContractJSON(drawer, "响应", '{"payload":{"text":"demo"}}');
+  await drawer
+    .getByLabel("响应 payload.text 绑定参数", { exact: true })
+    .selectOption("result");
+
   await page.screenshot({
     path: testInfo.outputPath("custom-interface-desktop.png"),
     fullPage: true,
@@ -320,21 +334,19 @@ test("custom interface replaces path-only editing and persists its format", asyn
   await expect(drawer.getByLabel("接口协议", { exact: true })).toHaveValue(
     "custom.json.v1",
   );
-  await expect(drawer.getByLabel("JSON 请求模板", { exact: true })).toHaveValue(
-    template,
-  );
-  await expect(drawer.getByLabel("生成请求路径", { exact: true })).toHaveValue(
+  await expect(
+    drawer.getByLabel("请求 JSON 示例", { exact: true }),
+  ).toHaveValue(template);
+  await expect(drawer.getByLabel("请求路径", { exact: true })).toHaveValue(
     "/v1/custom/chat",
   );
-  await expect(
-    drawer.getByLabel("认证请求头名称", { exact: true }),
-  ).toHaveValue("X-API-Key");
+
   await drawer
     .getByLabel("接口协议", { exact: true })
     .selectOption("openai.chat.v1");
-  await expect(drawer.getByLabel("JSON 请求模板", { exact: true })).toHaveCount(
-    0,
-  );
+  await expect(
+    drawer.getByLabel("请求 JSON 示例", { exact: true }),
+  ).toHaveCount(0);
   await drawer.getByRole("button", { name: "保存配置", exact: true }).click();
   await expect(drawer).toHaveCount(0);
   const result = await (await request.get("/api/models")).json();
@@ -427,25 +439,53 @@ test("custom async video fields persist and duplicate terminal states are reject
   await drawer
     .getByLabel("接口协议", { exact: true })
     .selectOption("custom.json.v1");
-  await drawer.getByLabel("生成请求路径", { exact: true }).fill("/renders");
+  await drawer.getByLabel("请求路径", { exact: true }).fill("/renders");
+  await expect(
+    drawer.getByLabel("请求 images 绑定参数", { exact: true }),
+  ).toHaveValue("images");
+  await expect(
+    drawer
+      .getByLabel("请求 images 绑定参数", { exact: true })
+      .locator("option:checked"),
+  ).toHaveText("智能参考图片（多图）");
+
   await drawer
-    .getByLabel("结果字段路径", { exact: true })
-    .fill("/result/video");
-  await drawer.getByLabel("返回方式", { exact: true }).selectOption("async");
+    .getByLabel("执行方式", { exact: true })
+    .selectOption("async_polling");
+  await pasteContractJSON(
+    drawer,
+    "请求",
+    '{"model":"demo","prompt":"demo","images":["https://cdn.example.com/image.png"]}',
+  );
   await drawer
-    .getByLabel("提交响应的任务 ID 字段", { exact: true })
-    .fill("/job/id");
+    .getByLabel("请求 model 绑定参数", { exact: true })
+    .selectOption("model");
   await drawer
-    .getByLabel("查询请求路径 · GET", { exact: true })
+    .getByLabel("请求 prompt 绑定参数", { exact: true })
+    .selectOption("prompt");
+  await drawer
+    .getByLabel("请求 images 绑定参数", { exact: true })
+    .selectOption("images");
+  await expect(
+    drawer.getByLabel("请求 images.0 绑定参数", { exact: true }),
+  ).toBeDisabled();
+  await pasteContractJSON(drawer, "受理响应", '{"job":{"id":"demo"}}');
+  await drawer
+    .getByLabel("受理响应 job.id 绑定参数", { exact: true })
+    .selectOption("task_id");
+  await pasteContractJSON(
+    drawer,
+    "查询响应",
+    '{"status":"done","result":{"video":"https://cdn.example.com/video.mp4"}}',
+  );
+  await drawer
+    .getByLabel("查询响应 result.video 绑定参数", { exact: true })
+    .selectOption("result");
+  await drawer
+    .getByLabel("查询路径", { exact: true })
     .fill("/renders/{task_id}");
-  await drawer
-    .getByLabel("查询响应的状态字段", { exact: true })
-    .fill("/status");
-  for (const [label, value] of [
-    ["等待或进行中状态", "running"],
-    ["成功状态", "done"],
-    ["失败或取消状态", "done"],
-  ]) {
+
+  for (const [label, value] of [["失败状态值", "succeeded"]]) {
     const input = drawer.getByLabel(`添加${label}`, { exact: true });
     await input.fill(value!);
     await input.press("Enter");
@@ -462,23 +502,25 @@ test("custom async video fields persist and duplicate terminal states are reject
     "状态值不能为空或在多个分组重复",
   );
   const failed = drawer.getByRole("group", {
-    name: "失败或取消状态",
+    name: "失败状态值",
     exact: true,
   });
-  await failed.getByRole("button", { name: "移除done", exact: true }).click();
-  await failed.getByLabel("添加失败或取消状态", { exact: true }).fill("failed");
-  await failed.getByLabel("添加失败或取消状态", { exact: true }).press("Enter");
+  await failed
+    .getByRole("button", { name: "移除succeeded", exact: true })
+    .click();
+  await failed.getByLabel("添加失败状态值", { exact: true }).fill("failed");
+  await failed.getByLabel("添加失败状态值", { exact: true }).press("Enter");
   await drawer.getByRole("button", { name: "保存配置", exact: true }).click();
   await expect(drawer).toHaveCount(0);
   await row.getByRole("button", { name: "协议与参数" }).click();
-  await expect(drawer.getByLabel("返回方式", { exact: true })).toHaveValue(
-    "async",
+  await expect(drawer.getByLabel("执行方式", { exact: true })).toHaveValue(
+    "async_polling",
   );
-  await expect(
-    drawer.getByLabel("查询请求路径 · GET", { exact: true }),
-  ).toHaveValue("/renders/{task_id}");
+  await expect(drawer.getByLabel("查询路径", { exact: true })).toHaveValue(
+    "/renders/{task_id}",
+  );
   await drawer
-    .getByLabel("查询响应的状态字段", { exact: true })
+    .getByLabel("查询响应 status 绑定参数", { exact: true })
     .scrollIntoViewIfNeeded();
   await page.screenshot({
     path: testInfo.outputPath("custom-async-video.png"),

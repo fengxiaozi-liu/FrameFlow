@@ -14,7 +14,7 @@ func TestBindingGenerationIdempotencyAndSnapshot(t *testing.T) {
 	services, done := testServer(t)
 	defer done()
 	ctx := context.Background()
-	if err := services.Providers.Catalog.Models.SaveModel(ctx, provider.Model{ID: "image", RemoteID: "qwen-image-2.0-pro", Enabled: true, Supported: true, Capabilities: []provider.Capability{provider.Image}}); err != nil {
+	if err := services.Providers.Catalog.Models.SaveModel(ctx, provider.Model{ID: "image", ConnectionID: "test-connection", RemoteID: "qwen-image-2.0-pro", Enabled: true, Supported: true, Capabilities: []provider.Capability{provider.Image}}); err != nil {
 		t.Fatal(err)
 	}
 	_, err := services.Projects.Repo.(project.AtomicRepository).Update(ctx, "test-project", func(p *project.Project) error {

@@ -221,6 +221,8 @@ async function retry(item: Task) {
               取消任务</button
             ><button
               v-if="task.status === 'failed' || task.status === 'cancelled'"
+              :disabled="task.remote_acceptance_unknown"
+              :title="task.remote_acceptance_unknown ? '远端可能已受理，请先在服务商确认任务状态，避免重复生成' : undefined"
               @click="retry(task)"
             >
               重新执行</button
@@ -238,6 +240,7 @@ async function retry(item: Task) {
               >查看原始文件</a
             >
           </div>
+          <p v-if="task.remote_acceptance_unknown" class="task-unavailable">远端受理状态未知，请先在服务商确认任务状态，避免重复生成。</p>
         </article>
       </section>
       <div v-if="!visible.length" class="empty">当前筛选下没有任务。</div>

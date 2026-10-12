@@ -278,7 +278,23 @@ func TestTaskEventsUpgradeThroughMiddleware(t *testing.T) {
 	}
 	defer conn.Close()
 	_ = conn.SetReadDeadline(time.Now().Add(2 * time.Second))
-	ws.Connections.Broadcast(context.Background(), task.Event{TaskID: item.ID, Status: task.StatusRunning})
+	// Upgrade can reach the client before the server registers its subscription.
+	// Retry this synthetic event until the read completes; production task state
+	// is separately recovered through HTTP and is not changed by this fixture.
+	finished := make(chan struct{})
+	defer close(finished)
+	go func() {
+		ticker := time.NewTicker(10 * time.Millisecond)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-finished:
+				return
+			case <-ticker.C:
+				ws.Connections.Broadcast(context.Background(), task.Event{TaskID: item.ID, Status: task.StatusRunning})
+			}
+		}
+	}()
 	var event map[string]any
 	if err = conn.ReadJSON(&event); err != nil {
 		t.Fatal(err)
@@ -369,7 +385,13 @@ func testRouter(s testServices) *gin.Engine {
 	UseMiddleware(engine, s.AuthToken, s.RateLimit)
 	s.Providers.Vault = s.Vault
 	s.Materials.UploadDir = s.UploadDir
-	RegisterRoutes(engine, s.TaskService, s.Projects, s.Providers, s.Materials, application.SystemService{Tasks: s.TaskService, Projects: s.Projects, Providers: s.Providers, Materials: s.Materials, Shutdown: s.Shutdown, QueueDepth: s.Worker.Depth})
+	writer, _ := s.Providers.Catalog.Models.(application.ModelIdentityWriter)
+	reader, _ := s.Providers.Catalog.Vault.(provider.CredentialReader)
+	commands := CatalogCommands{
+		Connections: &application.ConnectionConfiguration{Repository: s.Providers.Catalog.Connections, Vault: s.Providers.Catalog.Vault},
+		Discovery:   application.ModelDiscovery{Connections: s.Providers.Catalog.Connections, Writer: writer, Discovery: s.Providers.Catalog.Discovery, Credentials: reader},
+	}
+	RegisterRoutes(engine, s.TaskService, s.Projects, s.Providers, s.Materials, application.SystemService{Tasks: s.TaskService, Projects: s.Projects, Providers: s.Providers, Materials: s.Materials, Shutdown: s.Shutdown, QueueDepth: s.Worker.Depth}, commands)
 	engine.GET("/ws", ws.Handler)
 	return engine
 }

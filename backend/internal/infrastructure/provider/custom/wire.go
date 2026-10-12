@@ -1,4 +1,4 @@
-package customjson
+package custom
 
 import (
 	"bytes"
@@ -90,6 +90,13 @@ func extract(value any, pointer string) (string, error) {
 }
 
 func (c Client) request(ctx context.Context, connection domain.Connection, config domain.CustomInterface, method, path string, body any) (any, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if config.AuthMode == "connection" {
+		auth := connection.Authentication()
+		config.AuthMode, config.AuthHeader, config.AuthPrefix = auth.Mode, auth.Header, auth.Prefix
+	}
 	target, err := connection.RequestURL(path)
 	if err != nil {
 		return nil, err
@@ -130,25 +137,38 @@ func (c Client) request(ctx context.Context, connection domain.Connection, confi
 	httpClient.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 	response, err := httpClient.Do(req)
 	if err != nil {
+		if method == http.MethodPost {
+			return nil, errors.Join(domain.ErrRemoteAcceptanceUnknown, ctx.Err())
+		}
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
 		}
 		return nil, errors.New("自定义接口请求失败，请检查连接地址和网络；未自动重试")
 	}
 	defer response.Body.Close()
+	decodeFailure := func(message string) error {
+		err := errors.New(message)
+		if method == http.MethodPost && config.Mode == "async" {
+			return errors.Join(domain.ErrRemoteAcceptanceUnknown, err)
+		}
+		return err
+	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		return nil, fmt.Errorf("自定义接口返回 HTTP %d；未自动重试", response.StatusCode)
 	}
+	if method == http.MethodPost && (config.StreamMode == domain.SSEStream || config.StreamMode == domain.NDJSONStream) {
+		return decodeStream(response.Body, config)
+	}
 	raw, err := io.ReadAll(io.LimitReader(response.Body, (4<<20)+1))
 	if err != nil {
-		return nil, errors.New("读取接口响应失败")
+		return nil, decodeFailure("读取接口响应失败")
 	}
 	if len(raw) > 4<<20 {
-		return nil, errors.New("接口响应超过 4 MB")
+		return nil, decodeFailure("接口响应超过 4 MB")
 	}
 	var result any
 	if json.Unmarshal(raw, &result) != nil {
-		return nil, errors.New("接口响应不是有效 JSON")
+		return nil, decodeFailure("接口响应不是有效 JSON")
 	}
 	return result, nil
 }

@@ -18,10 +18,11 @@ import (
 )
 
 type TaskService struct {
-	Store       task.Repository
-	UploadDir   string
-	Connections *websocket.Hub
-	Enqueuer    interface {
+	ImageReferences ImageReferenceReader
+	Store           task.Repository
+	UploadDir       string
+	Connections     *websocket.Hub
+	Enqueuer        interface {
 		Enqueue(context.Context, task.Task) error
 	}
 	Providers ProviderService
@@ -55,6 +56,10 @@ func (s TaskService) Create(g *gin.Context) {
 		return
 	}
 	input := inputRequest.Input
+	if len(input.ReferenceImages) > 0 || (kind == string(task.KindImage) && input.Mode == provider.ImageToImage) {
+		writeError(g, Invalid("invalid_task", errors.New("图生图请使用项目内参考图片生成接口，并提交素材 ID")))
+		return
+	}
 	if err := input.Validate(); err != nil {
 		writeError(g, Invalid("invalid_task", err))
 		return
@@ -96,6 +101,12 @@ func (s TaskService) Create(g *gin.Context) {
 			if !model.Supports(cap) {
 				writeError(g, Invalid("unsupported_model", provider.ErrUnsupported))
 				return
+			}
+			if cap == provider.Image {
+				if err := model.Operations[provider.Image].ValidateImageInput(input.Mode, 0); err != nil {
+					writeError(g, Invalid("invalid_image_mode", err))
+					return
+				}
 			}
 			if cap == provider.Video && input.SourceImageURL == "" {
 				writeError(g, Invalid("invalid_task", errors.New("image-to-video requires a source image")))
@@ -142,7 +153,7 @@ func (s TaskService) Create(g *gin.Context) {
 	}
 	t.ProviderCode = providerCode
 	t.ModelID = modelID
-	if err := freezeTaskModel(ctx, s.Providers.Catalog.Models, &t); err != nil {
+	if err := freezeTaskModel(ctx, s.Providers.Catalog.Models, &t, s.Providers.Catalog.Connections); err != nil {
 		writeError(g, Invalid("model_configuration", err))
 		return
 	}

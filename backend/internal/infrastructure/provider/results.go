@@ -10,7 +10,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/task"
 )
@@ -26,7 +25,7 @@ func (s ResultStore) Save(ctx context.Context, taskID string, kind task.Kind, re
 		u.Scheme = "https"
 		remoteURL = u.String()
 	}
-	if err != nil || u.Scheme != "https" || !strings.HasSuffix(strings.ToLower(u.Hostname()), ".aliyuncs.com") {
+	if err != nil || u.Scheme != "https" || u.User != nil || u.Fragment != "" || !validPublicMediaHost(u.Hostname()) {
 		return "", errors.New("unexpected model result host")
 	}
 	for _, c := range taskID {
@@ -59,8 +58,11 @@ func (s ResultStore) Save(ctx context.Context, taskID string, kind task.Kind, re
 	}
 	client := s.HTTP
 	if client == nil {
-		client = &http.Client{Timeout: 5 * time.Minute, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+		client = publicMediaClient()
 	}
+	copyClient := *client
+	copyClient.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	client = &copyClient
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, remoteURL, nil)
 	if err != nil {
 		return "", err

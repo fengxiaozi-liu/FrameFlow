@@ -23,26 +23,29 @@ const (
 // OperationBinding is a versioned, explicit wire contract and its model constraints.
 // RemoteID never participates in capability resolution.
 type OperationBinding struct {
-	Custom           *CustomInterface  `json:"custom,omitempty"`
-	Protocol         string            `json:"protocol"`
-	Source           string            `json:"source"`
-	EndpointMode     string            `json:"endpoint_mode,omitempty"`
-	Endpoint         string            `json:"endpoint,omitempty"`
-	InputModes       []string          `json:"input_modes,omitempty"`
-	InputMode        string            `json:"input_mode,omitempty"`
-	Ratios           []string          `json:"ratios,omitempty"`
-	Durations        []int             `json:"durations,omitempty"`
-	Resolutions      []string          `json:"resolutions,omitempty"`
-	ImageSizes       map[string]string `json:"image_sizes,omitempty"`
-	MaxReferences    int               `json:"max_references,omitempty"`
-	MaxImageBytes    int64             `json:"max_image_bytes,omitempty"`
-	Voices           []Voice           `json:"voices,omitempty"`
-	MaxTextLength    int               `json:"max_text_length,omitempty"`
-	LastFrame        bool              `json:"last_frame,omitempty"`
-	DrivingAudio     bool              `json:"driving_audio,omitempty"`
-	MaxAudioBytes    int64             `json:"max_audio_bytes,omitempty"`
-	MinAudioDuration int               `json:"min_audio_duration,omitempty"`
-	MaxAudioDuration int               `json:"max_audio_duration,omitempty"`
+	ImageModes       []string           `json:"image_modes,omitempty"`
+	MinReferences    int                `json:"min_references,omitempty"`
+	Contract         *OperationContract `json:"contract,omitempty"`
+	Custom           *CustomInterface   `json:"custom,omitempty"`
+	Protocol         string             `json:"protocol"`
+	Source           string             `json:"source"`
+	EndpointMode     string             `json:"endpoint_mode,omitempty"`
+	Endpoint         string             `json:"endpoint,omitempty"`
+	InputModes       []string           `json:"input_modes,omitempty"`
+	InputMode        string             `json:"input_mode,omitempty"`
+	Ratios           []string           `json:"ratios,omitempty"`
+	Durations        []int              `json:"durations,omitempty"`
+	Resolutions      []string           `json:"resolutions,omitempty"`
+	ImageSizes       map[string]string  `json:"image_sizes,omitempty"`
+	MaxReferences    int                `json:"max_references,omitempty"`
+	MaxImageBytes    int64              `json:"max_image_bytes,omitempty"`
+	Voices           []Voice            `json:"voices,omitempty"`
+	MaxTextLength    int                `json:"max_text_length,omitempty"`
+	LastFrame        bool               `json:"last_frame,omitempty"`
+	DrivingAudio     bool               `json:"driving_audio,omitempty"`
+	MaxAudioBytes    int64              `json:"max_audio_bytes,omitempty"`
+	MinAudioDuration int                `json:"min_audio_duration,omitempty"`
+	MaxAudioDuration int                `json:"max_audio_duration,omitempty"`
 }
 
 type OperationStatus struct {
@@ -53,12 +56,14 @@ type OperationStatus struct {
 }
 
 type ProtocolDescriptor struct {
-	TemplateVariables []string   `json:"template_variables,omitempty"`
-	ID                string     `json:"id"`
-	Operation         Capability `json:"operation"`
-	Name              string     `json:"name"`
-	DefaultPath       string     `json:"default_path"`
-	PollingPath       string     `json:"polling_path,omitempty"`
+	Version           int             `json:"version,omitempty"`
+	ExecutionModes    []ExecutionMode `json:"execution_modes,omitempty"`
+	TemplateVariables []string        `json:"template_variables,omitempty"`
+	ID                string          `json:"id"`
+	Operation         Capability      `json:"operation"`
+	Name              string          `json:"name"`
+	DefaultPath       string          `json:"default_path"`
+	PollingPath       string          `json:"polling_path,omitempty"`
 }
 
 // Descriptors describe implemented formats, not provider model families.
@@ -70,7 +75,11 @@ func Protocols() []ProtocolDescriptor {
 		{ID: SpeechProtocol, Operation: Speech, Name: "DashScope 语音合成", DefaultPath: "/api/v1/services/aigc/multimodal-generation/generation"},
 	}
 	for _, op := range []Capability{Story, Image, Video, Speech} {
-		items = append(items, ProtocolDescriptor{ID: CustomProtocol, Operation: op, Name: "自定义接口（JSON）", TemplateVariables: CustomVariables(op)})
+		modes := []ExecutionMode{SyncJSON, SSEStream, NDJSONStream}
+		if op == Video {
+			modes = append(modes, AsyncPolling)
+		}
+		items = append(items, ProtocolDescriptor{ID: CustomProtocol, Version: 1, Operation: op, Name: "自定义接口（JSON）", TemplateVariables: CustomVariables(op), ExecutionModes: modes})
 	}
 	return items
 }
@@ -113,7 +122,7 @@ func (b OperationBinding) Validate(operation Capability) error {
 			return err
 		}
 		variables, _ := b.Custom.Variables()
-		if operation == Image && b.MaxReferences > 0 && !variables["images"] {
+		if operation == Image && b.SupportsImageMode(ImageToImage) && !variables["images"] {
 			return errors.New("参考图能力需要在请求模板映射 {{images}}")
 		}
 		if operation == Video {
@@ -160,6 +169,9 @@ func (b OperationBinding) Validate(operation Capability) error {
 	}
 	switch operation {
 	case Image:
+		if err := b.validateImageModes(); err != nil {
+			return err
+		}
 		for _, r := range b.Ratios {
 			var w, h int
 			if _, e := fmt.Sscanf(b.ImageSizes[r], "%d*%d", &w, &h); e != nil || w <= 0 || h <= 0 || w > 16384 || h > 16384 || b.ImageSizes[r] != fmt.Sprintf("%d*%d", w, h) {
@@ -219,6 +231,9 @@ func (b OperationBinding) Validate(operation Capability) error {
 
 func (m Model) Resolve(operation Capability) OperationStatus {
 	b, exists := m.Operations[operation]
+	if operation == Image && exists {
+		b = b.ResolvedImageBinding()
+	}
 	result := OperationStatus{Binding: b}
 	if !m.Enabled {
 		result.Code = "disabled"
@@ -391,7 +406,9 @@ func (m Model) Configure(expected int64, bindings map[Capability]OperationBindin
 	next.Availability = nil
 	next.Operations = map[Capability]OperationBinding{}
 	for op, b := range bindings {
-		if err := b.Validate(op); err != nil {
+		var err error
+		b, err = b.Compile(op)
+		if err != nil {
 			return m, fmt.Errorf("%s: %w", op, err)
 		}
 		b.Source = "manual"

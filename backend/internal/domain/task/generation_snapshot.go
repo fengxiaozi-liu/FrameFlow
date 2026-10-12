@@ -33,29 +33,30 @@ type SpeechInput struct {
 	Instructions   string `json:"instructions,omitempty"`
 }
 type GenerationSnapshot struct {
-	VideoInputMode       string            `json:"video_input_mode,omitempty"`
-	FirstFrameMaterialID string            `json:"first_frame_material_id,omitempty"`
-	LastFrameMaterialID  string            `json:"last_frame_material_id,omitempty"`
-	ModelConfig          *provider.Model   `json:"model_config,omitempty"`
-	DependencyHash       string            `json:"dependency_hash"`
-	ID                   string            `json:"id"`
-	SchemaVersion        int               `json:"schema_version"`
-	ProjectID            string            `json:"project_id"`
-	DraftID              string            `json:"draft_id"`
-	SceneID              string            `json:"scene_id"`
-	DraftVersion         int64             `json:"draft_version"`
-	Entities             []SnapshotEntity  `json:"entities"`
-	Utterances           []story.Utterance `json:"utterances"`
-	Speech               []SpeechInput     `json:"speech,omitempty"`
-	Prompt               string            `json:"prompt"`
-	ModelID              string            `json:"model_id"`
-	CapabilityVersion    string            `json:"capability_version"`
-	Path                 string            `json:"path"`
-	AspectRatio          string            `json:"aspect_ratio"`
-	Resolution           string            `json:"resolution"`
-	DurationSeconds      int               `json:"duration_seconds"`
-	InputHash            string            `json:"input_hash"`
-	CreatedAt            time.Time         `json:"created_at"`
+	ConnectionConfig     *provider.Connection `json:"connection_config,omitempty"`
+	VideoInputMode       string               `json:"video_input_mode,omitempty"`
+	FirstFrameMaterialID string               `json:"first_frame_material_id,omitempty"`
+	LastFrameMaterialID  string               `json:"last_frame_material_id,omitempty"`
+	ModelConfig          *provider.Model      `json:"model_config,omitempty"`
+	DependencyHash       string               `json:"dependency_hash"`
+	ID                   string               `json:"id"`
+	SchemaVersion        int                  `json:"schema_version"`
+	ProjectID            string               `json:"project_id"`
+	DraftID              string               `json:"draft_id"`
+	SceneID              string               `json:"scene_id"`
+	DraftVersion         int64                `json:"draft_version"`
+	Entities             []SnapshotEntity     `json:"entities"`
+	Utterances           []story.Utterance    `json:"utterances"`
+	Speech               []SpeechInput        `json:"speech,omitempty"`
+	Prompt               string               `json:"prompt"`
+	ModelID              string               `json:"model_id"`
+	CapabilityVersion    string               `json:"capability_version"`
+	Path                 string               `json:"path"`
+	AspectRatio          string               `json:"aspect_ratio"`
+	Resolution           string               `json:"resolution"`
+	DurationSeconds      int                  `json:"duration_seconds"`
+	InputHash            string               `json:"input_hash"`
+	CreatedAt            time.Time            `json:"created_at"`
 }
 
 func FreezeSnapshot(value GenerationSnapshot) (GenerationSnapshot, error) {
@@ -122,22 +123,23 @@ func FreezeSnapshot(value GenerationSnapshot) (GenerationSnapshot, error) {
 }
 
 type GenerationRun struct {
-	VideoModelConfig *provider.Model      `json:"video_model_config,omitempty"`
-	CreatedAt        *time.Time           `json:"created_at,omitempty"`
-	UpdatedAt        *time.Time           `json:"updated_at,omitempty"`
-	Selection        *RunSelection        `json:"selection,omitempty"`
-	Steps            []Task               `json:"steps,omitempty"`
-	RequestHash      string               `json:"request_hash,omitempty"`
-	VideoModelID     string               `json:"video_model_id,omitempty"`
-	Resolution       string               `json:"resolution,omitempty"`
-	DurationSeconds  int                  `json:"duration_seconds,omitempty"`
-	Plan             []GenerationSnapshot `json:"plan,omitempty"`
-	ID               string               `json:"id"`
-	SceneID          string               `json:"scene_id"`
-	State            string               `json:"state"`
-	TaskIDs          []string             `json:"task_ids"`
-	SnapshotID       string               `json:"snapshot_id"`
-	Error            string               `json:"error,omitempty"`
+	VideoConnectionConfig *provider.Connection `json:"video_connection_config,omitempty"`
+	VideoModelConfig      *provider.Model      `json:"video_model_config,omitempty"`
+	CreatedAt             *time.Time           `json:"created_at,omitempty"`
+	UpdatedAt             *time.Time           `json:"updated_at,omitempty"`
+	Selection             *RunSelection        `json:"selection,omitempty"`
+	Steps                 []Task               `json:"steps,omitempty"`
+	RequestHash           string               `json:"request_hash,omitempty"`
+	VideoModelID          string               `json:"video_model_id,omitempty"`
+	Resolution            string               `json:"resolution,omitempty"`
+	DurationSeconds       int                  `json:"duration_seconds,omitempty"`
+	Plan                  []GenerationSnapshot `json:"plan,omitempty"`
+	ID                    string               `json:"id"`
+	SceneID               string               `json:"scene_id"`
+	State                 string               `json:"state"`
+	TaskIDs               []string             `json:"task_ids"`
+	SnapshotID            string               `json:"snapshot_id"`
+	Error                 string               `json:"error,omitempty"`
 }
 
 type RunSelection struct {

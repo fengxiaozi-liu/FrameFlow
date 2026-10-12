@@ -22,7 +22,7 @@ func TestReferenceVideoRunSingleStepAndFrozenInputs(t *testing.T) {
 	ctx := context.Background()
 	s.TaskService.UploadDir = t.TempDir()
 	s.TaskService.Enqueuer = nil
-	if err := s.Providers.Catalog.Models.SaveModel(ctx, provider.Model{ID: "r2v", RemoteID: "wan2.7-r2v", Enabled: true, Supported: true, Capabilities: []provider.Capability{provider.Video}}); err != nil {
+	if err := s.Providers.Catalog.Models.SaveModel(ctx, provider.Model{ID: "r2v", ConnectionID: "test-connection", RemoteID: "wan2.7-r2v", Enabled: true, Supported: true, Capabilities: []provider.Capability{provider.Video}}); err != nil {
 		t.Fatal(err)
 	}
 	refs := []project.ReferenceImage{}

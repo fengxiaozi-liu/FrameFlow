@@ -246,6 +246,8 @@ test("capture annotated guide images from the application", async ({
     return route.fulfill({ json });
   });
   async function capture(name: string, frame: Locator, marks: Locator[]) {
+    const only = process.env.GUIDE_CAPTURE_ONLY?.split(",");
+    if (only && !only.includes(name)) return;
     await frame.scrollIntoViewIfNeeded();
     for (const [i, mark] of marks.entries()) {
       await expect(mark).toBeVisible();
@@ -404,7 +406,7 @@ test("capture annotated guide images from the application", async ({
     .fill("雨夜街角，暖黄色灯光，玻璃窗上映着雨滴。");
   await capture("references", page.getByRole("dialog"), [
     page.getByLabel("上传参考图片", { exact: true }).locator(".."),
-    page.getByRole("button", { name: "文生图", exact: true }),
+    page.getByRole("button", { name: "图片生成", exact: true }),
     page.getByRole("button", { name: "保存并引用", exact: true }),
   ]);
   await page

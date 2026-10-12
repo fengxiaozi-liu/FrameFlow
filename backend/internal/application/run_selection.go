@@ -241,6 +241,7 @@ func (s TaskService) frozenRunVideo(ctx context.Context, d project.Draft, r task
 		base.InputHash = ""
 		base.ModelID = r.VideoModelID
 		base.ModelConfig = &model
+		base.ConnectionConfig = r.VideoConnectionConfig
 		base.CapabilityVersion = cap.Version
 		base.Path = "first_frame_video"
 		base.Resolution = r.Resolution

@@ -4,6 +4,8 @@
 
 Run `go test ./...`, `go vet ./...`, `npm run lint`, `npm test`, `npm run build`, and `npm run e2e`. Build containers with `docker compose build`, or build the self-contained Windows package with `powershell -ExecutionPolicy Bypass -File .\scripts\build-windows.ps1`. Verify `/health`, `/metrics`, task creation, WebSocket progress, cancellation, retry, and result download.
 
+2026-10-12 自定义连接测试版的验证范围、真实目录同步、兼容边界与回滚步骤见 [验证记录](../specs/custom-provider-connection/verification.md)。该记录不代表真实计费生成已通过。Windows ZIP 按文件白名单创建，不将整个 release 目录打包；该目录可能含运行日志、用户 data 和历史 ZIP。
+
 ## Backup
 
 Create a consistent SQLite online backup from `backend` with `go run ./cmd/maintenance -action backup -database data/frameflow.db -output backups/frameflow.db`. The destination must not already exist. Back up `data/uploads`, `data/secrets/vault.key`, and `data/secrets/credentials.json` with it. The encrypted credentials cannot be restored without `vault.key`.

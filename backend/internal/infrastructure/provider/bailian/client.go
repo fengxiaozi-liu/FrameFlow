@@ -127,6 +127,9 @@ func (c Client) GenerateImage(ctx context.Context, connection provider.Connectio
 	}
 	id := model.RemoteID
 	binding := model.Operations[provider.Image]
+	if err := binding.ValidateImageInput(input.Mode, len(input.References)); err != nil {
+		return provider.ImageResult{}, err
+	}
 	sizes := binding.ImageSizes
 	if !slices.Contains(binding.Ratios, input.AspectRatio) {
 		return provider.ImageResult{}, errors.New("unsupported image ratio")

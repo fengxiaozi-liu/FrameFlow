@@ -53,16 +53,17 @@ func ParseKind(value string) (Kind, error) {
 }
 
 type Input struct {
-	MaterialName    string `json:"material_name,omitempty"`
-	Prompt          string `json:"prompt"`
-	SourceBody      string `json:"source_body,omitempty"`
-	Mode            string `json:"mode,omitempty"`
-	AspectRatio     string `json:"aspect_ratio,omitempty"`
-	SourceImageURL  string `json:"source_image_url,omitempty"`
-	LastFrameURL    string `json:"last_frame_url,omitempty"`
-	DrivingAudioURL string `json:"driving_audio_url,omitempty"`
-	Duration        int    `json:"duration,omitempty"`
-	Resolution      string `json:"resolution,omitempty"`
+	ReferenceImages []MediaReference `json:"reference_images,omitempty"`
+	MaterialName    string           `json:"material_name,omitempty"`
+	Prompt          string           `json:"prompt"`
+	SourceBody      string           `json:"source_body,omitempty"`
+	Mode            string           `json:"mode,omitempty"`
+	AspectRatio     string           `json:"aspect_ratio,omitempty"`
+	SourceImageURL  string           `json:"source_image_url,omitempty"`
+	LastFrameURL    string           `json:"last_frame_url,omitempty"`
+	DrivingAudioURL string           `json:"driving_audio_url,omitempty"`
+	Duration        int              `json:"duration,omitempty"`
+	Resolution      string           `json:"resolution,omitempty"`
 }
 
 type CompositionClip struct {
@@ -107,37 +108,39 @@ func (i Input) Validate() error {
 }
 
 type Task struct {
-	ModelConfig           *provider.Model     `json:"model_config,omitempty"`
-	RequestHash           string              `json:"request_hash,omitempty"`
-	Snapshot              *GenerationSnapshot `json:"snapshot,omitempty"`
-	RunID                 string              `json:"run_id,omitempty"`
-	DependsOn             []string            `json:"depends_on,omitempty"`
-	ID                    string              `json:"id"`
-	ProjectID             string              `json:"project_id,omitempty"`
-	DraftID               string              `json:"draft_id,omitempty"`
-	SceneID               string              `json:"scene_id,omitempty"`
-	Target                string              `json:"target,omitempty"`
-	InputVersion          int64               `json:"input_version,omitempty"`
-	InputHash             string              `json:"input_hash,omitempty"`
-	IdempotencyKey        string              `json:"idempotency_key,omitempty"`
-	CapabilityVersion     string              `json:"capability_version,omitempty"`
-	Kind                  Kind                `json:"kind"`
-	Status                Status              `json:"status"`
-	Progress              int                 `json:"progress"`
-	Stage                 Stage               `json:"stage"`
-	Error                 string              `json:"error,omitempty"`
-	ProviderCode          string              `json:"provider_code,omitempty"`
-	ModelID               string              `json:"model_id,omitempty"`
-	RemoteTaskID          string              `json:"remote_task_id,omitempty"`
-	ResultText            string              `json:"result_text,omitempty"`
-	ResultCandidate       *story.Candidate    `json:"result_candidate,omitempty"`
-	Composition           *CompositionInput   `json:"composition,omitempty"`
-	Input                 Input               `json:"input"`
-	ResultURL             string              `json:"result_url,omitempty"`
-	ResultDurationSeconds float64             `json:"result_duration_seconds,omitempty"`
-	RetryCount            int                 `json:"retry_count"`
-	CreatedAt             time.Time           `json:"created_at"`
-	UpdatedAt             time.Time           `json:"updated_at"`
+	RemoteAcceptanceUnknown bool                 `json:"remote_acceptance_unknown,omitempty"`
+	ConnectionConfig        *provider.Connection `json:"connection_config,omitempty"`
+	ModelConfig             *provider.Model      `json:"model_config,omitempty"`
+	RequestHash             string               `json:"request_hash,omitempty"`
+	Snapshot                *GenerationSnapshot  `json:"snapshot,omitempty"`
+	RunID                   string               `json:"run_id,omitempty"`
+	DependsOn               []string             `json:"depends_on,omitempty"`
+	ID                      string               `json:"id"`
+	ProjectID               string               `json:"project_id,omitempty"`
+	DraftID                 string               `json:"draft_id,omitempty"`
+	SceneID                 string               `json:"scene_id,omitempty"`
+	Target                  string               `json:"target,omitempty"`
+	InputVersion            int64                `json:"input_version,omitempty"`
+	InputHash               string               `json:"input_hash,omitempty"`
+	IdempotencyKey          string               `json:"idempotency_key,omitempty"`
+	CapabilityVersion       string               `json:"capability_version,omitempty"`
+	Kind                    Kind                 `json:"kind"`
+	Status                  Status               `json:"status"`
+	Progress                int                  `json:"progress"`
+	Stage                   Stage                `json:"stage"`
+	Error                   string               `json:"error,omitempty"`
+	ProviderCode            string               `json:"provider_code,omitempty"`
+	ModelID                 string               `json:"model_id,omitempty"`
+	RemoteTaskID            string               `json:"remote_task_id,omitempty"`
+	ResultText              string               `json:"result_text,omitempty"`
+	ResultCandidate         *story.Candidate     `json:"result_candidate,omitempty"`
+	Composition             *CompositionInput    `json:"composition,omitempty"`
+	Input                   Input                `json:"input"`
+	ResultURL               string               `json:"result_url,omitempty"`
+	ResultDurationSeconds   float64              `json:"result_duration_seconds,omitempty"`
+	RetryCount              int                  `json:"retry_count"`
+	CreatedAt               time.Time            `json:"created_at"`
+	UpdatedAt               time.Time            `json:"updated_at"`
 }
 
 func (t Task) ValidateScope() error {
@@ -202,6 +205,9 @@ func (t *Task) Cancel(now time.Time) error {
 }
 
 func (t *Task) Retry(now time.Time) error {
+	if t.RemoteAcceptanceUnknown {
+		return provider.ErrRemoteAcceptanceUnknown
+	}
 	if t.Status != StatusFailed && t.Status != StatusCancelled {
 		return errors.New("only failed or cancelled task can be retried")
 	}

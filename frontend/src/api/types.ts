@@ -6,6 +6,8 @@ export type CreateCompositionInput = Schema["CreateComposition"];
 export type TaskStatus =
   "queued" | "running" | "succeeded" | "failed" | "cancelled";
 export interface TaskInput {
+  mode?: Schema["Task"]["input"]["mode"];
+  reference_images?: Schema["Task"]["input"]["reference_images"];
   prompt: string;
   aspect_ratio?: string;
   source_image_url?: string;
@@ -30,6 +32,7 @@ export interface Task {
   provider_code?: string;
   model_id?: string;
   remote_task_id?: string;
+  remote_acceptance_unknown?: Schema["Task"]["remote_acceptance_unknown"];
   result_text?: string;
   input: TaskInput;
   result_url?: string;

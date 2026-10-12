@@ -3456,6 +3456,10 @@ export interface components {
              */
             base_url: string;
             readonly credential_set: boolean;
+            revision?: number;
+            schema_version?: number;
+            auth?: components["schemas"]["ConnectionAuth"];
+            discovery?: components["schemas"]["DiscoveryProfile"];
         };
         ConnectionInput: {
             id: string;
@@ -3465,6 +3469,70 @@ export interface components {
             workspace_id?: string;
             base_url: components["schemas"]["Connection"]["base_url"];
             api_key?: string;
+            revision?: number;
+            auth?: components["schemas"]["ConnectionAuth"];
+            discovery?: components["schemas"]["DiscoveryProfile"];
+        };
+        ConnectionAuth: {
+            /** @enum {string} */
+            mode: "bearer" | "header" | "none";
+            header?: string;
+            prefix?: string;
+        };
+        /** @description Custom-vendor model directory contract. Only custom connections may save this configuration. */
+        DiscoveryProfile: {
+            /** @enum {string} */
+            method: "GET" | "POST";
+            path: string;
+            headers?: {
+                [key: string]: string;
+            };
+            /** @description POST JSON body; never contains credentials */
+            request_json?: string;
+            /** @description Optional response example used for mapping preview */
+            response_json_example?: string;
+            model_list_pointer: string;
+            model_id_pointer: string;
+            model_name_pointer?: string;
+            pagination?: {
+                /** @enum {string} */
+                mode?: "none" | "page" | "cursor";
+                page_param?: string;
+                page_size_param?: string;
+                page_size?: number;
+                cursor_param?: string;
+                cursor_pointer?: string;
+                has_more_pointer?: string;
+                next_cursor_pointer?: string;
+            };
+            revision?: number;
+            schema?: components["schemas"]["JSONShape"];
+        };
+        JSONShape: {
+            /** @enum {string} */
+            type: "object" | "array" | "string" | "number" | "boolean" | "null";
+            properties?: {
+                [key: string]: components["schemas"]["JSONShape"];
+            };
+            items?: components["schemas"]["JSONShape"];
+        };
+        JSONContract: {
+            example: string;
+            bindings: {
+                [key: string]: string;
+            };
+            schema?: components["schemas"]["JSONShape"];
+        };
+        OperationContract: {
+            /** @enum {integer} */
+            version: 1;
+            request: components["schemas"]["JSONContract"];
+            response: components["schemas"]["JSONContract"];
+            polling_response?: components["schemas"]["JSONContract"];
+            /** @enum {string} */
+            execution: "sync_json" | "async_polling" | "sse_stream" | "ndjson_stream";
+            done_marker?: string;
+            error_pointer?: string;
         };
         ManualModel: {
             model_id: string;
@@ -3671,7 +3739,12 @@ export interface components {
             input_hash?: string;
             idempotency_key?: string;
             model_id?: string;
-            input: Record<string, never>;
+            input: {
+                mode?: string;
+                prompt?: string;
+                aspect_ratio?: string;
+                reference_images?: components["schemas"]["MediaReference"][];
+            };
             result_url?: string;
             result_duration_seconds?: number;
             snapshot?: components["schemas"]["GenerationSnapshot"];
@@ -3687,6 +3760,8 @@ export interface components {
             /** Format: date-time */
             updated_at?: string;
             model_config?: components["schemas"]["ModelDefinition"];
+            connection_config?: components["schemas"]["Connection"];
+            remote_acceptance_unknown?: boolean;
         };
         ReferenceImage: {
             material_id: string;
@@ -3703,6 +3778,13 @@ export interface components {
             model_id: string;
             /** @enum {string} */
             aspect_ratio: "16:9" | "9:16" | "1:1";
+            /**
+             * @default text_to_image
+             * @enum {string}
+             */
+            mode: "text_to_image" | "image_to_image";
+            /** @description Ordered library or current-project image IDs; required for image_to_image. */
+            reference_material_ids?: string[];
         };
         EntityVersion: {
             id: string;
@@ -3854,6 +3936,7 @@ export interface components {
             video_input_mode?: "first_frame" | "reference_images";
             first_frame_material_id?: string;
             last_frame_material_id?: string;
+            connection_config?: components["schemas"]["Connection"];
         };
         BindingIssue: {
             code: string;
@@ -3906,6 +3989,7 @@ export interface components {
             selection?: components["schemas"]["RunSelection"];
             steps?: components["schemas"]["Task"][];
             video_model_config?: components["schemas"]["ModelDefinition"];
+            video_connection_config?: components["schemas"]["Connection"];
         };
         ModelInputCapability: {
             version: string;
@@ -3976,7 +4060,7 @@ export interface components {
             auth_prefix?: string;
             result_pointer: string;
             /** @enum {string} */
-            auth_mode: "none" | "bearer" | "header";
+            auth_mode: "none" | "bearer" | "header" | "connection";
             /** @enum {string} */
             mode: "sync" | "async";
             polling?: components["schemas"]["CustomPolling"];
@@ -4022,6 +4106,10 @@ export interface components {
             custom?: components["schemas"]["CustomInterface"];
             /** @description Supported video input modes; input_mode is read only for legacy single-mode configurations. */
             input_modes?: ("first_frame" | "reference_images")[];
+            contract?: components["schemas"]["OperationContract"];
+            /** @description Explicit enabled image generation modes. Absent for legacy configurations only. */
+            image_modes?: ("text_to_image" | "image_to_image")[];
+            min_references?: number;
         };
         OperationStatus: {
             available: boolean;
@@ -4050,6 +4138,7 @@ export interface components {
             };
             /** @description True after manual capability selection, including clearing every capability. Discovery must preserve this selection. */
             capabilities_configured?: boolean;
+            name_configured?: boolean;
         };
         ModelConfigurationWrite: {
             expected_revision: number;
@@ -4068,6 +4157,14 @@ export interface components {
             /** @description Read-only task polling path template; independent of the submission override. */
             polling_path?: string;
             template_variables?: string[];
+            version?: number;
+            execution_modes?: ("sync_json" | "async_polling" | "sse_stream" | "ndjson_stream")[];
+        };
+        MediaReference: {
+            material_id: string;
+            content_hash: string;
+            label?: string;
+            url?: string;
         };
     };
     responses: never;

@@ -143,7 +143,7 @@ func (s TaskService) submitSceneVideo(g *gin.Context, projectID, draftID, sceneI
 	created.ProjectID, created.DraftID, created.SceneID = projectID, draftID, sceneID
 	created.ModelID, created.InputVersion, created.IdempotencyKey = input.ModelID, d.Version, input.IdempotencyKey
 	created.InputHash = videoFingerprint(input.ModelID, taskInput)
-	if err := freezeTaskModel(g.Request.Context(), s.Providers.Catalog.Models, &created); err != nil {
+	if err := freezeTaskModel(g.Request.Context(), s.Providers.Catalog.Models, &created, s.Providers.Catalog.Connections); err != nil {
 		return task.Task{}, nil, Invalid("model_configuration", err)
 	}
 	if err := s.Store.Save(g.Request.Context(), created); err != nil {

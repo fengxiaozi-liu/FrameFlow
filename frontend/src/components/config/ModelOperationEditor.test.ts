@@ -109,4 +109,39 @@ describe("unclassified model configuration", () => {
     expect(wrapper.emitted("saved")).toHaveLength(1);
     expect(model.capabilities).toEqual([]);
   });
+  it("saves image modes independently and can disable editing after applying an example", async () => {
+    const w = await editor();
+    await w.get('select[aria-label="配置能力"]').setValue("image");
+    await w.get('select[aria-label="接口协议"]').setValue("dashscope.image.v1");
+    expect(
+      (w.get('input[value="text_to_image"]').element as HTMLInputElement)
+        .checked,
+    ).toBe(true);
+    expect(
+      (w.get('input[value="image_to_image"]').element as HTMLInputElement)
+        .checked,
+    ).toBe(false);
+    await w
+      .findAll("button")
+      .find((b) => b.text() === "填入百炼示例参数")!
+      .trigger("click");
+    await w.get("form").trigger("submit");
+    await flushPromises();
+    expect(
+      vi.mocked(modelConfigurationApi.configure).mock.calls[0]![1].image,
+    ).toMatchObject({
+      image_modes: ["text_to_image", "image_to_image"],
+      min_references: 1,
+      max_references: 3,
+      max_image_bytes: 10485760,
+    });
+    await w.get('input[value="image_to_image"]').setValue(false);
+    await w.get("form").trigger("submit");
+    await flushPromises();
+    expect(
+      vi.mocked(modelConfigurationApi.configure).mock.calls[1]![1].image!
+        .image_modes,
+    ).toEqual(["text_to_image"]);
+    w.unmount();
+  });
 });

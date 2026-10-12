@@ -48,15 +48,3 @@ func TestMultiImageAndSpeechWireRequests(t *testing.T) {
 		t.Fatal(calls)
 	}
 }
-func TestCompatibleDiscovery(t *testing.T) {
-	c := CompatibleDiscovery{HTTP: &http.Client{Transport: roundTrip(func(r *http.Request) (*http.Response, error) {
-		if r.URL.Path != "/v1/models" {
-			t.Fatal(r.URL)
-		}
-		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"data":[{"id":"qwen3-tts-flash"},{"id":"qwen-image-2.0-pro"}]}`))}, nil
-	})}}
-	models, err := c.Discover(context.Background(), provider.Connection{ID: "c", Name: "test", Vendor: "bailian", BaseURL: "https://example.com"}, "test")
-	if err != nil || len(models) != 2 || len(models[0].Capabilities) != 0 {
-		t.Fatal(models, err)
-	}
-}

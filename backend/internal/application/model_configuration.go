@@ -11,9 +11,11 @@ type ModelConfiguration struct{ Repository provider.OperationRepository }
 
 func (s ModelConfiguration) Configure(ctx context.Context, id string, expected int64, bindings map[provider.Capability]provider.OperationBinding, capabilities []provider.Capability) (provider.Model, error) {
 	for op, b := range bindings {
-		if err := b.Validate(op); err != nil {
+		compiled, err := b.Compile(op)
+		if err != nil {
 			return provider.Model{}, fmt.Errorf("%s: %w", op, err)
 		}
+		bindings[op] = compiled
 	}
 	return s.Repository.ConfigureOperations(ctx, id, expected, bindings, capabilities)
 }

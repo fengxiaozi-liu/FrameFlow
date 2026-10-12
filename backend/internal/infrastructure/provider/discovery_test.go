@@ -4,6 +4,7 @@ import (
 	"context"
 	domain "github.com/fengxiaozi-liu/FrameFlow/internal/domain/provider"
 	"github.com/fengxiaozi-liu/FrameFlow/internal/infrastructure/provider/bailian"
+	"github.com/fengxiaozi-liu/FrameFlow/internal/infrastructure/provider/custom"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -41,7 +42,7 @@ func TestRegisteredVendorsUseTheirOwnDirectoryEndpoints(t *testing.T) {
 	native := r.adapters["bailian"].(bailian.Client)
 	native.HTTP = server.Client()
 	r.adapters["bailian"] = native
-	compatible := r.adapters["custom"].(bailian.CompatibleDiscovery)
+	compatible := r.adapters["custom"].(custom.DiscoveryClient)
 	compatible.HTTP = server.Client()
 	r.adapters["custom"] = compatible
 	connection := domain.Connection{ID: "test", Name: "Test", BaseURL: server.URL}

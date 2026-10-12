@@ -96,6 +96,7 @@ func main() {
 	processor.ModelClient = providerinfra.NewRegistry(vault)
 	processor.SaveResult = (providerinfra.ResultStore{Directory: uploadDir}).Save
 	processor.MediaDir = uploadDir
+	processor.ImageReferences = media.ImageReferences{Directory: uploadDir}
 	processor.Results = application.TaskResultApplier{Projects: projects.Repo, Materials: materials.Repo, Directory: uploadDir, Probe: media.Probe}
 	tasks.Enqueuer = processor
 	go func() {
@@ -138,7 +139,11 @@ func main() {
 	}
 	rateLimit, _ := strconv.Atoi(os.Getenv("FRAMEFLOW_RATE_LIMIT"))
 	httpapi.UseMiddleware(router, os.Getenv("FRAMEFLOW_API_TOKEN"), rateLimit)
-	httpapi.RegisterRoutes(router, tasks, projects, providers, materials, application.SystemService{Tasks: tasks, Projects: projects, Providers: providers, Materials: materials, Shutdown: shutdown, QueueDepth: worker.Depth})
+	catalogCommands := httpapi.CatalogCommands{
+		Connections: &application.ConnectionConfiguration{Repository: store, Vault: vault},
+		Discovery:   application.ModelDiscovery{Connections: store, Writer: store, Discovery: providers.Catalog.Discovery, Credentials: vault},
+	}
+	httpapi.RegisterRoutes(router, tasks, projects, providers, materials, application.SystemService{Tasks: tasks, Projects: projects, Providers: providers, Materials: materials, Shutdown: shutdown, QueueDepth: worker.Depth}, catalogCommands)
 	router.GET("/ws", ws.Handler)
 	httpapi.RegisterStatic(router, uploadDir, staticFiles)
 	serveError := make(chan error, 1)

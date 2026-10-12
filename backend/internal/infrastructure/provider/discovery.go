@@ -6,6 +6,7 @@ import (
 
 	domain "github.com/fengxiaozi-liu/FrameFlow/internal/domain/provider"
 	"github.com/fengxiaozi-liu/FrameFlow/internal/infrastructure/provider/bailian"
+	"github.com/fengxiaozi-liu/FrameFlow/internal/infrastructure/provider/custom"
 )
 
 // DiscoveryRegistry selects the vendor directory only. Model generation retains
@@ -17,7 +18,7 @@ type DiscoveryRegistry struct {
 func NewDiscovery() *DiscoveryRegistry {
 	return &DiscoveryRegistry{adapters: map[string]domain.Discovery{
 		"bailian": bailian.Client{},
-		"custom":  bailian.CompatibleDiscovery{},
+		"custom":  custom.DiscoveryClient{},
 	}}
 }
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/project"
 	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/story"
@@ -96,6 +97,18 @@ func syncProjectReferences(ctx context.Context, tx *sql.Tx, p project.Project) e
 	return nil
 }
 func syncTaskReferences(ctx context.Context, tx *sql.Tx, t task.Task) error {
+	for _, r := range t.Input.ReferenceImages {
+		var exists int
+		if err := tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM materials WHERE id=?", r.MaterialID).Scan(&exists); err != nil {
+			return err
+		}
+		if exists == 0 {
+			return errors.New("reference material no longer exists")
+		}
+		if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO material_references(project_id,draft_id,scene_id,material_id,source_kind,source_id) VALUES(?,?,?,?,?,?)`, t.ProjectID, t.DraftID, t.SceneID, r.MaterialID, "generation_snapshot", t.ID); err != nil {
+			return err
+		}
+	}
 	if t.Snapshot == nil {
 		return nil
 	}

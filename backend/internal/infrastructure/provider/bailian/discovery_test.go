@@ -78,17 +78,3 @@ func TestNativeDiscoveryRejectsIncompleteOrWrongDirectory(t *testing.T) {
 		t.Fatal(items, err)
 	}
 }
-
-func TestCompatibleDirectoryDoesNotInferCapabilities(t *testing.T) {
-	client, calls := discoveryClient(t, `{"data":[{"id":"qwen-plus"}],"has_more":true,"last_id":"qwen-plus"}`, `{"data":[{"id":"new-video"}]}`)
-	items, err := (CompatibleDiscovery{HTTP: client.HTTP}).Discover(context.Background(), directoryConnection(), "test-key")
-	if err != nil || *calls != 2 || len(items) != 2 || len(items[0].Capabilities) != 0 {
-		t.Fatal(items, err)
-	}
-	for _, body := range []string{`{"output":{}}`, `{"data":[],"has_more":true}`} {
-		client, _ = discoveryClient(t, body)
-		if _, err := (CompatibleDiscovery{HTTP: client.HTTP}).Discover(context.Background(), directoryConnection(), "test-key"); err == nil {
-			t.Fatal("accepted incompatible response")
-		}
-	}
-}

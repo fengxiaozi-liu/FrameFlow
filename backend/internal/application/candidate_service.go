@@ -112,7 +112,7 @@ func (s TaskService) CreateCandidate(g *gin.Context) {
 	created := task.New(strings.Replace(id, "scene-", "task-", 1), task.KindStory, task.Input{Prompt: prompt, SourceBody: sourceBody, Mode: input.Mode}, now)
 	created.ProjectID, created.DraftID, created.Target = projectID, draftID, input.Target
 	created.InputVersion, created.IdempotencyKey, created.ModelID = *input.ExpectedVersion, input.IdempotencyKey, modelID
-	if err := freezeTaskModel(g.Request.Context(), s.Providers.Catalog.Models, &created); err != nil {
+	if err := freezeTaskModel(g.Request.Context(), s.Providers.Catalog.Models, &created, s.Providers.Catalog.Connections); err != nil {
 		writeError(g, Invalid("model_configuration", err))
 		return
 	}

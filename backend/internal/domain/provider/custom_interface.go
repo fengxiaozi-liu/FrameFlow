@@ -13,14 +13,18 @@ const CustomProtocol = "custom.json.v1"
 
 // CustomInterface describes a bounded JSON wire contract, never executable code.
 type CustomInterface struct {
-	Path          string         `json:"path"`
-	BodyTemplate  string         `json:"body_template"`
-	AuthMode      string         `json:"auth_mode"`
-	AuthHeader    string         `json:"auth_header,omitempty"`
-	AuthPrefix    string         `json:"auth_prefix,omitempty"`
-	ResultPointer string         `json:"result_pointer"`
-	Mode          string         `json:"mode"`
-	Polling       *CustomPolling `json:"polling,omitempty"`
+	StreamMode         ExecutionMode  `json:"stream_mode,omitempty"`
+	StreamDoneMarker   string         `json:"stream_done_marker,omitempty"`
+	StreamErrorPointer string         `json:"stream_error_pointer,omitempty"`
+	StreamAppend       bool           `json:"stream_append,omitempty"`
+	Path               string         `json:"path"`
+	BodyTemplate       string         `json:"body_template"`
+	AuthMode           string         `json:"auth_mode"`
+	AuthHeader         string         `json:"auth_header,omitempty"`
+	AuthPrefix         string         `json:"auth_prefix,omitempty"`
+	ResultPointer      string         `json:"result_pointer"`
+	Mode               string         `json:"mode"`
+	Polling            *CustomPolling `json:"polling,omitempty"`
 }
 type CustomPolling struct {
 	Path          string   `json:"path"`
@@ -112,7 +116,7 @@ func (c CustomInterface) Validate(op Capability) error {
 		return errors.New("自定义请求路径必须以 / 开头，不含域名、查询参数或占位符")
 	}
 	switch c.AuthMode {
-	case "none", "bearer":
+	case "none", "bearer", "connection":
 	case "header":
 		if !headerName.MatchString(c.AuthHeader) || slices.Contains([]string{"host", "content-length", "content-type", "connection", "cookie", "transfer-encoding"}, strings.ToLower(c.AuthHeader)) || strings.ContainsAny(c.AuthPrefix, "\r\n") || len(c.AuthPrefix) > 64 {
 			return errors.New("认证请求头或前缀无效")

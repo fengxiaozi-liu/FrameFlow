@@ -67,38 +67,16 @@ func (s CatalogService) SaveConnection(g *gin.Context) {
 	}
 	c := input.Connection
 	if id := g.Param("id"); id != "" {
-		current, err := s.Connections.GetConnection(ctx, id)
-		if err != nil {
-			writeError(g, err)
-			return
-		}
-		if current.Vendor != c.Vendor {
-			writeError(g, Invalid("immutable_connection_scope", errors.New("vendor cannot change; create a new connection")))
-			return
-		}
 		c.ID = id
 	}
-	if err := c.Validate(); err != nil {
-		writeError(g, Invalid("invalid_connection", err))
-		return
-	}
-	c.BaseURL = strings.TrimSuffix(strings.TrimSpace(c.BaseURL), "/")
-	if s.Vault != nil {
-		if input.APIKey != "" {
-			if err := s.Vault.Put(ctx, "connection:"+c.ID, input.APIKey); err != nil {
-				writeError(g, err)
-				return
-			}
+	configuration := ConnectionConfiguration{Repository: s.Connections, Vault: s.Vault}
+	c, err := configuration.Save(ctx, c, input.APIKey, g.Param("id") == "")
+	if err != nil {
+		if errors.Is(err, provider.ErrRevisionConflict) {
+			writeError(g, Conflict("configuration_revision_conflict", err))
+		} else {
+			writeError(g, Invalid("invalid_connection", err))
 		}
-		var err error
-		c.CredentialSet, err = s.Vault.Has(ctx, "connection:"+c.ID)
-		if err != nil {
-			writeError(g, err)
-			return
-		}
-	}
-	if err := s.Connections.SaveConnection(ctx, c); err != nil {
-		writeError(g, err)
 		return
 	}
 	status := http.StatusCreated
@@ -254,6 +232,20 @@ func (s CatalogService) SyncModels(g *gin.Context) {
 		writeError(g, &Error{Kind: "provider", Code: "discovery_failed", Cause: err})
 		return
 	}
+	if c.Vendor == "custom" {
+		writer, ok := s.Models.(ModelIdentityWriter)
+		if !ok {
+			writeError(g, unavailable("discovery_unavailable", "identity repository is unavailable"))
+			return
+		}
+		count, err := writer.SyncModelIdentities(ctx, c, discovered, time.Now().UTC())
+		if err != nil {
+			writeError(g, err)
+			return
+		}
+		g.JSON(http.StatusOK, gin.H{"synced": count})
+		return
+	}
 	current, err := s.Models.ListModels(ctx, c.ID)
 	if err != nil {
 		writeError(g, err)
@@ -282,7 +274,11 @@ func (s CatalogService) SyncModels(g *gin.Context) {
 		}
 		wasSupported := m.Supported
 		m.Name = entry.Name
-		acceptDiscovery := !exists || (!m.CapabilitiesConfigured && len(m.Capabilities) == 0)
+		// Custom directory contracts are identity-only by design. Capabilities are
+		// configured on the model's protocol panel and must never be inferred from
+		// an arbitrary vendor response. Built-in vendors retain their fixed,
+		// documented capability metadata for compatibility.
+		acceptDiscovery := c.Vendor != "custom" && (!m.CapabilitiesConfigured && len(m.Capabilities) == 0)
 		if acceptDiscovery {
 			m.Capabilities, err = validCapabilities(entry.Capabilities)
 			if err != nil {

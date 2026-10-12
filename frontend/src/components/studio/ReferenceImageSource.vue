@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import ImageGenerationReferences from "./ImageGenerationReferences.vue";
 import { api } from "../../api/client";
 import { bindingsApi, type EntityVersion } from "../../api/bindings";
 import type { Material, Model, Task } from "../../api/types";
@@ -35,11 +36,33 @@ const uploadsInLibrary = computed(
     ),
 );
 defineExpose({ hasPendingUpload: () => uploads.value.length > 0 });
-const models = computed(() =>
-  props.models.filter(
-    (m) => m.availability?.image?.available === true,
-  ),
+const generationMode = ref<NonNullable<Request["mode"]>>("text_to_image");
+const editReferences = ref<Material[]>([]);
+const imageModeAvailable = (m: Model, requested: string) =>
+  m.availability?.image?.available === true &&
+  !!m.availability.image.binding.image_modes?.includes(
+    requested as "text_to_image" | "image_to_image",
+  );
+const canEdit = computed(() =>
+  props.models.some((m) => imageModeAvailable(m, "image_to_image")),
 );
+const canText = computed(() =>
+  props.models.some((m) => imageModeAvailable(m, "text_to_image")),
+);
+if (!canText.value && canEdit.value) generationMode.value = "image_to_image";
+const models = computed(() =>
+  props.models.filter((m) => imageModeAvailable(m, generationMode.value)),
+);
+const imageModelOptions = computed(() =>
+  props.models.filter((m) => m.capabilities.includes("image")),
+);
+function modelReason(m: Model) {
+  if (!m.availability?.image?.available)
+    return m.availability?.image?.reason || "配置未就绪";
+  return generationMode.value === "image_to_image"
+    ? "未启用图生图"
+    : "未启用文生图";
+}
 const model = ref(
   models.value.find((m) => m.default)?.id || models.value[0]?.id || "",
 );
@@ -47,10 +70,23 @@ const prompt = ref(""),
   aspect = ref<Request["aspect_ratio"]>(
     props.entity.kind === "character" ? "1:1" : "16:9",
   );
-const imageRatios = computed(() => models.value.find(m => m.id === model.value)?.availability?.image?.binding.ratios || []);
-watch([model, imageRatios], () => {
- if (!imageRatios.value.includes(aspect.value)) aspect.value = (imageRatios.value[0] || '') as Request['aspect_ratio'];
-}, { immediate: true });
+const imageBinding = computed(
+  () =>
+    models.value.find((m) => m.id === model.value)?.availability?.image
+      ?.binding,
+);
+const imageRatios = computed(() => imageBinding.value?.ratios || []);
+watch(generationMode, () => {
+  if (!models.value.some((m) => m.id === model.value)) model.value = "";
+});
+watch(
+  [model, imageRatios],
+  () => {
+    if (!imageRatios.value.includes(aspect.value))
+      aspect.value = (imageRatios.value[0] || "") as Request["aspect_ratio"];
+  },
+  { immediate: true },
+);
 const busy = ref(false),
   error = ref(""),
   current = ref<Task>(),
@@ -250,7 +286,23 @@ async function generate() {
       error.value = "请填写名称、提示词并选择可用的生图模型。";
       return;
     }
+    if (generationMode.value === "image_to_image") {
+      const minimum = imageBinding.value?.min_references || 1;
+      const maximum = imageBinding.value?.max_references || 0;
+      if (
+        editReferences.value.length < minimum ||
+        editReferences.value.length > maximum
+      ) {
+        error.value = `请选择 ${minimum}–${maximum} 张参考图片。`;
+        return;
+      }
+    }
     pending.value = {
+      mode: generationMode.value,
+      reference_material_ids:
+        generationMode.value === "image_to_image"
+          ? editReferences.value.map((m) => m.id)
+          : [],
       idempotency_key: crypto.randomUUID(),
       kind: kind.value,
       name: props.entity.name.trim(),
@@ -308,6 +360,30 @@ async function taskAction(action: "retry" | "cancel") {
     if (alive) setBusy(false);
   }
 }
+async function restoreReferences(ids: string[]) {
+  const items = await Promise.all(
+    ids.map(async (id) => {
+      const known = props.materials.find((m) => m.id === id);
+      if (known) return known;
+      try {
+        return await api.material(id);
+      } catch {
+        const frozen = current.value?.input?.reference_images?.find(
+          (r) => r.material_id === id,
+        );
+        return {
+          id,
+          name: frozen?.label || "参考图片暂时无法读取",
+          kind: kind.value,
+          url: frozen?.url || "",
+          reference_only: true,
+          project_id: props.projectId,
+        } as Material;
+      }
+    }),
+  );
+  if (alive) editReferences.value = items;
+}
 onMounted(async () => {
   try {
     const cached = JSON.parse(localStorage.getItem(cacheKey) || "null") as {
@@ -316,6 +392,8 @@ onMounted(async () => {
     } | null;
     if (cached?.pending) {
       pending.value = cached.pending;
+      generationMode.value = cached.pending.mode || "text_to_image";
+      await restoreReferences(cached.pending.reference_material_ids || []);
       model.value = cached.pending.model_id;
       prompt.value = cached.pending.prompt;
       aspect.value = cached.pending.aspect_ratio;
@@ -325,6 +403,13 @@ onMounted(async () => {
       const task = await bindingsApi.task(cached.task);
       if (!alive) return;
       current.value = task;
+      generationMode.value =
+        task.input?.mode === "image_to_image"
+          ? "image_to_image"
+          : "text_to_image";
+      await restoreReferences(
+        task.input?.reference_images?.map((r) => r.material_id) || [],
+      );
       model.value = task.model_id || model.value;
       prompt.value = task.input?.prompt || "";
       if (["16:9", "9:16", "1:1"].includes(task.input?.aspect_ratio || ""))
@@ -362,7 +447,7 @@ onBeforeUnmount(() => {
         :aria-pressed="mode === 'generate'"
         @click="mode = 'generate'"
       >
-        文生图
+        图片生成
       </button>
     </div>
     <section
@@ -397,7 +482,7 @@ onBeforeUnmount(() => {
       >
         暂无可用{{
           kind === "scene" ? "场景" : "人物"
-        }}图片，可以上传图片或切换到文生图。
+        }}图片，可以上传图片或切换到图片生成。
       </p>
       <div class="reference-library-grid">
         <button
@@ -476,33 +561,89 @@ onBeforeUnmount(() => {
     <section
       v-show="mode === 'generate'"
       class="reference-source-panel"
-      aria-label="文生图设置"
+      aria-label="图片生成设置"
     >
       <h4>生成{{ kind === "scene" ? "场景" : "人物" }}参考图</h4>
+      <div
+        class="image-generation-modes"
+        role="group"
+        aria-label="图片生成模式"
+      >
+        <button
+          type="button"
+          :aria-pressed="generationMode === 'text_to_image'"
+          :disabled="locked || !canText"
+          @click="generationMode = 'text_to_image'"
+        >
+          文生图
+        </button>
+        <button
+          type="button"
+          :aria-pressed="generationMode === 'image_to_image'"
+          :disabled="locked || !canEdit"
+          @click="generationMode = 'image_to_image'"
+        >
+          图生图
+        </button>
+      </div>
+      <p v-if="!canEdit" class="muted">
+        图生图尚未配置：请在<RouterLink to="/config"
+          >模型管理 → 协议与参数 → 图片生成</RouterLink
+        >中启用图生图并填写参考图片限制。
+      </p>
       <p v-if="!models.length" class="muted">
-        暂无配置就绪的生图模型，<RouterLink to="/config">前往模型管理配置</RouterLink>。
+        暂无配置就绪的生图模型，<RouterLink to="/config"
+          >前往模型管理配置</RouterLink
+        >。
       </p>
       <div class="reference-image-settings">
         <label
           >生图模型<select v-model="model" :disabled="locked">
             <option value="">请选择生图模型</option>
-            <option v-for="m in models" :key="m.id" :value="m.id">
-              {{ m.name }}
+            <option
+              v-for="m in imageModelOptions"
+              :key="m.id"
+              :value="m.id"
+              :disabled="!imageModeAvailable(m, generationMode)"
+            >
+              {{ m.name
+              }}{{
+                imageModeAvailable(m, generationMode)
+                  ? ""
+                  : `（${modelReason(m)}）`
+              }}
             </option>
           </select></label
         ><label
           >图片画幅<select v-model="aspect" :disabled="locked">
-            <option v-for="ratio in imageRatios" :key="ratio" :value="ratio">{{ ratio }}</option>
+            <option v-for="ratio in imageRatios" :key="ratio" :value="ratio">
+              {{ ratio }}
+            </option>
           </select></label
         >
       </div>
+      <ImageGenerationReferences
+        v-if="generationMode === 'image_to_image'"
+        v-model="editReferences"
+        :project-id="projectId"
+        :kind="kind"
+        :materials="materials"
+        :binding="imageBinding"
+        :disabled="locked || !imageBinding"
+        @busy="setBusy"
+        @material="emit('material', $event)"
+      />
       <label
         >生图提示词<textarea
           v-model="prompt"
           :disabled="locked"
           rows="4"
           maxlength="4000"
-          placeholder="描述环境、外观、服装或画风；留空时使用参考描述"
+          :placeholder="
+            generationMode === 'image_to_image'
+              ? '例如：保留图 1 的人物，将服装改为图 2 的配色；请写明保留与修改的内容'
+              : '描述环境、外观、服装或画风；留空时使用参考描述'
+          "
         /></label
       ><button
         type="button"
@@ -562,18 +703,45 @@ onBeforeUnmount(() => {
           刷新生成状态
         </button>
         <template v-if="result">
+          <details
+            v-if="current?.input?.reference_images?.length"
+            class="original-image-comparison"
+          >
+            <summary>查看生成时使用的原图（原图保留）</summary>
+            <div>
+              <figure
+                v-for="(reference, index) in current.input.reference_images"
+                :key="reference.material_id"
+              >
+                <img
+                  :src="api.mediaUrl(reference.url || '')"
+                  :alt="`原图 ${index + 1}`"
+                />
+                <figcaption>图 {{ index + 1 }}</figcaption>
+              </figure>
+            </div>
+          </details>
+          <strong>生成结果</strong>
           <img :src="api.mediaUrl(result.url)" :alt="result.name" />
           <button
             type="button"
             :disabled="disabled || busy || !result.reference_only"
             @click="publishGenerated"
           >
-            {{ !result.reference_only ? "已上传到素材库" : busy ? "上传中…" : "上传到素材库" }}
+            {{
+              !result.reference_only
+                ? "已上传到素材库"
+                : busy
+                  ? "上传中…"
+                  : "上传到素材库"
+            }}
           </button>
           <p class="reference-option-note">
-            {{ result.reference_only
-              ? "直接使用仅作为当前人物或场景的参考图；需要复用时，再上传到素材库。"
-              : "已保存，可在素材库中复用。" }}
+            {{
+              result.reference_only
+                ? "直接使用仅作为当前人物或场景的参考图；需要复用时，再上传到素材库。"
+                : "已保存，可在素材库中复用。"
+            }}
           </p>
           <button
             type="button"
@@ -588,3 +756,34 @@ onBeforeUnmount(() => {
     </section>
   </section>
 </template>
+
+<style scoped>
+.image-generation-modes {
+  display: flex;
+  gap: 8px;
+}
+.image-generation-modes button[aria-pressed="true"] {
+  color: #2357b9;
+  background: #edf4ff;
+  border-color: #7fa3e2;
+}
+.original-image-comparison > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-top: 8px;
+}
+.original-image-comparison figure {
+  width: 90px;
+  margin: 0;
+}
+.original-image-comparison img {
+  width: 90px;
+  height: 70px;
+  object-fit: cover;
+  border-radius: 6px;
+}
+.original-image-comparison figcaption {
+  font-size: 12px;
+}
+</style>

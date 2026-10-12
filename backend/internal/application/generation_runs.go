@@ -90,6 +90,15 @@ func (s TaskService) CreateGenerationRun(g *gin.Context) {
 	}
 	now := time.Now().UTC()
 	run := task.GenerationRun{VideoModelConfig: &model, ID: id, SceneID: g.Param("sceneId"), State: "preparing", SnapshotID: snap.ID, RequestHash: hash, VideoModelID: in.VideoModelID, DurationSeconds: duration, Resolution: resolution, Plan: []task.GenerationSnapshot{snap}, TaskIDs: []string{}, CreatedAt: &now, UpdatedAt: &now, Selection: &task.RunSelection{SpeechTakeIDs: map[string]string{}}}
+	if s.Providers.Catalog.Connections != nil {
+		connection, err := s.Providers.Catalog.Connections.GetConnection(g.Request.Context(), model.ConnectionID)
+		if err != nil {
+			writeError(g, err)
+			return
+		}
+		connection = connection.GenerationSnapshot()
+		run.VideoConnectionConfig = &connection
+	}
 	for _, scene := range d.Story.Scenes {
 		if scene.ID == run.SceneID && !directVideo {
 			r, err := ResolveBindings(p.EntityCatalog, scene, true)
@@ -262,6 +271,7 @@ func (s TaskService) advanceRun(ctx context.Context, pID, dID, rID string) error
 		item.RunID = run.ID
 		item.ModelID = snap.ModelID
 		item.ModelConfig = snap.ModelConfig
+		item.ConnectionConfig = snap.ConnectionConfig
 		item.Snapshot = &snap
 		item.InputHash = snap.InputHash
 		item.InputVersion = snap.DraftVersion
@@ -334,7 +344,7 @@ func (s TaskService) advanceRun(ctx context.Context, pID, dID, rID string) error
 								}
 								v := d.Version
 								input := GenerationRequest{ExpectedVersion: &v, ModelID: run.VideoModelID, Path: "first_frame_video", AspectRatio: run.Plan[0].AspectRatio, DurationSeconds: run.DurationSeconds, Resolution: run.Resolution}
-								snap, err := (GenerationCompiler{Models: s.Providers.Catalog.Models, Materials: s.Materials, Directory: s.UploadDir}).Compile(ctx, p, *d, scene, input)
+								snap, err := (GenerationCompiler{Connections: s.Providers.Catalog.Connections, Models: s.Providers.Catalog.Models, Materials: s.Materials, Directory: s.UploadDir}).Compile(ctx, p, *d, scene, input)
 								if err != nil {
 									run.State = "failed"
 									run.Error = err.Error()

@@ -20,6 +20,10 @@ import (
 	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/task"
 )
 
+type ImageReferenceSource interface {
+	ReferenceImageData(context.Context, task.MediaReference, int64) (string, error)
+}
+
 type EventPublisher interface {
 	PublishTask(context.Context, task.Event)
 }
@@ -34,6 +38,7 @@ type Worker interface {
 
 // Processor uses the configured model client to execute queued tasks.
 type Processor struct {
+	ImageReferences     ImageReferenceSource
 	Models              provider.ModelRepository
 	ProviderConnections provider.ConnectionRepository
 	ModelClient         provider.ModelClient
@@ -133,6 +138,11 @@ func (p *Processor) processModel(ctx context.Context, item *task.Task, progress 
 	if err != nil {
 		return err
 	}
+	if item.ConnectionConfig != nil {
+		connection = *item.ConnectionConfig
+	} else if item.Snapshot != nil && item.Snapshot.ConnectionConfig != nil {
+		connection = *item.Snapshot.ConnectionConfig
+	}
 	allowed := false
 	for _, cap := range model.Capabilities {
 		if cap == capability(item.Kind) {
@@ -146,6 +156,9 @@ func (p *Processor) processModel(ctx context.Context, item *task.Task, progress 
 	progress(20, task.StagePreparing)
 	options := provider.RequestOptions{Timeout: 5 * time.Minute}
 	imageLimit := provider.MaxLocalImageBytes
+	if item.Kind == task.KindImage && model.Resolve(provider.Image).Binding.MaxImageBytes > 0 {
+		imageLimit = model.Resolve(provider.Image).Binding.MaxImageBytes
+	}
 	if item.Kind == task.KindVideo && model.Operations[provider.Video].MaxImageBytes > 0 {
 		imageLimit = model.Operations[provider.Video].MaxImageBytes
 	}
@@ -165,6 +178,18 @@ func (p *Processor) processModel(ctx context.Context, item *task.Task, progress 
 		videoMode = selected
 	}
 	refs := []provider.ImageReference{}
+	if item.Kind == task.KindImage {
+		for _, r := range item.Input.ReferenceImages {
+			if p.ImageReferences == nil {
+				return errors.New("image reference delivery is not configured")
+			}
+			source, err := p.ImageReferences.ReferenceImageData(ctx, r, imageLimit)
+			if err != nil {
+				return err
+			}
+			refs = append(refs, provider.ImageReference{URL: source, Label: r.Label})
+		}
+	}
 	if item.Snapshot != nil {
 		snap := item.Snapshot
 		if snap.ModelID != item.ModelID {
@@ -264,8 +289,11 @@ func (p *Processor) processModel(ctx context.Context, item *task.Task, progress 
 			item.ResultCandidate = &candidate
 		}
 	case task.KindImage:
+		if err := model.Operations[provider.Image].ValidateImageInput(item.Input.Mode, len(refs)); err != nil {
+			return err
+		}
 		progress(55, task.StageGeneratingImage)
-		result, err := p.ModelClient.GenerateImage(ctx, connection, model, provider.ImageRequest{Prompt: item.Input.Prompt, Model: model.RemoteID, AspectRatio: item.Input.AspectRatio, References: refs}, options)
+		result, err := p.ModelClient.GenerateImage(ctx, connection, model, provider.ImageRequest{Mode: item.Input.Mode, Prompt: item.Input.Prompt, Model: model.RemoteID, AspectRatio: item.Input.AspectRatio, References: refs}, options)
 		if err != nil {
 			return err
 		}
@@ -518,6 +546,9 @@ func (p *Processor) Execute(ctx context.Context, item task.Task) {
 		}
 	}
 	if err != nil {
+		if errors.Is(err, provider.ErrRemoteAcceptanceUnknown) {
+			item.RemoteAcceptanceUnknown = true
+		}
 		item.Fail(err.Error(), time.Now().UTC())
 	} else {
 		item.Succeed(time.Now().UTC())
