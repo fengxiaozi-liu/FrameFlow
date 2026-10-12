@@ -2,6 +2,7 @@
 // Real UI, synthetic fixtures. All API requests are intercepted; no paid calls or user data.
 import { test, expect, type Locator } from "@playwright/test";
 import { mkdir } from "node:fs/promises";
+import { pasteContractJSON } from "../e2e/json-contract-helpers";
 
 test("capture annotated guide images from the application", async ({
   page,
@@ -25,6 +26,16 @@ test("capture annotated guide images from the application", async ({
     max_references: 5,
     max_image_bytes: 10485760,
   };
+  const imageBinding = {
+    protocol: "dashscope.image.v1",
+    source: "manual",
+    image_modes: ["text_to_image", "image_to_image"],
+    min_references: 1,
+    max_references: 3,
+    max_image_bytes: 10485760,
+    ratios: ["16:9", "1:1"],
+    image_sizes: { "16:9": "1280*720", "1:1": "1024*1024" },
+  };
   const models = [
     ["qwen-plus", "故事模型", "story"],
     ["qwen-image-2.0", "图片模型", "image"],
@@ -42,18 +53,15 @@ test("capture annotated guide images from the application", async ({
       [cap]:
         cap === "video"
           ? videoBinding
-          : {
-              protocol:
-                cap === "story"
-                  ? "openai.chat.v1"
-                  : "dashscope.multimodal-image.v1",
-              ratios: ["16:9", "1:1"],
-            },
+          : cap === "image"
+            ? imageBinding
+            : { protocol: "openai.chat.v1" },
     },
     availability: {
       [cap]: {
         available: true,
-        binding: cap === "video" ? videoBinding : { ratios: ["16:9", "1:1"] },
+        binding:
+          cap === "video" ? videoBinding : cap === "image" ? imageBinding : {},
       },
     },
   }));
@@ -123,6 +131,28 @@ test("capture annotated guide images from the application", async ({
     else if (path === "/api/model-protocols")
       json = {
         protocols: [
+          {
+            id: "dashscope.image.v1",
+            name: "DashScope 图片生成",
+            operation: "image",
+            default_path:
+              "/api/v1/services/aigc/multimodal-generation/generation",
+          },
+          {
+            id: "custom.json.v1",
+            name: "自定义接口（JSON）",
+            operation: "video",
+            template_variables: [
+              "model",
+              "prompt",
+              "images",
+              "first_frame",
+              "last_frame",
+              "duration",
+              "resolution",
+              "ratio",
+            ],
+          },
           {
             id: "dashscope.media-video.v1",
             name: "DashScope 视频生成",
@@ -317,6 +347,16 @@ test("capture annotated guide images from the application", async ({
     page.getByRole("button", { name: "保存连接", exact: true }),
   ]);
   if (process.env.GUIDE_CONNECTION_ONLY === "1") return;
+  await page.getByLabel("厂商", { exact: true }).selectOption("custom");
+  await page
+    .getByLabel("响应 JSON 示例", { exact: true })
+    .fill('{\n  "data": [{ "id": "demo-model", "name": "演示模型" }]\n}');
+  await page.getByLabel("显示名称 Key（可选）", { exact: true }).fill("name");
+  await capture("custom-discovery", page.locator(".discovery-profile"), [
+    page.getByLabel("同步路径", { exact: true }),
+    page.getByLabel("响应 JSON 示例", { exact: true }),
+    page.getByLabel("模型列表 Key", { exact: true }),
+  ]);
   await page.goto("/config");
   await expect(page.locator(".catalog-main")).toContainText("故事模型");
   await capture("models", page.locator(".catalog-main"), [
@@ -336,6 +376,85 @@ test("capture annotated guide images from the application", async ({
     page.getByLabel("配置能力"),
     page.getByLabel("接口协议"),
     page.getByRole("group", { name: "内置协议请求路径" }),
+  ]);
+  const drawer = page.getByRole("dialog");
+  await drawer.getByLabel("接口协议").selectOption("custom.json.v1");
+  await drawer.getByLabel("请求路径", { exact: true }).fill("/v1/videos");
+  await pasteContractJSON(
+    drawer,
+    "请求",
+    JSON.stringify(
+      {
+        model: "example-video-model",
+        input: { prompt: "雨夜，镜头缓慢推进咖啡馆", images: [] },
+        watermark: false,
+      },
+      null,
+      2,
+    ),
+  );
+  await drawer
+    .getByLabel("请求 input.prompt 绑定参数", { exact: true })
+    .selectOption("prompt");
+  await drawer
+    .getByLabel("请求 input.images 绑定参数", { exact: true })
+    .selectOption("images");
+  await capture(
+    "custom-request",
+    drawer.getByRole("group", { name: "请求字段", exact: true }),
+    [
+      drawer.getByLabel("请求 粘贴或修改 JSON", { exact: true }),
+      drawer.getByLabel("请求 input.prompt 绑定参数", { exact: true }),
+      drawer.getByLabel("请求 input.images 绑定参数", { exact: true }),
+    ],
+  );
+  await pasteContractJSON(
+    drawer,
+    "响应",
+    JSON.stringify(
+      {
+        output: { url: "https://cdn.example.com/video.mp4" },
+        request_id: "example-request",
+      },
+      null,
+      2,
+    ),
+  );
+  await drawer
+    .getByLabel("响应 output.url 绑定参数", { exact: true })
+    .selectOption("result");
+  await capture(
+    "custom-response",
+    drawer.getByRole("group", { name: "响应字段", exact: true }),
+    [
+      drawer.getByLabel("响应 粘贴或修改 JSON", { exact: true }),
+      drawer.getByLabel("响应 output.url 绑定参数", { exact: true }),
+    ],
+  );
+  await drawer
+    .getByLabel("执行方式", { exact: true })
+    .selectOption("async_polling");
+  await page.setViewportSize({ width: 1280, height: 1500 });
+  await drawer
+    .getByLabel("查询路径", { exact: true })
+    .fill("/v1/tasks/{task_id}");
+  await drawer.getByLabel("查询路径", { exact: true }).scrollIntoViewIfNeeded();
+  await capture("custom-polling", drawer, [
+    drawer.getByLabel("查询路径", { exact: true }),
+    drawer.getByRole("group", { name: "查询响应字段", exact: true }),
+    drawer.getByRole("group", { name: "等待状态值", exact: true }),
+  ]);
+  await page.setViewportSize({ width: 1280, height: 1260 });
+  await page.goto("/config");
+  await page
+    .getByRole("row")
+    .filter({ hasText: "图片模型" })
+    .getByRole("button", { name: "协议与参数" })
+    .click();
+  await capture("image-modes", page.getByRole("dialog"), [
+    page.getByRole("group", { name: "图片生成能力（可多选）" }),
+    page.getByLabel("最多参考图片数", { exact: true }),
+    page.getByLabel("16:9 输出尺寸", { exact: true }),
   ]);
   const base = "/studio/demo/draft";
   await page.setViewportSize({ width: 1280, height: 560 });
@@ -417,7 +536,37 @@ test("capture annotated guide images from the application", async ({
     page.getByRole("button", { name: "使用这张图片", exact: true }),
   ]);
   await page.getByRole("button", { name: "取消上传", exact: true }).click();
+  await page.setViewportSize({ width: 1280, height: 1500 });
+  await page.getByRole("button", { name: "图片生成", exact: true }).click();
+  await page.getByRole("button", { name: "图生图", exact: true }).click();
+  await page
+    .getByRole("button", { name: "从素材库选择参考图片", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "添加编辑参考图 咖啡馆参考图", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "添加编辑参考图 结束画面参考图", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "从素材库选择参考图片", exact: true })
+    .click();
+  await page
+    .getByLabel("生图提示词", { exact: true })
+    .fill(
+      "保留图 1 的咖啡馆结构，参考图 2 的暖色灯光，将窗外改为雨夜。保留玻璃窗与木质桌椅。",
+    );
+  await capture(
+    "image-edit",
+    page.getByRole("region", { name: "图片生成设置", exact: true }),
+    [
+      page.getByRole("group", { name: "图片生成模式" }),
+      page.getByRole("region", { name: "图生图参考图片", exact: true }),
+      page.getByLabel("生图提示词", { exact: true }),
+    ],
+  );
   await page.getByRole("button", { name: "取消", exact: true }).click();
+  await page.setViewportSize({ width: 1280, height: 1000 });
   await expect(
     page.getByRole("button", { name: "生成视频", exact: true }),
   ).toBeEnabled();

@@ -180,9 +180,13 @@ UI 展示具体不可用原因和处理入口。暂时读取失败可重试，�
 - 文案源：[content.ts](../frontend/src/components/home/content.ts)；截图与编号说明：[guideImages.ts](../frontend/src/components/home/guideImages.ts)。两者按六步顺序对应，不应单独调整顺序。
 - 界面实现：[HomeGuide.vue](../frontend/src/components/home/HomeGuide.vue)；全局入口：[AppHeader.vue](../frontend/src/components/AppHeader.vue)。业务页按当前路由打开相关步骤，有项目上下文时链接应继续当前草稿；阅读、关闭和切换步骤不得创建项目或提交生成任务。
 - [guideProgress.ts](../frontend/src/components/home/guideProgress.ts) 仅按稳定步骤 ID 在当前浏览器记录最后阅读步骤，不记录密钥、草稿正文或任务状态。首页“查看入门指南”恢复进度，指定步骤和业务页入口优先打开对应步骤。存储不可用或步骤失效时仍应可以阅读。
-- 截图放在 [frontend/public/guide](../frontend/public/guide)，现有 17 张。它们由真实页面渲染、合成演示数据和临时编号标注生成，视频结果使用明确标注的演示封面；不能宣称这些截图证明服务商真实生成成功。
+- 截图放在 [frontend/public/guide](../frontend/public/guide)，现有 23 张。它们由真实页面渲染、合成演示数据和临时编号标注生成，视频结果使用明确标注的演示封面；不能宣称这些截图证明服务商真实生成成功。
 
 在 `frontend` 目录执行 `npx playwright test --config scripts/guide-capture.config.ts` 可重新截图。脚本拦截全部 API 和 WebSocket，只接受 GET，不访问真实用户数据，也不发送付费请求。界面流程、标签、协议配置或参数变化后，先更新演示夹具与图文说明，再重新截图。不要为了得到截图而修改生产界面的业务判断。
+
+2026-10-12 指南更新：保留六步流程，增加自定义连接同步设置、请求 / 响应嵌套字段绑定、视频异步查询、图片模式配置与图生图操作六张编号截图。说明请求不绑定保留示例值、响应不绑定忽略；图片数组整体绑定；先配置图生图再使用；原图、采用结果和入库的区别。README 同步更新六步使用方式，移除故事自动采用的过时说明。图片夹具仅为操作演示，不证明特定模型真实支持示例参数。
+
+本次指南验证：截图脚本通过，新增配图已目视核对；上述三个指南相关 E2E 文件共 8 项通过，覆盖 1440px / 390px、全部图片加载和放大、键盘焦点、阅读进度、路由跳转及阅读无写请求；前端 lint、56 项单元测试和生产构建通过。仅更新指南内容、演示截图和截图脚本，未修改生成逻辑，未执行真实模型调用或重新打包 EXE。
 
 验收运行 `npx playwright test e2e/home-guide.spec.ts e2e/home-onboarding.spec.ts e2e/professional-light.spec.ts --workers=1`，检查六步、所有图片加载及放大、键盘与焦点恢复、桌面和窄屏、阅读记忆、当前草稿跳转，以及无生成请求。结合 `npm run lint`、`npm test`、`npm run build` 验证前端。本次上述检查通过；未进行真实厂商调用、完整后端回归或 EXE 打包。
 
