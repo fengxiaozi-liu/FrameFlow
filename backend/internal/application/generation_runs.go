@@ -83,6 +83,15 @@ func (s TaskService) CreateGenerationRun(g *gin.Context) {
 		writeError(g, Invalid("invalid_video_options", errors.New("视频时长或清晰度不受所选模型支持")))
 		return
 	}
+	videoRatio := in.AspectRatio
+	if videoRatio == "" {
+		videoRatio = "16:9"
+	}
+	// Both steps must accept the requested ratio before a paid image step starts.
+	if err := model.Operations[provider.Video].ValidateAspectRatio(videoRatio); err != nil {
+		writeError(g, Invalid("invalid_video_options", err))
+		return
+	}
 	snap, err := s.compileShot(g, in)
 	if err != nil {
 		writeError(g, Invalid("invalid_run", err))

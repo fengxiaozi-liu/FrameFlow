@@ -25,3 +25,21 @@ func TestGenerationSettingsCompatibility(t *testing.T) {
 		t.Fatal("invalid duration accepted")
 	}
 }
+
+func TestGenerationSettingsKeepNamedRatioAndRejectMalformedValues(t *testing.T) {
+	s := GenerationSettings{VideoModelID: "m", DurationSeconds: 5, Resolution: "720P", AspectRatio: "adaptive"}
+	if err := s.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	data, _ := json.Marshal(s)
+	var restored GenerationSettings
+	if err := json.Unmarshal(data, &restored); err != nil || restored.AspectRatio != "adaptive" {
+		t.Fatal(restored, err)
+	}
+	for _, value := range []string{"", "a b", "adaptive\n", "a,b"} {
+		s.AspectRatio = value
+		if err := s.Validate(); err == nil {
+			t.Fatal("malformed ratio accepted", value)
+		}
+	}
+}

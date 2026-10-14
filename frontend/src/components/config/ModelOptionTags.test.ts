@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import ModelOptionTags from "./ModelOptionTags.vue";
 
 function editor(
-  kind: "duration" | "resolution" | "language",
+  kind: "duration" | "resolution" | "language" | "ratio",
   values: string[] = [],
 ) {
   const wrapper = mount(ModelOptionTags, {
@@ -18,6 +18,34 @@ function editor(
   return wrapper;
 }
 describe("model option tags", () => {
+  it("keeps ratio values exact, validates custom input, and preserves existing options", async () => {
+    const original = ["16:9"];
+    const w = editor("ratio", original);
+    const input = w.get('[aria-label="添加选项"]');
+    for (const value of ["adaptive", "21:9", "VendorMode", "vendormode"]) {
+      await input.setValue(value);
+      await input.trigger("keydown", { key: "Enter" });
+    }
+    expect(w.props("modelValue")).toEqual([
+      "16:9",
+      "adaptive",
+      "21:9",
+      "VendorMode",
+      "vendormode",
+    ]);
+    expect(w.text()).toContain("自适应（adaptive）");
+    await input.setValue("adaptive");
+    await input.trigger("blur");
+    expect(w.props("modelValue")).toHaveLength(5);
+    for (const invalid of ["a b", "a,b", "x".repeat(65)]) {
+      await input.setValue(invalid);
+      await input.trigger("keydown", { key: "Enter" });
+      expect(w.props("modelValue")).toHaveLength(5);
+    }
+    await w.get('[aria-label="移除自适应（adaptive）"]').trigger("click");
+    expect(w.props("modelValue")).not.toContain("adaptive");
+    expect(original).toEqual(["16:9"]);
+  });
   it("sorts integer durations, rejects invalid input and deduplicates without mutating the original", async () => {
     const original = ["8"];
     const w = editor("duration", original);

@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"time"
 
@@ -112,8 +111,8 @@ func (c GenerationCompiler) Compile(ctx context.Context, p project.Project, d pr
 	if s.AspectRatio == "" {
 		s.AspectRatio = "16:9"
 	}
-	if s.AspectRatio != "16:9" && s.AspectRatio != "9:16" && s.AspectRatio != "1:1" {
-		return s, errors.New("unsupported aspect ratio")
+	if err := provider.ValidateRatioValue(s.AspectRatio); err != nil {
+		return s, err
 	}
 	if in.Path == "reference_image_then_video" || in.Path == "reference_video" {
 		directVideo := in.Path == "reference_video"
@@ -147,8 +146,8 @@ func (c GenerationCompiler) Compile(ctx context.Context, p project.Project, d pr
 		if directVideo {
 			operation = provider.Video
 		}
-		if !slices.Contains(m.Operations[operation].Ratios, s.AspectRatio) {
-			return s, errors.New("unsupported aspect ratio for configured model")
+		if err := m.Operations[operation].ValidateAspectRatio(s.AspectRatio); err != nil {
+			return s, err
 		}
 		count := 0
 		selectedReferences := map[string]bool{}
@@ -256,6 +255,9 @@ func (c GenerationCompiler) Compile(ctx context.Context, p project.Project, d pr
 		}
 		if !m.Supports(provider.Video) || !cap.FirstFrame {
 			return s, errors.New("model does not support first-frame video")
+		}
+		if err := m.Operations[provider.Video].ValidateAspectRatio(s.AspectRatio); err != nil {
+			return s, err
 		}
 		if s.DurationSeconds == 0 {
 			s.DurationSeconds = scene.DurationSeconds

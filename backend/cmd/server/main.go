@@ -262,10 +262,11 @@ func checkMediaRuntime(baseDir string) mediaRuntimeStatus {
 		if err != nil {
 			return ""
 		}
-		// First launch of extracted Windows binaries can wait for antivirus scanning.
-		probeCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		probeCtx, cancel := context.WithTimeout(context.Background(), 35*time.Second)
 		defer cancel()
-		if err := exec.CommandContext(probeCtx, path, "-version").Run(); err != nil {
+		if err := verifyMediaTool(probeCtx, func(ctx context.Context) error {
+			return exec.CommandContext(ctx, path, "-version").Run()
+		}); err != nil {
 			log.Printf("media runtime verification failed for %s: %v", fallback, err)
 			return ""
 		}
@@ -287,6 +288,31 @@ func checkMediaRuntime(baseDir string) mediaRuntimeStatus {
 		status.AudioDeliveryReason = "ready"
 	}
 	return status
+}
+
+// Version checks are read-only. A transient local process startup failure must
+// not immediately disable a verified bundled tool for the entire app session.
+func verifyMediaTool(ctx context.Context, probe func(context.Context) error) error {
+	var lastErr error
+	for attempt := 0; attempt < 3; attempt++ {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		attemptCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		lastErr = probe(attemptCtx)
+		cancel()
+		if lastErr == nil {
+			return nil
+		}
+		if attempt < 2 {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(250 * time.Millisecond):
+			}
+		}
+	}
+	return lastErr
 }
 
 func startupError(err error, logPath string) {

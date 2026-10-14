@@ -1,6 +1,9 @@
 package story
 
-import "errors"
+import (
+	"errors"
+	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/provider"
+)
 
 type GenerationSettings struct {
 	VideoInputMode       string `json:"video_input_mode,omitempty"`
@@ -22,8 +25,8 @@ func (s GenerationSettings) Validate() error {
 	if s.VideoModelID == "" || s.DurationSeconds < 1 || s.Resolution == "" {
 		return errors.New("请选择视频模型、清晰度与时长")
 	}
-	if s.AspectRatio != "16:9" && s.AspectRatio != "9:16" && s.AspectRatio != "1:1" {
-		return errors.New("不支持的画幅")
+	if err := provider.ValidateRatioValue(s.AspectRatio); err != nil {
+		return err
 	}
 	return nil
 }

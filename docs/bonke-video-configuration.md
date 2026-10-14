@@ -52,6 +52,8 @@ Ark 待处理状态为 `queued,running`，失败终态为 `failed,cancelled,expi
 
 ## 还需核对的接入条件
 
+2026-10-14 使用当前账户、`seedance-2.5-global-token`、原首帧和 5 秒请求进行了一次真实提交。`GET /v1/models` 返回 200，确认当前模型及 `doubao-seedance-2-5-260628` 均在目录；创建返回 400，`error.code=fail_to_fetch_task`，嵌套错误明确为 `field 'ratio' value 16:9 is not in the allowed options, allowed values: adaptive`。因此当前模型应配置比例仅为 `adaptive`，并将 `/metadata/ratio` 绑定到画面比例。此限制来自该次实际错误，不能推广到其他模型；没有返回任务 ID、未验证真实出片或图片是否可接受。新版本配置方式见 [自定义比例](migrations/custom-ratio-options.md)。
+
 - 失败任务模型 ID 为 `seedance-2.5-global-token`，文档列举的是 `doubao-seedance-2-5-260628` 等 ID。不能据此断言前者不存在，也不能只修改显示名称；需要同步该账户的 `/v1/models`，选择实际返回的远端 ID。Seedance 2.5 普通生成文档只列出 480p/720p；1080p 成片属于另一种基于样片 ID 的工作流，不应与普通生成混合声明。
 - FrameFlow 当前把本地参考图编码为 `data:image/...;base64,...`。文档列出的素材地址为公网可下载 HTTPS 或 `asset://`，没有声明支持 Data URI。这是路径修复后的兼容风险，需要服务商确认或增加可公开下载的媒体交付；本机 `/media/...`、localhost 和 Windows 路径不能直接供远端下载。
 - 普通风景、产品等素材不要求走真人认证流程。私有真人资产按素材文档完成认证及入库，`Active` 后使用 `asset://<asset_id>`；这是远端平台素材库，与 FrameFlow 本地素材管理不同。

@@ -15,6 +15,78 @@ const base: Model = {
   default: false,
 };
 describe("model-driven video settings", () => {
+  it("selects adaptive verbatim and requires re-selection when the model removes it", async () => {
+    const binding = {
+      protocol: "custom.json.v1",
+      source: "manual",
+      input_modes: ["first_frame"] as const,
+      ratios: ["adaptive", "21:9"],
+      durations: [5],
+      resolutions: ["720P"],
+      max_references: 1,
+    };
+    const model: Model = {
+      ...base,
+      availability: {
+        video: {
+          available: true,
+          code: "configured",
+          reason: "",
+          binding: { ...binding, input_modes: ["first_frame"] },
+        },
+      },
+    };
+    const w = mount(ShotGenerationSettings, {
+      props: {
+        modelValue: {
+          video_model_id: "m",
+          video_input_mode: "first_frame" as const,
+          first_frame_material_id: "a",
+          aspect_ratio: "21:9",
+          duration_seconds: 5,
+          resolution: "720P",
+        },
+        models: [model],
+        images: [
+          {
+            id: "a",
+            kind: "scene" as const,
+            name: "A",
+            url: "/media/a.png",
+            created_at: "",
+          },
+        ],
+        "onUpdate:modelValue": (value: Settings) =>
+          w.setProps({ modelValue: value }),
+      },
+      global: { stubs: { RouterLink: true } },
+    });
+    await w.get('[aria-label="画面比例"]').setValue("adaptive");
+    expect(w.props("modelValue").aspect_ratio).toBe("adaptive");
+    expect(w.text()).toContain("自适应（adaptive）");
+    expect(w.emitted("ready")?.slice(-1)[0]).toEqual([true]);
+    await w.setProps({
+      models: [
+        {
+          ...model,
+          availability: {
+            video: {
+              ...model.availability!.video!,
+              binding: {
+                ...binding,
+                input_modes: ["first_frame"],
+                ratios: ["21:9"],
+              },
+            },
+          },
+        },
+      ],
+    });
+    expect(w.props("modelValue").aspect_ratio).toBe("adaptive");
+    expect(w.emitted("ready")?.slice(-1)[0]).toEqual([false]);
+    expect(w.text()).toContain("请重新选择");
+    w.unmount();
+  });
   it("explains missing configuration instead of hiding the model", () => {
     const w = mount(ShotGenerationSettings, {
       props: {

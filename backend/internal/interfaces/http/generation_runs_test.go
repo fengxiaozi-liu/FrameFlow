@@ -38,6 +38,14 @@ func TestRunPersistsAndDoesNotDuplicateChildren(t *testing.T) {
 	if len(empty) != 0 {
 		t.Fatal("invalid video model submitted a paid image task")
 	}
+	ratioMismatch := request(t, router, "POST", path, `{"expected_version":0,"idempotency_key":"bad-ratio","model_id":"im","video_model_id":"vid","path":"reference_image_then_video","aspect_ratio":"adaptive"}`)
+	if ratioMismatch.Code != 400 {
+		t.Fatal("unsupported video ratio submitted image step", ratioMismatch.Code, ratioMismatch.Body.String())
+	}
+	empty, _ = s.TaskService.Store.List(ctx)
+	if len(empty) != 0 {
+		t.Fatal("invalid ratio submitted a paid image task")
+	}
 	var wg sync.WaitGroup
 	codes := make(chan int, 6)
 	for i := 0; i < 6; i++ {

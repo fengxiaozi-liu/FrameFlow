@@ -5,6 +5,7 @@ import { api } from "../../api/client";
 import { bindingsApi, type EntityVersion } from "../../api/bindings";
 import type { Material, Model, Task } from "../../api/types";
 import type { components } from "../../api/schema";
+import { formatAspectRatio } from "../../utils/aspectRatio";
 type Request = components["schemas"]["ReferenceImageRequest"];
 const props = defineProps<{
   projectId: string;
@@ -412,7 +413,7 @@ onMounted(async () => {
       );
       model.value = task.model_id || model.value;
       prompt.value = task.input?.prompt || "";
-      if (["16:9", "9:16", "1:1"].includes(task.input?.aspect_ratio || ""))
+      if (imageRatios.value.includes(task.input?.aspect_ratio || ""))
         aspect.value = task.input.aspect_ratio as Request["aspect_ratio"];
       mode.value = "generate";
       void refresh();
@@ -617,7 +618,7 @@ onBeforeUnmount(() => {
         ><label
           >图片画幅<select v-model="aspect" :disabled="locked">
             <option v-for="ratio in imageRatios" :key="ratio" :value="ratio">
-              {{ ratio }}
+            {{ formatAspectRatio(ratio) }}
             </option>
           </select></label
         >

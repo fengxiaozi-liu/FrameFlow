@@ -3,6 +3,7 @@ import { computed, watch } from "vue";
 import type { ShotGenerationSettings } from "../../api/bindings";
 import VideoInputPicker from "./VideoInputPicker.vue";
 import type { Model, Material } from "../../api/types";
+import { formatAspectRatio } from "../../utils/aspectRatio";
 const props = defineProps<{
   modelValue: ShotGenerationSettings;
   models: Model[];
@@ -155,7 +156,9 @@ function chooseModel(event: Event) {
           >
             请选择支持的比例
           </option>
-          <option v-for="ratio in ratios" :key="ratio">{{ ratio }}</option>
+          <option v-for="ratio in ratios" :key="ratio" :value="ratio">
+            {{ formatAspectRatio(ratio) }}
+          </option>
         </select></label
       >
       <label
@@ -200,6 +203,9 @@ function chooseModel(event: Event) {
         </select></label
       >
     </div>
+    <p v-if="modelValue.aspect_ratio === 'adaptive'" class="muted">
+      自适应由服务商决定生成视频的画幅；最终成片的输出比例在合成时单独选择。
+    </p>
     <VideoInputPicker
       v-if="binding"
       :model-value="modelValue"

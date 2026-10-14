@@ -33,6 +33,74 @@ func TestPlainDemoRendersActualValuesAndValidatesResponse(t *testing.T) {
 	}
 }
 
+func TestConfiguredAdaptiveRatioIsSentThroughNestedAsyncVideoContract(t *testing.T) {
+	posts := 0
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			posts++
+			var body struct {
+				Model    string `json:"model"`
+				Seconds  int    `json:"seconds"`
+				Metadata struct {
+					Ratio      string `json:"ratio"`
+					Resolution string `json:"resolution"`
+					Content    []struct {
+						Role     string `json:"role"`
+						ImageURL struct {
+							URL string `json:"url"`
+						} `json:"image_url"`
+					} `json:"content"`
+				} `json:"metadata"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Error(err)
+			}
+			if r.URL.Path != "/v1/videos" || body.Model != "unknown" || body.Seconds != 4 || body.Metadata.Ratio != "adaptive" || body.Metadata.Resolution != "720p" || len(body.Metadata.Content) != 1 || body.Metadata.Content[0].ImageURL.URL != "https://media/frame.png" {
+				t.Errorf("incorrect request: %+v", body)
+			}
+			_, _ = w.Write([]byte(`{"id":"remote-one"}`))
+			return
+		}
+		if r.URL.Path != "/v1/videos/remote-one" {
+			t.Error(r.URL.Path)
+		}
+		_, _ = w.Write([]byte(`{"status":"completed","ark":{"content":{"video_url":"https://media/result.mp4"}}}`))
+	}))
+	defer server.Close()
+	m := fixture(domain.Video)
+	m.RemoteID = "unknown"
+	b := m.Operations[domain.Video]
+	b.InputMode = "first_frame"
+	b.InputModes = nil
+	b.Ratios = []string{"adaptive"}
+	b.Custom.AuthMode = "none"
+	b.Custom.Path = "/v1/videos"
+	b.Custom.Polling = &domain.CustomPolling{Path: "/v1/videos/{task_id}", Pending: []string{"queued", "running"}, Succeeded: []string{"completed"}, Failed: []string{"failed"}}
+	b.Contract = &domain.OperationContract{Execution: domain.AsyncPolling,
+		Request:         domain.JSONContract{Example: `{"model":"demo","prompt":"move","seconds":4,"metadata":{"ratio":"16:9","resolution":"720p","content":[{"type":"image_url","role":"first_frame","image_url":{"url":"https://media/demo.png"}}]}}`, Bindings: map[string]string{"model": "/model", "prompt": "/prompt", "duration": "/seconds", "ratio": "/metadata/ratio", "first_frame": "/metadata/content/0/image_url/url"}},
+		Response:        domain.JSONContract{Example: `{"id":"demo"}`, Bindings: map[string]string{"task_id": "/id"}},
+		PollingResponse: &domain.JSONContract{Example: `{"status":"completed","ark":{"content":{"video_url":"https://media/demo.mp4"}}}`, Bindings: map[string]string{"status": "/status", "result": "/ark/content/video_url"}}}
+	compiled, err := b.Compile(domain.Video)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.Operations[domain.Video] = compiled
+	client := Client{HTTP: server.Client()}
+	input := domain.VideoRequest{InputMode: "first_frame", Prompt: "move", Duration: 4, Resolution: "720P", AspectRatio: "adaptive", SourceImageURL: "https://media/frame.png"}
+	accepted, err := client.GenerateVideo(context.Background(), connection(server), m, input, domain.RequestOptions{})
+	if err != nil || accepted.JobReference != "remote-one" {
+		t.Fatal(accepted, err)
+	}
+	result, done, err := client.PollVideo(context.Background(), connection(server), m, accepted.JobReference)
+	if err != nil || !done || result.URL != "https://media/result.mp4" {
+		t.Fatal(result, done, err)
+	}
+	input.AspectRatio = "16:9"
+	if _, err := client.GenerateVideo(context.Background(), connection(server), m, input, domain.RequestOptions{}); err == nil || posts != 1 {
+		t.Fatal("unsupported ratio reached remote", posts, err)
+	}
+}
+
 func TestVideoContractBindsNestedReferenceImageArray(t *testing.T) {
 	model := fixture(domain.Video)
 	binding := model.Operations[domain.Video]

@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { ref } from "vue";
+import { formatAspectRatio } from "../../utils/aspectRatio";
 
 const props = defineProps<{
   modelValue: string[];
   label: string;
-  kind: "duration" | "resolution" | "language" | "state";
+  kind: "duration" | "resolution" | "language" | "state" | "ratio";
+  presets?: string[];
   disabled?: boolean;
 }>();
 const emit = defineEmits<{ "update:modelValue": [string[]] }>();
@@ -14,11 +16,12 @@ const input = ref<HTMLInputElement>();
 const resolutions = ["480P", "720P", "1080P", "4K"];
 
 function display(value: string) {
+  if (props.kind === "ratio") return formatAspectRatio(value);
   return props.kind === "duration" ? `${value} 秒` : value;
 }
 function contains(value: string) {
   return props.modelValue.some((item) =>
-    props.kind === "state"
+    props.kind === "state" || props.kind === "ratio"
       ? item === value
       : item.toLocaleLowerCase() === value.toLocaleLowerCase(),
   );
@@ -42,17 +45,34 @@ function add() {
     message.value = "请一次添加一个值";
     input.value?.setCustomValidity(message.value);
     return;
+  } else if (
+    props.kind === "ratio" &&
+    ([...value].length > 64 || /[\s\p{Cc}]/u.test(value))
+  ) {
+    message.value = "比例最多 64 个字符，不能包含空白或控制字符";
+    input.value?.setCustomValidity(message.value);
+    return;
   } else if (props.kind === "resolution" && /^\d+[pk]$/i.test(value)) {
     value = value.toUpperCase();
   }
   if (contains(value)) {
     message.value = `${display(value)} 已添加`;
   } else {
+    if (props.kind === "ratio" && props.modelValue.length >= 64) {
+      message.value = "最多添加 64 个比例选项";
+      return;
+    }
     const next = [...props.modelValue, value];
     if (props.kind === "duration") next.sort((a, b) => Number(a) - Number(b));
     emit("update:modelValue", next);
   }
   draft.value = "";
+}
+function toggleRatio(value: string) {
+  if (props.disabled) return;
+  if (contains(value)) remove(value);
+  else if (props.modelValue.length < 64)
+    emit("update:modelValue", [...props.modelValue, value]);
 }
 function remove(value: string) {
   if (!props.disabled)
@@ -82,6 +102,21 @@ function onEnter(event: KeyboardEvent) {
 <template>
   <fieldset class="option-tags" :disabled="disabled">
     <legend>{{ label }}</legend>
+    <div
+      v-if="kind === 'ratio'"
+      class="option-presets"
+      aria-label="常用画面比例"
+    >
+      <label v-for="value in presets || ['16:9', '9:16', '1:1']" :key="value">
+        <input
+          type="checkbox"
+          :aria-label="value"
+          :checked="contains(value)"
+          :value="value"
+          @change="toggleRatio(value)"
+        />{{ display(value) }}
+      </label>
+    </div>
     <div
       v-if="kind === 'resolution'"
       class="option-presets"
@@ -125,9 +160,11 @@ function onEnter(event: KeyboardEvent) {
             ? '输入秒数'
             : kind === 'resolution'
               ? '自定义，如 1440P'
-              : kind === 'state'
-                ? '按接口文档逐个添加状态值'
-                : '语言标识，如 Chinese'
+              : kind === 'ratio'
+                ? '按模型文档填写，如 adaptive、21:9'
+                : kind === 'state'
+                  ? '按接口文档逐个添加状态值'
+                  : '语言标识，如 Chinese'
         "
         :disabled="disabled"
         @input="clearError"
@@ -173,6 +210,14 @@ function onEnter(event: KeyboardEvent) {
 .option-presets button {
   padding: 5px 9px;
   font-size: 12px;
+}
+.option-presets label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.option-presets input {
+  width: auto;
 }
 .option-presets button[aria-pressed="true"] {
   color: #08746c;

@@ -3524,6 +3524,8 @@ export interface components {
             revision?: number;
             schema?: components["schemas"]["JSONShape"];
         };
+        /** @description Case-sensitive model parameter, including named values such as adaptive. No whitespace, control characters or commas. Must belong to the operation ratios; built-in protocols retain their implemented restrictions. Independent of composition output aspect ratio. */
+        RatioValue: string;
         JSONShape: {
             /** @enum {string} */
             type: "object" | "array" | "string" | "number" | "boolean" | "null";
@@ -3794,8 +3796,7 @@ export interface components {
             name: string;
             prompt: string;
             model_id: string;
-            /** @enum {string} */
-            aspect_ratio: "16:9" | "9:16" | "1:1";
+            aspect_ratio: components["schemas"]["RatioValue"];
             /**
              * @default text_to_image
              * @enum {string}
@@ -3897,7 +3898,7 @@ export interface components {
             model_id: string;
             /** @enum {string} */
             path: "reference_video" | "reference_image_then_video" | "first_frame_video" | "speech";
-            aspect_ratio?: string;
+            aspect_ratio?: components["schemas"]["RatioValue"];
             resolution?: string;
             duration_seconds?: number;
             utterance_id?: string;
@@ -4047,7 +4048,7 @@ export interface components {
             /** @description Legacy image step model; omitted by direct reference-video workflows. */
             image_model_id?: string;
             video_model_id: string;
-            aspect_ratio: string;
+            aspect_ratio: components["schemas"]["RatioValue"];
             resolution: string;
             duration_seconds: number;
             /** @enum {string} */
@@ -4097,7 +4098,8 @@ export interface components {
             endpoint?: string;
             /** @enum {string} */
             input_mode?: "first_frame" | "reference_images";
-            ratios?: string[];
+            /** @description Explicit model choices. Custom JSON preserves exact values; built-in protocols validate their own limits. */
+            ratios?: components["schemas"]["RatioValue"][];
             durations?: number[];
             resolutions?: string[];
             image_sizes?: {

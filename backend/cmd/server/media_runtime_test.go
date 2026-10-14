@@ -1,6 +1,8 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -34,5 +36,29 @@ func TestAudioDeliveryRequiresCompleteHTTPSConfiguration(t *testing.T) {
 	t.Setenv("FRAMEFLOW_AUDIO_OBJECT_BASE_URL", "https://example.com")
 	if !checkMediaRuntime(base).AudioDeliveryAvailable {
 		t.Fatal("complete object storage configuration was not detected")
+	}
+}
+
+func TestMediaVerificationRecoversTransientFailureAndBoundsPermanentFailure(t *testing.T) {
+	attempts := 0
+	transient := errors.New("local startup failed")
+	if err := verifyMediaTool(context.Background(), func(context.Context) error {
+		attempts++
+		if attempts == 1 {
+			return transient
+		}
+		return nil
+	}); err != nil || attempts != 2 {
+		t.Fatal(attempts, err)
+	}
+	attempts = 0
+	if err := verifyMediaTool(context.Background(), func(context.Context) error { attempts++; return transient }); !errors.Is(err, transient) || attempts != 3 {
+		t.Fatal(attempts, err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	attempts = 0
+	if err := verifyMediaTool(ctx, func(context.Context) error { attempts++; return nil }); !errors.Is(err, context.Canceled) || attempts != 0 {
+		t.Fatal(attempts, err)
 	}
 }

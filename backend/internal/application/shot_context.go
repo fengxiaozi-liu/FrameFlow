@@ -7,7 +7,6 @@ import (
 	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/story"
 	"github.com/gin-gonic/gin"
 	"path/filepath"
-	"slices"
 	"strings"
 	"time"
 )
@@ -67,8 +66,12 @@ func (s ProjectService) WriteShotContext(g *gin.Context) {
 		for _, v := range vc.Resolutions {
 			validResolution = validResolution || v == in.Settings.Resolution
 		}
-		if e != nil || !known || !video.Enabled || !video.Supported || !video.Supports(provider.Video) || (!vc.FirstFrame && !vc.ReferenceVideo) || !validDuration || !validResolution || !slices.Contains(vc.Ratios, in.Settings.AspectRatio) {
+		if e != nil || !known || !video.Enabled || !video.Supported || !video.Supports(provider.Video) || (!vc.FirstFrame && !vc.ReferenceVideo) || !validDuration || !validResolution {
 			writeError(g, Invalid("invalid_generation_settings", errors.New("视频模型、时长或清晰度不可用")))
+			return
+		}
+		if err := video.Operations[provider.Video].ValidateAspectRatio(in.Settings.AspectRatio); err != nil {
+			writeError(g, Invalid("invalid_generation_settings", err))
 			return
 		}
 	}

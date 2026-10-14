@@ -9,7 +9,6 @@ import (
 	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/fault"
 	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/provider"
 	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/task"
-	"slices"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -29,7 +28,7 @@ type ReferenceImageRequest struct {
 func (s TaskService) SubmitReferenceImage(ctx context.Context, projectID, draftID string, in ReferenceImageRequest) (task.Task, error) {
 	in.Name = strings.TrimSpace(in.Name)
 	in.Prompt = strings.TrimSpace(in.Prompt)
-	if in.IdempotencyKey == "" || len(in.IdempotencyKey) > 128 || in.ModelID == "" || in.Name == "" || utf8.RuneCountInString(in.Name) > 100 || in.Prompt == "" || utf8.RuneCountInString(in.Prompt) > 4000 || (in.Kind != "scene" && in.Kind != "character") || (in.AspectRatio != "16:9" && in.AspectRatio != "9:16" && in.AspectRatio != "1:1") {
+	if in.IdempotencyKey == "" || len(in.IdempotencyKey) > 128 || in.ModelID == "" || in.Name == "" || utf8.RuneCountInString(in.Name) > 100 || in.Prompt == "" || utf8.RuneCountInString(in.Prompt) > 4000 || (in.Kind != "scene" && in.Kind != "character") || provider.ValidateRatioValue(in.AspectRatio) != nil {
 		return task.Task{}, Invalid("invalid_reference_image", errors.New("请选择生图模型、素材类型、画幅并填写名称和提示词"))
 	}
 	p, err := s.Projects.Get(ctx, projectID)
@@ -59,8 +58,8 @@ func (s TaskService) SubmitReferenceImage(ctx context.Context, projectID, draftI
 	if err != nil || !model.Supports(provider.Image) {
 		return task.Task{}, Invalid("unsupported_model", errors.New("请选择可用的生图模型"))
 	}
-	if !slices.Contains(model.Operations[provider.Image].Ratios, in.AspectRatio) {
-		return task.Task{}, Invalid("invalid_ratio", errors.New("该图片模型未配置此比例"))
+	if err := model.Operations[provider.Image].ValidateAspectRatio(in.AspectRatio); err != nil {
+		return task.Task{}, Invalid("invalid_ratio", err)
 	}
 	if in.Mode == "" {
 		in.Mode = provider.TextToImage

@@ -35,6 +35,13 @@ const busy = ref(false),
   error = ref(""),
   loading = ref(true);
 const current = computed(() => bindings.value[selected.value]);
+const ratioMappingMissing = computed(() => {
+  const binding = current.value;
+  if (binding?.protocol !== "custom.json.v1") return false;
+  return binding.contract
+    ? !binding.contract.request.bindings.ratio
+    : !binding.custom?.body_template.includes("{{ratio}}");
+});
 const choices = computed(() =>
   protocols.value.filter((p) => p.operation === selected.value),
 );
@@ -273,21 +280,29 @@ onMounted(async () => {
           v-model="bindings[selected]!"
           :disabled="busy"
         />
-        <fieldset
+        <ModelOptionTags
           v-if="selected === 'image' || selected === 'video'"
+          :model-value="current.ratios || []"
+          @update:model-value="current.ratios = $event"
+          kind="ratio"
+          label="支持的画面比例"
+          :presets="
+            current.protocol === 'custom.json.v1'
+              ? ['16:9', '9:16', '1:1', 'adaptive']
+              : ['16:9', '9:16', '1:1']
+          "
           :disabled="busy"
+        />
+        <p
+          v-if="
+            (selected === 'image' || selected === 'video') &&
+            ratioMappingMissing
+          "
+          role="status"
+          class="muted"
         >
-          <legend>支持的画面比例</legend>
-          <div class="operation-ratios">
-            <label v-for="ratio in ['16:9', '9:16', '1:1']" :key="ratio"
-              ><input
-                v-model="current.ratios"
-                type="checkbox"
-                :value="ratio"
-              />{{ ratio }}</label
-            >
-          </div>
-        </fieldset>
+          请求尚未绑定“画面比例”，分镜中的选择不会写入请求。请绑定服务商对应字段；若使用固定值，请确保它与配置选项一致。
+        </p>
         <template v-if="selected === 'image'">
           <label v-for="ratio in current.ratios" :key="ratio"
             >{{ ratio }} 输出尺寸<input

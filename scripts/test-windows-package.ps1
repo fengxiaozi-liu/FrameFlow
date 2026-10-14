@@ -29,7 +29,7 @@ $socket = $null
 function Start-IsolatedServer {
   $started = Start-Process -FilePath (Join-Path $testDir "FrameFlow.exe") -WorkingDirectory $testDir -WindowStyle Hidden -PassThru
   try {
-    for ($attempt = 0; $attempt -lt 120; $attempt++) {
+    for ($attempt = 0; $attempt -lt 480; $attempt++) {
       if ($started.HasExited) { throw "Packaged EXE exited before becoming healthy" }
       try {
         $health = Invoke-RestMethod "$baseURL/health" -TimeoutSec 2

@@ -155,13 +155,8 @@ func (b OperationBinding) Validate(operation Capability) error {
 		return errors.New("接口路径必须为不含查询参数的绝对路径")
 	}
 	if operation == Image || operation == Video {
-		if len(b.Ratios) == 0 {
-			return errors.New("请配置画面比例")
-		}
-		for _, r := range b.Ratios {
-			if !slices.Contains([]string{"16:9", "9:16", "1:1"}, r) {
-				return fmt.Errorf("当前创作画布不支持比例 %s", r)
-			}
+		if err := b.validateRatios(); err != nil {
+			return err
 		}
 		if b.MaxReferences < 0 || b.MaxReferences > 100 {
 			return errors.New("参考图片数量须在 0 至 100 之间")

@@ -64,6 +64,32 @@ beforeEach(() => {
   vi.mocked(modelConfigurationApi.configure).mockResolvedValue(model);
 });
 describe("unclassified model configuration", () => {
+  it("allows incomplete saved ratio configuration to be repaired", async () => {
+    const wrapper = mount(ModelOperationEditor, {
+      props: {
+        model: {
+          ...model,
+          capabilities: ["video"],
+          operations: {
+            video: { protocol: "dashscope.media-video.v1", source: "manual" },
+          },
+        },
+        baseUrl: "https://example.com",
+      },
+      global: {
+        stubs: { EntityEditorDrawer: { template: "<div><slot /></div>" } },
+      },
+    });
+    await flushPromises();
+    await wrapper.get('[aria-label="16:9"]').setValue(true);
+    await wrapper.get("form").trigger("submit");
+    await flushPromises();
+    expect(
+      vi.mocked(modelConfigurationApi.configure).mock.calls[0]?.[1].video
+        ?.ratios,
+    ).toEqual(["16:9"]);
+    wrapper.unmount();
+  });
   it("offers all capabilities and never defaults an empty selection to the text protocol", async () => {
     const wrapper = await editor();
     const capability = wrapper.get('select[aria-label="配置能力"]');
