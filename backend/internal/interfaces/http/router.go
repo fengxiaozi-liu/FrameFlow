@@ -63,6 +63,7 @@ func RegisterRoutes(
 	projectRoutes.GET("/:id/drafts/:draftId/scenes/:sceneId/generation-runs", tasks.ListGenerationRuns)
 	projectRoutes.PUT("/:id/drafts/:draftId/scenes/:sceneId/generation-runs/:runId/selected-media", tasks.SelectRunMedia)
 	projectRoutes.GET("/:id/drafts/:draftId/scenes/:sceneId/generation-runs/:runId", tasks.GetGenerationRun)
+	projectRoutes.DELETE("/:id/drafts/:draftId/scenes/:sceneId/generation-runs/:runId", deleteGenerationRun(tasks.RunDeletion))
 	projectRoutes.POST("/:id/drafts/:draftId/scenes/:sceneId/generation-runs/:runId/cancel", tasks.CancelGenerationRun)
 	projectRoutes.PUT("/:id/drafts/:draftId/scenes/:sceneId/selected-media", projects.SelectMediaTake)
 	projectRoutes.GET("", projects.List)

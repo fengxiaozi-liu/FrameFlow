@@ -537,6 +537,40 @@ func (r *TaskRepository) ListByScope(ctx context.Context, scope task.Scope) ([]t
 }
 
 func (r *TaskRepository) Delete(ctx context.Context, id string) error {
-	_, err := r.db.ExecContext(ctx, `DELETE FROM tasks WHERE id=?`, id)
-	return err
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	var raw string
+	if err = tx.QueryRowContext(ctx, `SELECT payload FROM tasks WHERE id=?`, id).Scan(&raw); errors.Is(err, sql.ErrNoRows) {
+		return fault.ErrNotFound
+	} else if err != nil {
+		return err
+	}
+	var item task.Task
+	if err = json.Unmarshal([]byte(raw), &item); err != nil {
+		return err
+	}
+	if item.RunID != "" {
+		return deletionConflict("run_delete_required", "请删除对应的失败制作任务")
+	}
+	if item.Status == task.StatusQueued || item.Status == task.StatusRunning {
+		return deletionConflict("task_in_use", "请完成或取消任务后再删除")
+	}
+	if _, err = tx.ExecContext(ctx, `DELETE FROM tasks WHERE id=?`, id); err != nil {
+		return err
+	}
+	if _, err = tx.ExecContext(ctx, `DELETE FROM material_references WHERE source_kind='generation_snapshot' AND (source_id=? OR source_id=?) AND NOT EXISTS(SELECT 1 FROM tasks WHERE id=material_references.source_id OR json_extract(payload,'$.snapshot.id')=material_references.source_id)`, id, func() string {
+		if item.Snapshot != nil {
+			return item.Snapshot.ID
+		}
+		return ""
+	}()); err != nil {
+		return err
+	}
+	if _, err = tx.ExecContext(ctx, `INSERT OR IGNORE INTO deleted_resources(kind,owner_id,id) VALUES('task','',?)`, id); err != nil {
+		return err
+	}
+	return tx.Commit()
 }

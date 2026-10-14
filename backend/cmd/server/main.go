@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/fengxiaozi-liu/FrameFlow/internal/application"
 	"github.com/fengxiaozi-liu/FrameFlow/internal/infrastructure/media"
+	"github.com/fengxiaozi-liu/FrameFlow/internal/infrastructure/mediaruntime"
 	providerinfra "github.com/fengxiaozi-liu/FrameFlow/internal/infrastructure/provider"
 	securityinfra "github.com/fengxiaozi-liu/FrameFlow/internal/infrastructure/security"
 	httpapi "github.com/fengxiaozi-liu/FrameFlow/internal/interfaces/http"
@@ -225,8 +226,27 @@ func checkMediaRuntime(baseDir string) mediaRuntimeStatus {
 	if workErr != nil {
 		status.CompositionReason = "media work directory is not writable"
 	}
+	embedded := mediaruntime.Paths{}
+	var embeddedErr error
+	if os.Getenv("FRAMEFLOW_FFMPEG_PATH") == "" || os.Getenv("FRAMEFLOW_FFPROBE_PATH") == "" {
+		embedded, embeddedErr = mediaruntime.Prepare(filepath.Join(baseDir, "data", "runtime", "media"))
+		if embeddedErr != nil {
+			log.Printf("embedded media runtime: %v", embeddedErr)
+			status.CompositionReason = "embedded media tools could not be prepared; check the runtime directory permissions"
+		}
+	}
 	resolveBinary := func(envName, fallback string) string {
 		name := os.Getenv(envName)
+		if name == "" {
+			if embeddedErr != nil {
+				return ""
+			}
+			if fallback == "ffmpeg" {
+				name = embedded.FFmpeg
+			} else {
+				name = embedded.FFprobe
+			}
+		}
 		if name == "" {
 			bundled := filepath.Join(baseDir, "bin", fallback)
 			if runtime.GOOS == "windows" {
@@ -242,9 +262,11 @@ func checkMediaRuntime(baseDir string) mediaRuntimeStatus {
 		if err != nil {
 			return ""
 		}
-		probeCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		// First launch of extracted Windows binaries can wait for antivirus scanning.
+		probeCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		if err := exec.CommandContext(probeCtx, path, "-version").Run(); err != nil {
+			log.Printf("media runtime verification failed for %s: %v", fallback, err)
 			return ""
 		}
 		return path

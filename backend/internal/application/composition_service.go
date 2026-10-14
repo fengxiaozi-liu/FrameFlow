@@ -113,8 +113,8 @@ func (s TaskService) CreateComposition(g *gin.Context) {
 		clip := task.CompositionClip{SceneID: scene.ID, VersionID: selectedID, MediaPath: chosen.LocalMediaPath, DurationSeconds: probe.Duration}
 		// Reference-video runs already submit dialogue in the video prompt. Keep
 		// their source audio instead of requiring or mixing historical TTS takes.
-		inlineAudio := false
-		if selectedTask, err := s.Store.Get(g.Request.Context(), chosen.TaskID); err == nil && selectedTask.Snapshot != nil {
+		inlineAudio := chosen.GenerationPath == "reference_video"
+		if selectedTask, err := s.Store.Get(g.Request.Context(), chosen.TaskID); chosen.GenerationPath == "" && err == nil && selectedTask.Snapshot != nil {
 			inlineAudio = selectedTask.Snapshot.Path == "reference_video"
 		}
 		if !inlineAudio && len(scene.Utterances) > 0 {

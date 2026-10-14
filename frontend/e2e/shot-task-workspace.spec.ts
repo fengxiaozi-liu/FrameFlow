@@ -121,6 +121,50 @@ async function seed(request:APIRequestContext){
 async function configure(page:Page,s:Awaited<ReturnType<typeof seed>>){
  await page.getByRole('combobox',{name:'视频模型',exact:true}).selectOption(s.video);await expect(page.getByRole('status').first()).toHaveText('已保存');
 }
+
+test('failed run deletion retains errors, removes children, persists after reload and works on mobile',async({page,request},testInfo)=>{
+ test.setTimeout(60000);
+ const s=await seed(request);
+ await page.goto(`${s.base}/shots/shot`);await configure(page,s);
+ await page.getByRole('button',{name:'＋ 添加场景',exact:true}).click();
+ const drawer=page.getByRole('dialog');await drawer.getByLabel('名称',{exact:true}).fill('失败记录删除验收');
+ await drawer.locator('input[type=file]').setInputFiles('public/home/cafe.png');
+ await drawer.getByRole('button',{name:'使用这张图片',exact:true}).click();
+ await drawer.getByRole('button',{name:'保存并引用'}).click();await expect(drawer).toHaveCount(0);
+ for(let i=1;i<=2;i++){
+  await page.getByRole('button',{name:'生成视频',exact:true}).click();
+  await expect(page.locator('.generation-run-row')).toHaveCount(i);
+  await expect(page.locator('.generation-run-row').nth(i-1).getByRole('button',{name:`删除任务 ${String(i).padStart(3,'0')}`,exact:true})).toBeVisible({timeout:15000});
+ }
+ const endpoint=`/api/projects/${s.p}/drafts/${s.d}/scenes/shot/generation-runs`;
+ const before=(await(await request.get(endpoint)).json()).runs;
+ const first=before[0].id as string,second=before[1].id as string;
+ page.once('dialog',dialog=>dialog.dismiss());await page.getByRole('button',{name:'删除任务 001',exact:true}).click();await expect(page.locator('.generation-run-row')).toHaveCount(2);
+ let reject=true;
+ await page.route(`**/generation-runs/${first}`,async route=>{
+  if(route.request().method()==='DELETE'&&reject){reject=false;await route.fulfill({status:503,json:{error:{message:'删除暂不可用，请重试'}}})}else await route.continue();
+ });
+ page.once('dialog',dialog=>dialog.accept());await page.getByRole('button',{name:'删除任务 001',exact:true}).click();await expect(page.getByRole('alert').filter({hasText:'删除暂不可用'})).toBeVisible();await expect(page.locator('.generation-run-row')).toHaveCount(2);
+ await page.screenshot({path:testInfo.outputPath('failed-run-delete-desktop.png'),fullPage:true});
+ await page.setViewportSize({width:390,height:844});
+ await page.screenshot({path:testInfo.outputPath('failed-run-delete-mobile.png'),fullPage:true});
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBeTruthy();
+ page.once('dialog',dialog=>dialog.accept());await page.getByRole('button',{name:'删除任务 001',exact:true}).click();
+ await expect(page.locator('.generation-run-row')).toHaveCount(1);await expect(page.getByRole('heading',{name:'生成记录',exact:true})).toBeFocused();
+ expect((await(await request.get(endpoint)).json()).runs.map((r:{id:string})=>r.id)).toEqual([second]);
+ expect((await(await request.get(`/api/tasks?project_id=${s.p}&draft_id=${s.d}`)).json()).tasks.some((t:{run_id?:string})=>t.run_id===first)).toBe(false);
+ await page.reload();await expect(page.locator('.generation-run-row')).toHaveCount(1);
+ await page.getByRole('link',{name:'进入任务 →'}).click();await expect(page.getByRole('button',{name:'删除任务',exact:true})).toBeVisible();
+ page.once('dialog',dialog=>dialog.accept());await page.getByRole('button',{name:'删除任务',exact:true}).focus();await page.keyboard.press('Enter');
+ await expect(page).toHaveURL(`${s.base}/shots/shot?deleted=1`);await expect(page.locator('.generation-run-row')).toHaveCount(0);await expect(page.getByRole('heading',{name:'生成记录',exact:true})).toBeFocused();
+ await page.reload();await expect(page.getByText('暂无制作任务', {exact:false})).toBeVisible();
+ // The task center uses the same run deletion semantics.
+ await page.getByRole('button',{name:'生成视频',exact:true}).click();await expect(page.getByRole('button',{name:'删除任务 001',exact:true})).toBeVisible({timeout:15000});
+ const latest=(await(await request.get(endpoint)).json()).runs[0];
+ await page.goto('/tasks');const card=page.locator('.task-detail').filter({hasText:latest.task_ids[0]});await expect(card).toHaveCount(1);
+ page.once('dialog',dialog=>dialog.accept());await card.getByRole('button',{name:'删除任务',exact:true}).click();await expect(card).toHaveCount(0);
+ expect((await(await request.get(endpoint)).json()).runs).toHaveLength(0);
+});
 test('list, configuration order, frozen task details, failure retry and another explicit generation',async({page,request},testInfo)=>{
  const s=await seed(request);await page.goto(`${s.base}/shots`);await expect(page.locator('.shot-list-row')).toHaveCount(1);await expect(page.locator('.binding-workbench')).toHaveCount(0);await page.getByRole('link',{name:'进入详情 →'}).click();
  await expect(page.getByRole('region',{name:'任务结构'})).toContainText('暂无制作任务');await expect(page.getByRole('button',{name:'生成视频',exact:true})).toHaveCount(1);

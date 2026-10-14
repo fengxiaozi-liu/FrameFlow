@@ -99,7 +99,9 @@ export const api = {
       }),
     }),
   cancelTask: (id: string) =>
-    request<Task>(`/api/tasks/${id}/cancel`, { method: "POST" }),
+      request<Task>(`/api/tasks/${id}/cancel`, { method: "POST" }),
+  deleteTask: (id: string) =>
+      request<void>(`/api/tasks/${encodeURIComponent(id)}`, { method: "DELETE" }),
   retryTask: (id: string) =>
     request<Task>(`/api/tasks/${id}/retry`, { method: "POST" }),
   resultUrl: (id: string) => `${endpoint}/api/tasks/${id}/result`,

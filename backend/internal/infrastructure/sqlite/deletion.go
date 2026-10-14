@@ -33,10 +33,23 @@ func checkDeletedDrafts(ctx context.Context, tx *sql.Tx, p project.Project) erro
 		if err := checkDeleted(ctx, tx, "draft", p.ID, d.ID); err != nil {
 			return err
 		}
+		for _, run := range d.GenerationRuns {
+			if err := checkDeleted(ctx, tx, "generation_run", p.ID, run.ID); err != nil {
+				return err
+			}
+		}
 	}
 	return nil
 }
 func checkTaskDeletion(ctx context.Context, tx *sql.Tx, t task.Task) error {
+	if err := checkDeleted(ctx, tx, "task", "", t.ID); err != nil {
+		return err
+	}
+	if t.RunID != "" {
+		if err := checkDeleted(ctx, tx, "generation_run", t.ProjectID, t.RunID); err != nil {
+			return err
+		}
+	}
 	if t.Status != task.StatusQueued && t.Status != task.StatusRunning {
 		return nil
 	}

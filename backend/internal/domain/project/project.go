@@ -39,6 +39,7 @@ type SceneBinding struct {
 }
 
 type VideoVersion struct {
+	GenerationPath   string    `json:"generation_path,omitempty"`
 	ID               string    `json:"id"`
 	SceneID          string    `json:"scene_id"`
 	TaskID           string    `json:"task_id"`

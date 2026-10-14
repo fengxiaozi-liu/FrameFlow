@@ -162,7 +162,7 @@ UI 展示具体不可用原因和处理入口。暂时读取失败可重试，�
 | frontend | `npm run build` | 类型检查与生产构建 |
 | frontend | `npm run e2e` | 使用独立临时数据库、上传与密钥目录的端到端回归 |
 | 仓库根 | `git diff --check` | 差异格式检查 |
-| 仓库根 | `./scripts/build-windows.ps1` | Windows 打包；可用 `FRAMEFLOW_FFMPEG_DIST_DIR` 指定已有工具目录 |
+| 仓库根 | `./scripts/build-windows.ps1` | Windows 单文件打包，前端与媒体工具嵌入 EXE；可用 `FRAMEFLOW_FFMPEG_DIST_DIR` 指定已有工具目录 |
 
 文档阶段只检查事实、相对链接和差异。正式测试包按 [发布说明](release.md) 执行相关全套检查；容器交付才要求对应容器验证。模拟测试不替代真实服务验证，真实调用须另有授权。
 

@@ -9,6 +9,7 @@ import VideoPreview from "../components/VideoPreview.vue";
 const store = useTaskStore(),
   filter = ref<"all" | TaskStatus>("all"),
   message = ref(""),
+  deleting = ref(""),
   projects = ref<Project[]>([]);
 const visible = computed(() =>
   filter.value === "all"
@@ -46,18 +47,36 @@ function draftLabel(item: Task) {
 }
 function sceneLink(item: Task) {
   if (!item.project_id || !item.draft_id || !item.scene_id) return "";
-  const draft = projects.value.find((value) => value.id === item.project_id)?.drafts.find((value) => value.id === item.draft_id);
+  const draft = projects.value
+    .find((value) => value.id === item.project_id)
+    ?.drafts.find((value) => value.id === item.draft_id);
   return draft?.story.scenes.some((scene) => scene.id === item.scene_id)
-    ? `/studio/${encodeURIComponent(item.project_id)}/${encodeURIComponent(item.draft_id)}/shots/${encodeURIComponent(item.scene_id)}` : "";
+    ? `/studio/${encodeURIComponent(item.project_id)}/${encodeURIComponent(item.draft_id)}/shots/${encodeURIComponent(item.scene_id)}`
+    : "";
 }
 function sceneLabel(item: Task) {
-  const scene = projects.value.find((project) => project.id === item.project_id)?.drafts.find((draft) => draft.id === item.draft_id)?.story.scenes.find((value) => value.id === item.scene_id);
-  return scene ? `镜头 ${String(scene.order).padStart(2, "0")} · ${scene.title || "未命名"}` : "";
+  const scene = projects.value
+    .find((project) => project.id === item.project_id)
+    ?.drafts.find((draft) => draft.id === item.draft_id)
+    ?.story.scenes.find((value) => value.id === item.scene_id);
+  return scene
+    ? `镜头 ${String(scene.order).padStart(2, "0")} · ${scene.title || "未命名"}`
+    : "";
 }
 function savedMedia(task: Task) {
-  if (task.kind !== "image" && task.kind !== "video" && task.kind !== "composition" && task.kind !== "speech") return false;
-  const ext = task.kind === "image" ? "png" : task.kind === "speech" ? "wav" : "mp4";
-  return task.result_url === `/media/${task.kind === "composition" ? "composition" : "generated"}-${task.id}.${ext}`;
+  if (
+    task.kind !== "image" &&
+    task.kind !== "video" &&
+    task.kind !== "composition" &&
+    task.kind !== "speech"
+  )
+    return false;
+  const ext =
+    task.kind === "image" ? "png" : task.kind === "speech" ? "wav" : "mp4";
+  return (
+    task.result_url ===
+    `/media/${task.kind === "composition" ? "composition" : "generated"}-${task.id}.${ext}`
+  );
 }
 function previewURL(task: Task) {
   const url = task.result_url || "";
@@ -71,7 +90,13 @@ function sourcePoster(task: Task) {
   return url.startsWith("https://") ? url : undefined;
 }
 async function download(task: Task) {
-  if (task.kind !== "image" && task.kind !== "video" && task.kind !== "composition" && task.kind !== "speech") return;
+  if (
+    task.kind !== "image" &&
+    task.kind !== "video" &&
+    task.kind !== "composition" &&
+    task.kind !== "speech"
+  )
+    return;
   message.value = "";
   try {
     await api.downloadTask(task.id, task.kind);
@@ -98,6 +123,28 @@ async function retry(item: Task) {
     await store.load();
   } catch (e) {
     message.value = (e as Error).message;
+  }
+}
+async function remove(item: Task) {
+  if (deleting.value || item.status !== "failed") return;
+  if (
+    !window.confirm(
+      item.run_id
+        ? "删除整条失败生成记录及其子任务？已经生成的素材会保留。"
+        : "删除这条失败任务？",
+    )
+  )
+    return;
+  deleting.value = item.id;
+  message.value = "";
+  try {
+    await api.deleteTask(item.id);
+    await store.load();
+    document.querySelector<HTMLButtonElement>(".page-intro button")?.focus();
+  } catch (e) {
+    message.value = (e as Error).message;
+  } finally {
+    deleting.value = "";
   }
 }
 </script>
@@ -155,12 +202,22 @@ async function retry(item: Task) {
                 {{ new Date(task.created_at).toLocaleString() }} ·
                 {{ task.id }}</small
               >
-              <RouterLink v-if="sceneLink(task)" :to="sceneLink(task)" class="text-link">所属{{ sceneLabel(task) }}</RouterLink><small v-else-if="task.scene_id">原镜头已删除，结果仅保留在任务中心</small>
+              <RouterLink
+                v-if="sceneLink(task)"
+                :to="sceneLink(task)"
+                class="text-link"
+                >所属{{ sceneLabel(task) }}</RouterLink
+              ><small v-else-if="task.scene_id"
+                >原镜头已删除，结果仅保留在任务中心</small
+              >
             </div>
             <StatusBadge :status="task.status" />
           </div>
           <div class="task-meta">
-            <span v-if="task.run_id">制作流程：{{task.run_id}}</span><span v-if="task.depends_on?.length">依赖：{{task.depends_on.join('、')}}</span>
+            <span v-if="task.run_id">制作流程：{{ task.run_id }}</span
+            ><span v-if="task.depends_on?.length"
+              >依赖：{{ task.depends_on.join("、") }}</span
+            >
             <span>阶段：{{ task.stage }}</span
             ><span
               >模型：{{ task.model_id || task.provider_code || "未指定" }}</span
@@ -210,9 +267,22 @@ async function retry(item: Task) {
             此任务没有保存可预览的媒体文件。
           </p>
           <div class="actions">
+            <button
+              v-if="task.status === 'failed'"
+              :disabled="!!deleting"
+              @click="remove(task)"
+            >
+              {{ deleting === task.id ? "删除中…" : "删除任务" }}
+            </button>
             <template v-if="sceneLink(task)">
-              <RouterLink :to="sceneLink(task)" class="button">返回分镜</RouterLink>
-              <RouterLink v-if="task.run_id" :to="`${sceneLink(task)}/runs/${encodeURIComponent(task.run_id)}`">查看任务详情</RouterLink>
+              <RouterLink :to="sceneLink(task)" class="button"
+                >返回分镜</RouterLink
+              >
+              <RouterLink
+                v-if="task.run_id"
+                :to="`${sceneLink(task)}/runs/${encodeURIComponent(task.run_id)}`"
+                >查看任务详情</RouterLink
+              >
             </template>
             <button
               v-if="task.status === 'queued' || task.status === 'running'"
@@ -222,7 +292,11 @@ async function retry(item: Task) {
             ><button
               v-if="task.status === 'failed' || task.status === 'cancelled'"
               :disabled="task.remote_acceptance_unknown"
-              :title="task.remote_acceptance_unknown ? '远端可能已受理，请先在服务商确认任务状态，避免重复生成' : undefined"
+              :title="
+                task.remote_acceptance_unknown
+                  ? '远端可能已受理，请先在服务商确认任务状态，避免重复生成'
+                  : undefined
+              "
               @click="retry(task)"
             >
               重新执行</button
@@ -240,7 +314,9 @@ async function retry(item: Task) {
               >查看原始文件</a
             >
           </div>
-          <p v-if="task.remote_acceptance_unknown" class="task-unavailable">远端受理状态未知，请先在服务商确认任务状态，避免重复生成。</p>
+          <p v-if="task.remote_acceptance_unknown" class="task-unavailable">
+            远端受理状态未知，请先在服务商确认任务状态，避免重复生成。
+          </p>
         </article>
       </section>
       <div v-if="!visible.length" class="empty">当前筛选下没有任务。</div>

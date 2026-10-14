@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/fault"
 	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/material"
 	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/project"
 	"github.com/fengxiaozi-liu/FrameFlow/internal/domain/task"
@@ -71,6 +72,22 @@ func (a TaskResultApplier) Apply(ctx context.Context, item task.Task) error {
 		take = &project.MediaTake{ID: "take-" + item.ID, Kind: string(item.Kind), SceneID: item.SceneID, UtteranceID: uID, TaskID: item.ID, MaterialID: asset.ID, SnapshotID: item.Snapshot.ID, InputHash: item.InputHash, DependencyHash: item.Snapshot.DependencyHash, DurationSeconds: duration}
 	}
 	change := func(value *project.Project) error {
+		if item.RunID != "" {
+			found := false
+			for _, d := range value.Drafts {
+				if d.ID != item.DraftID {
+					continue
+				}
+				for _, run := range d.GenerationRuns {
+					if run.ID == item.RunID && run.SceneID == item.SceneID {
+						found = true
+					}
+				}
+			}
+			if !found {
+				return fault.ErrNotFound
+			}
+		}
 		if take != nil {
 			for i := range value.Drafts {
 				d := &value.Drafts[i]
@@ -139,6 +156,12 @@ func (a TaskResultApplier) Apply(ctx context.Context, item task.Task) error {
 					return errors.New("video result must be saved locally before version creation")
 				}
 				return draft.AddVideoVersion(project.VideoVersion{
+					GenerationPath: func() string {
+						if item.Snapshot != nil {
+							return item.Snapshot.Path
+						}
+						return ""
+					}(),
 					ID: "version-" + item.ID, SceneID: item.SceneID, TaskID: item.ID,
 					LocalMediaPath: item.ResultURL, DurationSeconds: float64(item.Input.Duration),
 					InputFingerprint: item.InputHash, CreatedAt: now,

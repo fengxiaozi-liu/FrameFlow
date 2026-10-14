@@ -1,11 +1,18 @@
 import {mount} from '@vue/test-utils';
-import {describe,it,expect} from 'vitest';
+import {describe,it,expect,vi} from 'vitest';
 import MentionPromptEditor from './MentionPromptEditor.vue';
 import ReferenceImageList from './ReferenceImageList.vue';
 import DialogueVoicePanel from './DialogueVoicePanel.vue';
 import EntityReferenceCard from './EntityReferenceCard.vue';
 import GenerationRunList from './GenerationRunList.vue';
 describe('binding editor interactions',()=>{
+ it('offers deletion only for failed runs and emits after confirmation',async()=>{
+  const runs=['failed','generating','completed','cancelled'].map((state,i)=>({id:`r${i}`,scene_id:'s',state,task_ids:[],snapshot_id:'snap'}));
+  const confirm=vi.spyOn(window,'confirm').mockReturnValueOnce(false).mockReturnValue(true);
+  const w=mount(GenerationRunList,{props:{runs,base:'/studio/p/d',sceneId:'s'},global:{stubs:{RouterLink:{template:'<a><slot /></a>'}}}});
+  expect(w.findAll('button')).toHaveLength(1);await w.get('button').trigger('click');expect(w.emitted('remove')).toBeUndefined();
+  await w.get('button').trigger('click');expect(w.emitted('remove')![0]).toEqual([runs[0]]);await w.setProps({deleting:'r0'});expect(w.get('button').attributes('disabled')).toBeDefined();confirm.mockRestore();w.unmount();
+ });
  it('keeps references and the default voice visible without a shot supplement field',()=>{
   const w=mount(EntityReferenceCard,{props:{entity:{id:'c',kind:'character',name:'林夏',description:'基础设定',revision:1,references:[]},binding:{id:'b',entity_id:'c',entity_revision:1,role:'cast'},materials:[],voices:[],inline:true}});
   expect(w.findAll('button').some(b=>b.text()==='折叠')).toBe(false);

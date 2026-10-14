@@ -18,6 +18,7 @@ import (
 )
 
 type TaskService struct {
+	RunDeletion     GenerationRunDeletion
 	ImageReferences ImageReferenceReader
 	Store           task.Repository
 	UploadDir       string
@@ -299,9 +300,13 @@ func (s TaskService) List(g *gin.Context) {
 func (s TaskService) Delete(g *gin.Context) {
 	ctx := g.Request.Context()
 	id := g.Param("id")
-	_, err := s.Store.Get(ctx, id)
+	item, err := s.Store.Get(ctx, id)
 	if err == nil {
-		err = s.Store.Delete(ctx, id)
+		if item.RunID != "" {
+			err = s.RunDeletion.Delete(ctx, item.ProjectID, item.DraftID, item.SceneID, item.RunID)
+		} else {
+			err = s.Store.Delete(ctx, id)
+		}
 	}
 	if err != nil {
 		writeError(g, err)

@@ -1200,6 +1200,7 @@ export interface paths {
         };
         put?: never;
         post?: never;
+        /** @description Delete a terminal standalone task. For a run child, atomically delete its failed run and all terminal children; generated media is retained. */
         delete: {
             parameters: {
                 query?: never;
@@ -1213,6 +1214,20 @@ export interface paths {
             responses: {
                 /** @description Deleted */
                 204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Task or run not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Task active or associated run is not failed */
+                409: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -3044,7 +3059,8 @@ export interface paths {
         };
         put?: never;
         post?: never;
-        delete?: never;
+        /** @description Delete a failed run and all its terminal child tasks atomically; retain generated media and selected versions. Reject active steps and late writes. */
+        delete: operations["deleteFailedGenerationRun"];
         options?: never;
         head?: never;
         patch?: never;
@@ -3668,6 +3684,8 @@ export interface components {
             local_media_path: string;
             duration_seconds: number;
             input_fingerprint: string;
+            /** @description Frozen generation path retained for composition after task history deletion */
+            generation_path?: string;
             based_on_old_settings?: boolean;
         };
         Composition: {
@@ -4225,6 +4243,45 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    deleteFailedGenerationRun: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                draftId: string;
+                sceneId: string;
+                runId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Run and child task records deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Run not found in this project, draft and scene */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Run is not failed or a child task is active */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BindingError"];
+                };
             };
         };
     };

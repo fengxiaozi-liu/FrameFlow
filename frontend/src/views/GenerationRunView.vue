@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onBeforeUnmount, ref } from "vue";
-import { useRoute } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
+import { useTaskStore } from "../stores/tasks";
 import { api } from "../api/client";
 import { bindingsApi, type GenerationRun } from "../api/bindings";
 type RunStep = NonNullable<GenerationRun["steps"]>[number];
@@ -16,6 +17,31 @@ const runId = String(useRoute().params.runId),
 let alive = true,
   timer: ReturnType<typeof setInterval> | undefined,
   inFlight = false;
+const router = useRouter(),
+  tasks = useTaskStore();
+async function remove() {
+  if (busy.value || run.value?.state !== "failed") return;
+  if (
+    !window.confirm("删除这条失败的生成记录及其子任务？已经生成的素材会保留。")
+  )
+    return;
+  busy.value = true;
+  message.value = "";
+  try {
+    await bindingsApi.deleteRun(projectId, draftId, sceneId, runId);
+    alive = false;
+    clearInterval(timer);
+    await tasks.load();
+    await router.replace({
+      path: `${base}/shots/${encodeURIComponent(sceneId)}`,
+      query: { deleted: "1" },
+    });
+  } catch (e) {
+    message.value = (e as Error).message;
+  } finally {
+    busy.value = false;
+  }
+}
 const steps = computed(() => run.value?.steps || []);
 const takes = computed(
   () =>
@@ -228,14 +254,23 @@ onBeforeUnmount(() => {
             >前往成片</RouterLink
           ><button
             v-if="
-              !['completed', 'cancelled', 'awaiting_composition'].includes(
-                run.state,
-              )
+              ![
+                'completed',
+                'cancelled',
+                'awaiting_composition',
+              ].includes(run.state)
             "
             :disabled="busy"
             @click="cancel"
           >
             取消制作任务
+          </button>
+          <button
+            v-if="run.state === 'failed'"
+            :disabled="busy"
+            @click="remove"
+          >
+            {{ busy ? "处理中…" : "删除任务" }}
           </button>
         </div>
       </header>

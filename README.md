@@ -16,6 +16,8 @@ irm https://raw.githubusercontent.com/fengxiaozi-liu/FrameFlow/main/scripts/inst
 
 程序安装到当前用户的 `%LOCALAPPDATA%\FrameFlow`，启动后访问 `http://127.0.0.1:28741`。运行数据保存在安装目录下的 `data` 文件夹。
 
+Windows 单文件版本将前端和 FFmpeg/ffprobe 嵌入 `FrameFlow.exe`，首次启动自动准备媒体工具；手动安装只需将 EXE 放在可写文件夹。无需额外安装或复制媒体工具，详见 [Windows 运行说明](docs/windows-install.md)。
+
 ## 使用方式
 
 场景/人物多图、描述、音色及逐句台词工作台的使用与升级说明见 [绑定功能迁移说明](docs/migrations/scene-character-binding.md)。

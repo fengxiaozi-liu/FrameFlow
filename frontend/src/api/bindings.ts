@@ -38,5 +38,6 @@ export const bindingsApi={
  runs:(p:string,d:string,s:string)=>request<S['GenerationRunList']>(`${shot(p,d,s)}/generation-runs`),
  selectRun:(p:string,d:string,s:string,r:string,input:S['RunSelectionWrite'])=>write<S['GenerationRun']>(`${shot(p,d,s)}/generation-runs/${encodeURIComponent(r)}/selected-media`,'PUT',input),
  getRun:(p:string,d:string,s:string,r:string)=>request<S['GenerationRun']>(`${shot(p,d,s)}/generation-runs/${encodeURIComponent(r)}`),
+ deleteRun:(p:string,d:string,s:string,r:string)=>request<void>(`${shot(p,d,s)}/generation-runs/${encodeURIComponent(r)}`,{method:'DELETE'}),
  cancelRun:(p:string,d:string,s:string,r:string)=>write<S['GenerationRun']>(`${shot(p,d,s)}/generation-runs/${encodeURIComponent(r)}/cancel`,'POST',{}),
 };
